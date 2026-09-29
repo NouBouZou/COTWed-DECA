@@ -1011,13 +1011,31 @@ class VfsDatabase(DbBase):
         name_strs = [name_str for _, _, _, _, name_str, _ in objects if name_str is not None]
         str_set = set(class_strs + name_strs)
         str_lookup = {}
+        missing_strs = []
         for s in str_set:
             result = self.db_query_all(
                 "SELECT rowid FROM core_strings WHERE string=(?)",
                 (s,),
                 dbg='object_info_add_many:0:select')
 
-            str_lookup[s] = result[0][0]
+            if result:
+                str_lookup[s] = result[0][0]
+            else:
+                missing_strs.append(s)
+
+        if missing_strs:
+            # DbWrap.propose_string() normalises paths ('\\' -> '/') before storing a string, so an RTPC
+            # "_class"/"name" value containing a backslash is not in core_strings verbatim. Previously the
+            # lookup above raised IndexError and aborted the whole scan (seen on theHunter: COTW).
+            # Store the verbatim string so the object keeps its exact name. Encoding to UTF-8 bytes keeps
+            # make_hash_string_tuple() from dropping non-ASCII characters.
+            self.hash_string_add_many_basic([make_hash_string_tuple(s.encode('utf-8')) for s in missing_strs])
+            for s in missing_strs:
+                result = self.db_query_all(
+                    "SELECT rowid FROM core_strings WHERE string=(?)",
+                    (s,),
+                    dbg='object_info_add_many:0:select_missing')
+                str_lookup[s] = result[0][0]
 
         str_lookup[None] = None
 
