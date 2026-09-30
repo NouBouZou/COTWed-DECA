@@ -314,6 +314,9 @@ def main(argv=None):
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
     ap.add_argument('--forcer', action='store_true', help='accepter des armes absentes de la categorie weapons')
+    ap.add_argument('--controle-prix', action='append', default=[], metavar='NOM=PRIX',
+                    help='change aussi le prix d\'un objet EXISTANT (option repetable) : si ce prix apparait en jeu, '
+                         'le fichier produit est bien lu par le jeu')
     args = ap.parse_args(argv)
 
     if not args.nom.isascii() or not args.nom.replace('_', '').isalnum():
@@ -333,12 +336,21 @@ def main(argv=None):
         sp_bytes, sp_src = load(vfs, base, SPAWN_AMMO)
         report += ['Origine : ' + eq_src, 'Origine : ' + sp_src, '']
         eq_tree, sp_tree = W.rtpc_from_bytes(eq_bytes), W.rtpc_from_bytes(sp_bytes)
+        for spec in args.controle_prix:
+            name, _, value = spec.partition('=')
+            if not value.isdigit():
+                raise EClone('--controle-prix attend NOM=PRIX, recu "{}"'.format(spec))
+            _, node = find_item(eq_tree.root_node, name.strip(), H_NAME)
+            old = set_u32(node, H_PRICE, int(value), 'prix de controle')
+            report.append('Controle : prix de {} : {} -> {}'.format(name.strip(), old, value))
+        # reference de la verification : l'original avec les seuls changements de controle
+        eq_reference = W.rtpc_to_binary(eq_tree) if args.controle_prix else eq_bytes
         _, eq_item, lines = clone_equipment(eq_tree, args.source, args.nom, args.libelle, args.prix, weapons, args.forcer)
         report += lines
         _, sp_item, lines = clone_spawn(sp_tree, args.source, args.nom, args.entite)
         report += lines
         eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
-        verify_addition(eq_bytes, eq_out, eq_item.name_hash)
+        verify_addition(eq_reference, eq_out, eq_item.name_hash)
         verify_addition(sp_bytes, sp_out, sp_item.name_hash)
     except EClone as e:
         raise SystemExit('ERREUR : {}'.format(e))
