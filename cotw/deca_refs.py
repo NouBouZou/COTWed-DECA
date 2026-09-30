@@ -79,6 +79,7 @@ def build_patterns(term: str, paths, strings) -> Dict[bytes, str]:
 def scan_contents(vfs, patterns: Dict[bytes, str], types: List[str], max_size: int):
     """Cherche les motifs dans le contenu des fichiers (une copie par hash). Renvoie la liste des trouvailles."""
     rx = re.compile(b'|'.join(re.escape(p) for p in sorted(patterns, key=len, reverse=True)))
+    hash_patterns = {p for p, desc in patterns.items() if desc.startswith('hash32')}
     rows = vfs.db_query_all(
         'SELECT node_id, v_hash, size_u FROM core_nodes WHERE file_type IN ({}) ORDER BY node_id'.format(
             ','.join('?' * len(types))), types, dbg='cotw_refs_scan')
@@ -101,6 +102,11 @@ def scan_contents(vfs, patterns: Dict[bytes, str], types: List[str], max_size: i
             continue
         found = collections.defaultdict(list)
         for m in rx.finditer(data):
+            # Un hash32 stocke dans une structure (RTPC, ADF) est aligne sur 4 octets. Une correspondance
+            # non alignee est presque toujours une coincidence dans des donnees binaires (maillages,
+            # terrain) : sur le premier essai COTW, la plupart des faux positifs etaient non alignes.
+            if m.group(0) in hash_patterns and m.start() % 4:
+                continue
             found[m.group(0)].append(m.start())
         if found:
             hits.append((_projet.node_label(node), node.file_type, dict(found)))
@@ -161,8 +167,9 @@ def main(argv=None):
                 more = ' ...' if len(offsets) > 5 else ''
                 L.append('      {} x{} a {}{}'.format(patterns[pat], len(offsets), shown, more))
         L.append('')
-        L.append('Note : un hash32 de 4 octets peut apparaitre par hasard dans des donnees binaires ;')
-        L.append('une correspondance isolee dans un gros fichier est a verifier avec rtpc_dump.py.')
+        L.append('Note : seules les correspondances de hash32 alignees sur 4 octets sont gardees. Un hash32')
+        L.append('peut encore apparaitre par hasard dans de gros fichiers binaires (terrain .streampatch,')
+        L.append('maillages) : une correspondance isolee y est a verifier avant d\'en tirer une conclusion.')
 
     text = '\n'.join(L) + '\n'
     if args.out:
