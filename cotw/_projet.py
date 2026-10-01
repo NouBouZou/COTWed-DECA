@@ -57,9 +57,15 @@ def read_node(vfs, node) -> bytes:
 
 
 def read_by_path(vfs, v_path: str) -> bytes:
+    """Contenu d'un fichier du jeu. Un meme chemin peut exister dans plusieurs archives : si ces copies
+    different (taille ou empreinte), on le signale, car on ne sait pas laquelle le jeu charge en dernier."""
     nodes = [n for n in nodes_by_path(vfs, v_path) if n.offset is not None]
     if not nodes:
         raise SystemExit('ERREUR : aucun fichier "{}" dans le projet (chemin virtuel inconnu ou sans contenu)'.format(v_path))
+    versions = sorted({(n.size_u or 0, n.content_hash or '') for n in nodes})
+    if len(versions) > 1:
+        sys.stderr.write('ATTENTION : {} existe en {} versions differentes ({}) ; lecture du noeud {}.\n'.format(
+            v_path, len(versions), ', '.join('{} octets'.format(size) for size, _h in versions), nodes[0].uid))
     return read_node(vfs, nodes[0])
 
 

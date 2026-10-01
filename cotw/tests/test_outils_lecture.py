@@ -74,6 +74,40 @@ class TestFormat(unittest.TestCase):
         json.dumps(D.to_json(sample_tree().root_node, self.names))
 
 
+class TestReadByPath(unittest.TestCase):
+    class Node:
+        def __init__(self, uid, size, h):
+            self.uid, self.offset, self.size_u, self.content_hash = uid, 0, size, h
+
+    class Vfs:
+        def __init__(self, nodes):
+            self.nodes = nodes
+
+        def nodes_where_match(self, v_path=None):
+            return self.nodes
+
+        def file_obj_from(self, node):
+            import io
+            return io.BytesIO(b'x' * node.size_u)
+
+    def read(self, nodes):
+        import contextlib
+        import io
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            data = _projet.read_by_path(self.Vfs(nodes), 'settings/a.bin')
+        return data, err.getvalue()
+
+    def test_identical_copies_are_silent(self):
+        data, err = self.read([self.Node(1, 4, 'h'), self.Node(2, 4, 'h')])
+        self.assertEqual(data, b'xxxx')
+        self.assertEqual(err, '')
+
+    def test_different_copies_are_reported(self):
+        _data, err = self.read([self.Node(1, 4, 'h1'), self.Node(2, 6, 'h2')])
+        self.assertIn('2 versions differentes', err)
+
+
 class TestRefs(unittest.TestCase):
     def test_patterns_include_text_and_path_hashes(self):
         paths = [(EE, 'sarc', 100, 1)]
