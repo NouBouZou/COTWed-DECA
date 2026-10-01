@@ -1,0 +1,17 @@
+# Noms retrouves pour des hashes de theHunter: COTW absents des dictionnaires de DECA.
+# Lu par cotw/_projet.py (resolve_hash32) : rtpc_dump, comparer_objets et deca_refs affichent ces noms.
+# Ecrit par cotw/resoudre_hashes.py ; chaque nom a ete verifie en recalculant son hash.
+# Colonnes : hash, largeur en bits, nom, passe qui l'a trouve, faux positifs attendus sur cette passe, contexte.
+# "faux positifs attendus" = candidats essayes x hashes cherches / 2^largeur. Plus il est petit, plus le nom est sur.
+0x765fbed2	32	sub_category	directs	0.0004	equipment_data.bin : propriete u32 des objets
+0x3acd5ce3	32	equipment_type	directs	0.0004	equipment_data.bin : propriete u32 des objets
+0x041df969	32	display_description	directs	0.0004	equipment_data.bin : propriete chaine des objets (cle de traduction)
+0x3d214106	32	capacity_cost	directs	0.0004	equipment_data.bin : propriete f32 des objets (le poids)
+0xf71c2a21	32	desc	directs	0.0004	spawn_ammunition_defs.bin : propriete chaine (nom de l'objet)
+0x33df3b2f	32	cash_price	paires	0.03	equipment_data.bin : propriete u32 des objets (prix)
+0xaa8d9f49	32	ammunition_slot_index	paires	0.03	equipment_data.bin : entree de la liste de compatibilite
+0x5e330413	32	secondary_ids	paires	0.03	equipment_data.bin : enfant des objets
+0xfd075ebe	32	trophy_size	paires	0.03	equipment_data.bin : propriete u32 des objets
+0x83647b76	32	spawn_system	paires	0.03	spawn_ammunition_defs.bin : enfant de la racine
+0x0b621fb6	32	resource_definitions	paires	0.03	spawn_ammunition_defs.bin : enfant de niveau 2
+0xe0f66498	32	received	directs	0.0001	equipment_data.bin : propriete des objets

@@ -10,7 +10,7 @@ cache de DECA (work\\hp\\__CACHE__), comme quand on le parcourt dans l'interface
 """
 import sys
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 
 if not sys.platform.startswith('win'):
     # Sous Linux, deca importe zugbruecke (pont vers les DLL Windows, qui exige Wine) : inutile pour COTW.
@@ -63,10 +63,48 @@ def read_by_path(vfs, v_path: str) -> bytes:
     return read_node(vfs, nodes[0])
 
 
-def resolve_hash32(vfs, hashes: Iterable[int], batch: int = 500) -> Dict[int, List[str]]:
-    """Chaines connues de DECA (table core_strings) pour chaque hash32 demande."""
+DICTIONARY_PATH = Path(__file__).resolve().parent / 'dictionnaires' / 'hp_noms.tsv'
+_dictionary_cache: Dict[Path, Dict[Tuple[int, int], List[str]]] = {}
+
+
+def load_dictionary(path: Optional[Path] = None) -> Dict[Tuple[int, int], List[str]]:
+    """Noms du dictionnaire du fork : (largeur en bits, hash) -> noms. Fichier absent = dictionnaire vide.
+
+    Format (ecrit par resoudre_hashes.py) : une ligne par nom, colonnes separees par des tabulations :
+    hash en hexadecimal, largeur (32, 48 ou 64), nom, puis des colonnes de provenance ignorees ici.
+    """
+    path = Path(path) if path is not None else DICTIONARY_PATH
+    if path in _dictionary_cache:
+        return _dictionary_cache[path]
+    entries: Dict[Tuple[int, int], List[str]] = {}
+    if path.is_file():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            if not line.strip() or line.startswith('#'):
+                continue
+            cols = line.split('\t')
+            if len(cols) < 3:
+                continue
+            key = (int(cols[1]), int(cols[0], 16))
+            if cols[2] not in entries.setdefault(key, []):
+                entries[key].append(cols[2])
+    _dictionary_cache[path] = entries
+    return entries
+
+
+def forget_dictionary_cache():
+    _dictionary_cache.clear()
+
+
+def resolve_hash32(vfs, hashes: Iterable[int], batch: int = 500, use_dictionary: bool = True) -> Dict[int, List[str]]:
+    """Chaines connues pour chaque hash32 demande : table core_strings de DECA, plus le dictionnaire du fork
+    (cotw/dictionnaires/hp_noms.tsv) sauf si use_dictionary=False."""
     wanted = sorted({h & 0xFFFFFFFF for h in hashes if h is not None})
     found: Dict[int, List[str]] = {}
+    if use_dictionary:
+        dictionary = load_dictionary()
+        for h in wanted:
+            for name in dictionary.get((32, h), []):
+                found.setdefault(h, []).append(name)
     for i in range(0, len(wanted), batch):
         chunk = wanted[i:i + batch]
         rows = vfs.db_query_all(
