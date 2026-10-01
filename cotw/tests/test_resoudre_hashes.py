@@ -70,6 +70,15 @@ class TestSearcher(unittest.TestCase):
         self.assertEqual(found['equipment_hash'][0], 64)
         self.assertEqual(s.stats[1].candidates, 9)
 
+    def test_positional_pass_finds_list_keys(self):
+        t = RH.Targets()
+        t.add(32, h32('compatibility_3'), 'enfant', 'test')
+        t.add(32, h32('compatibility_01'), 'enfant', 'test')
+        s = RH.Searcher(t)
+        s.run('positionnels', RH.gen_positional(['compatibility'], 16))
+        found = {n for names in s.hits.values() for n in names}
+        self.assertEqual(found, {'compatibility_3', 'compatibility_01'})
+
     def test_expected_false_positives(self):
         t = RH.Targets()
         for i in range(1, 11):
@@ -189,8 +198,8 @@ class TestEndToEnd(unittest.TestCase):
         text = self.run_search('--aveugle', '--sans-ecrire')
         self.assertIn('Mode aveugle', text)
         # 'name' est connu de DECA (dictionnaires fournis) : la passe directe le retrouve depuis m_Name de l'exe
-        self.assertRegex(text, r'Retrouvés avec le même nom : [1-9]')
-        self.assertIn('Noms différents de ceux de DECA (faux positif ou vraie collision) : 0', text)
+        self.assertRegex(text, r'\| propriete \| \d+ \| [1-9]\d* \| \d+% \|')
+        self.assertIn('Noms différents de ceux de DECA (faux positifs) : 0,', text)
 
     def test_3_inject_then_undo(self):
         db_path = Path(self.project) / 'db' / 'core.db'

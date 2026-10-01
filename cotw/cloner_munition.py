@@ -49,7 +49,7 @@ SPAWN_AMMO = 'settings/spawn_ammunition_defs.bin'
 H_NAME = W.name_hash('name')                    # 0xd31ab684
 H_NOTE = W.name_hash('note')                    # 0x2314c9ea, libelle anglais
 H_PRICE = 0x33df3b2f                            # prix (d'apres cotw-mod-builder)
-H_COMPAT = 0x77C2B3BA                           # liste des armes compatibles
+H_COMPAT = W.name_hash('compatibilities')        # 0x77c2b3ba, liste des armes compatibles
 H_EQUIPMENT_NAME = W.name_hash('equipment_name')  # 0x36642277, nom d'une arme dans la liste
 H_WEAPONS = W.name_hash('weapons')              # 0xc04b7961, categorie des armes
 H_SPAWN_NAME = 0xf71c2a21                       # nom de l'objet dans spawn_ammunition_defs
@@ -148,20 +148,14 @@ def compat_entries(item: RtpcNode) -> Tuple[RtpcNode, List[RtpcNode]]:
     return compat, entries
 
 
-def key_pool(root: RtpcNode) -> List[int]:
-    """Cles deja utilisees par des entrees de listes de compatibilite dans le fichier (cles connues valides)."""
-    keys = set()
+def compat_key(index: int) -> int:
+    """Cle de la i-eme entree d'une liste de compatibilite : hash32("compatibility_<i>").
 
-    def walk(node):
-        if node.name_hash == H_COMPAT:
-            for c in node.child_table:
-                if W.node_get_prop(c, H_EQUIPMENT_NAME) is not None:
-                    keys.add(c.name_hash)
-        for c in node.child_table:
-            walk(c)
-
-    walk(root)
-    return sorted(keys)
+    Retrouve le 2026-10-01 (resoudre_hashes + generateur positionnel) : les 69 cles inconnues des listes de
+    compatibilite d'equipment_data.bin (munitions et lunettes) sont toutes de cette forme, de compatibility_0 a
+    compatibility_67. Une seule exception dans le jeu : "compatibility_01" pour une entree d'index 1.
+    """
+    return W.name_hash('compatibility_{}'.format(index))
 
 
 def known_weapons(root: RtpcNode) -> set:
@@ -171,31 +165,27 @@ def known_weapons(root: RtpcNode) -> set:
     return {c.name_hash for c in weapons.child_table}
 
 
-def set_compatible_weapons(item: RtpcNode, weapons: Sequence[str], pool: Sequence[int]) -> List[str]:
+def set_compatible_weapons(item: RtpcNode, weapons: Sequence[str]) -> List[str]:
     """
-    Remplace la liste de compatibilite. On ne connait pas la regle qui produit les cles des entrees :
-    on reutilise d'abord celles de la source, puis des cles deja presentes ailleurs dans le fichier.
-    Chaque entree est une copie de la premiere entree de la source (memes champs, meme ordre).
+    Remplace la liste de compatibilite. L'entree d'index i recoit la cle hash32("compatibility_<i>"), comme
+    dans le jeu. Une arme deja presente dans la liste de la source garde une copie de son entree (meme
+    ammunition_slot_index) ; une arme nouvelle recoit une copie de la premiere entree de la source.
     """
     compat, entries = compat_entries(item)
-    template = entries[0]
-    keys = sorted(c.name_hash for c in entries)[:len(weapons)]
-    extra = [k for k in pool if k not in keys]
-    while len(keys) < len(weapons):
-        if not extra:
-            raise EClone('pas assez de cles connues pour {} armes'.format(len(weapons)))
-        keys.append(extra.pop(0))
+    by_weapon = {bytes(W.node_get_prop(e, H_EQUIPMENT_NAME).data).decode('utf-8', 'replace'): e for e in entries}
+    first = next((e for e in entries if e.name_hash == compat_key(0)), entries[0])
     new_entries = []
-    for key, weapon in zip(sorted(keys), weapons):
-        e = W.clone_node(template)
-        e.name_hash = key
+    for i, weapon in enumerate(weapons):
+        e = W.clone_node(by_weapon.get(weapon, first))
+        e.name_hash = compat_key(i)
         set_str(e, H_EQUIPMENT_NAME, weapon, 'entree de compatibilite')
         new_entries.append(e)
     others = [c for c in compat.child_table if W.node_get_prop(c, H_EQUIPMENT_NAME) is None]
     compat.child_table = sorted(others + new_entries, key=lambda c: c.name_hash)
     compat.child_map = {c.name_hash: c for c in compat.child_table}
     compat.child_count = len(compat.child_table)
-    return ['0x{:08x} -> {}'.format(e.name_hash, w) for e, w in zip(new_entries, weapons)]
+    return ['compatibility_{} (0x{:08x}) -> {}'.format(i, e.name_hash, w)
+            for i, (e, w) in enumerate(zip(new_entries, weapons))]
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +216,7 @@ def clone_equipment(tree: Rtpc, source: str, new: str, label: Optional[str] = No
         if unknown and not allow_unknown_weapons:
             raise EClone('armes absentes de la categorie weapons : {} (option --forcer pour passer outre)'.format(unknown))
         report.append('  compatibilite :')
-        report += ['    ' + line for line in set_compatible_weapons(item, weapons, key_pool(tree.root_node))]
+        report += ['    ' + line for line in set_compatible_weapons(item, weapons)]
     else:
         _, entries = compat_entries(item)
         report.append('  compatibilite conservee : {}'.format(

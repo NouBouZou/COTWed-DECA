@@ -15,3 +15,146 @@
 0x83647b76	32	spawn_system	paires	0.03	spawn_ammunition_defs.bin : enfant de la racine
 0x0b621fb6	32	resource_definitions	paires	0.03	spawn_ammunition_defs.bin : enfant de niveau 2
 0xe0f66498	32	received	directs	0.0001	equipment_data.bin : propriete des objets
+# 2026-10-01 : resultats du PC de l'utilisateur, puis recherche ciblee (passe positionnelle, paires elargies)
+0x58ad06c9	32	equip_type	affixes	0.042	equipment_data.bin : propriete u32 des objets equipment
+0x60c4c6fd	32	number_of_ammunition_slots	directs	0.0023	equipment_data.bin : propriete u32 des armes
+0x690c9ecd	32	is_featured	directs	0.0023	equipment_data.bin : propriete u32 (mise en avant au magasin)
+0x778f2b6a	32	unlock_hint	directs	0.0023	equipment_data.bin : propriete chaine des armes (cle de traduction *_unlock_*)
+0xb7e47998	32	release_year	directs	0.0023	equipment_data.bin : release_schedule, u32 (ex. 2023)
+0xcc368d39	32	release_month	directs	0.0023	equipment_data.bin : release_schedule, u32
+0xcc8f5957	32	max_units	affixes	0.042	equipment_data.bin : propriete u32 des leurres
+0xd3b4ac9b	32	featured_text	directs	0.0023	equipment_data.bin : propriete chaine ("store_featured")
+0xea1e8551	32	magazine_sizes	affixes	0.042	equipment_data.bin : enfant des armes
+0xfd8b4acd	32	release_date	directs	0.0023	equipment_data.bin : release_schedule, u32
+0x6be7b8bc	32	release_schedule	paires+contexte	0.1	equipment_data.bin : enfant de 84 objets, contient release_year/month/date
+0x88f789f4	32	alternative_image	paires+contexte	0.1	equipment_data.bin : propriete chaine, chemin textures\ui\items\equipment\alt_*
+0x77c2b3ba	32	compatibilities	positionnels	3e-05	equipment_data.bin : enfant des munitions et lunettes (liste des armes compatibles)
+0x29c1d9ed	32	compatibility_0	positionnels	3e-05	equipment_data.bin : cle de la 0-ieme entree de compatibilities
+0xd4835e23	32	compatibility_1	positionnels	3e-05	equipment_data.bin : cle de la 1-ieme entree de compatibilities
+0x52b65512	32	compatibility_2	positionnels	3e-05	equipment_data.bin : cle de la 2-ieme entree de compatibilities
+0x8b198301	32	compatibility_3	positionnels	3e-05	equipment_data.bin : cle de la 3-ieme entree de compatibilities
+0x0dc7fe39	32	compatibility_4	positionnels	3e-05	equipment_data.bin : cle de la 4-ieme entree de compatibilities
+0x81178fff	32	compatibility_5	positionnels	3e-05	equipment_data.bin : cle de la 5-ieme entree de compatibilities
+0x3d7894db	32	compatibility_6	positionnels	3e-05	equipment_data.bin : cle de la 6-ieme entree de compatibilities
+0xb94292ee	32	compatibility_7	positionnels	3e-05	equipment_data.bin : cle de la 7-ieme entree de compatibilities
+0x552e7b91	32	compatibility_8	positionnels	3e-05	equipment_data.bin : cle de la 8-ieme entree de compatibilities
+0x88896549	32	compatibility_9	positionnels	3e-05	equipment_data.bin : cle de la 9-ieme entree de compatibilities
+0xa0a6da24	32	compatibility_10	positionnels	3e-05	equipment_data.bin : cle de la 10-ieme entree de compatibilities
+0x4f68f599	32	compatibility_11	positionnels	3e-05	equipment_data.bin : cle de la 11-ieme entree de compatibilities
+0x96494c57	32	compatibility_12	positionnels	3e-05	equipment_data.bin : cle de la 12-ieme entree de compatibilities
+0xc80339d9	32	compatibility_13	positionnels	3e-05	equipment_data.bin : cle de la 13-ieme entree de compatibilities
+0xe3b4d5fb	32	compatibility_14	positionnels	3e-05	equipment_data.bin : cle de la 14-ieme entree de compatibilities
+0x7fd00192	32	compatibility_15	positionnels	3e-05	equipment_data.bin : cle de la 15-ieme entree de compatibilities
+0x9d627a4d	32	compatibility_16	positionnels	3e-05	equipment_data.bin : cle de la 16-ieme entree de compatibilities
+0x5defd26f	32	compatibility_17	positionnels	3e-05	equipment_data.bin : cle de la 17-ieme entree de compatibilities
+0x5e367d62	32	compatibility_18	positionnels	3e-05	equipment_data.bin : cle de la 18-ieme entree de compatibilities
+0x8ae9918b	32	compatibility_19	positionnels	3e-05	equipment_data.bin : cle de la 19-ieme entree de compatibilities
+0xca7aced3	32	compatibility_20	positionnels	3e-05	equipment_data.bin : cle de la 20-ieme entree de compatibilities
+0x6041e107	32	compatibility_21	positionnels	3e-05	equipment_data.bin : cle de la 21-ieme entree de compatibilities
+0xe6bb76e5	32	compatibility_22	positionnels	3e-05	equipment_data.bin : cle de la 22-ieme entree de compatibilities
+0x121371de	32	compatibility_23	positionnels	3e-05	equipment_data.bin : cle de la 23-ieme entree de compatibilities
+0x7a6fce88	32	compatibility_24	positionnels	3e-05	equipment_data.bin : cle de la 24-ieme entree de compatibilities
+0x2f9bb511	32	compatibility_25	positionnels	3e-05	equipment_data.bin : cle de la 25-ieme entree de compatibilities
+0x3df0a1d7	32	compatibility_26	positionnels	3e-05	equipment_data.bin : cle de la 26-ieme entree de compatibilities
+0x67e19f24	32	compatibility_27	positionnels	3e-05	equipment_data.bin : cle de la 27-ieme entree de compatibilities
+0xec8e0e03	32	compatibility_28	positionnels	3e-05	equipment_data.bin : cle de la 28-ieme entree de compatibilities
+0x758af657	32	compatibility_29	positionnels	3e-05	equipment_data.bin : cle de la 29-ieme entree de compatibilities
+0x5d6209da	32	compatibility_30	positionnels	3e-05	equipment_data.bin : cle de la 30-ieme entree de compatibilities
+0x691c79a4	32	compatibility_31	positionnels	3e-05	equipment_data.bin : cle de la 31-ieme entree de compatibilities
+0x0fef6c12	32	compatibility_32	positionnels	3e-05	equipment_data.bin : cle de la 32-ieme entree de compatibilities
+0x40df31dd	32	compatibility_33	positionnels	3e-05	equipment_data.bin : cle de la 33-ieme entree de compatibilities
+0xd5c1d84c	32	compatibility_34	positionnels	3e-05	equipment_data.bin : cle de la 34-ieme entree de compatibilities
+0x0c488b7b	32	compatibility_35	positionnels	3e-05	equipment_data.bin : cle de la 35-ieme entree de compatibilities
+0xa8608bd6	32	compatibility_36	positionnels	3e-05	equipment_data.bin : cle de la 36-ieme entree de compatibilities
+0x065f6f1e	32	compatibility_37	positionnels	3e-05	equipment_data.bin : cle de la 37-ieme entree de compatibilities
+0x64105cb8	32	compatibility_38	positionnels	3e-05	equipment_data.bin : cle de la 38-ieme entree de compatibilities
+0xfa5e029a	32	compatibility_39	positionnels	3e-05	equipment_data.bin : cle de la 39-ieme entree de compatibilities
+0x850fa7e7	32	compatibility_40	positionnels	3e-05	equipment_data.bin : cle de la 40-ieme entree de compatibilities
+0x89e0470a	32	compatibility_41	positionnels	3e-05	equipment_data.bin : cle de la 41-ieme entree de compatibilities
+0x50d93f21	32	compatibility_42	positionnels	3e-05	equipment_data.bin : cle de la 42-ieme entree de compatibilities
+0xa0920036	32	compatibility_43	positionnels	3e-05	equipment_data.bin : cle de la 43-ieme entree de compatibilities
+0xcd8dd901	32	compatibility_44	positionnels	3e-05	equipment_data.bin : cle de la 44-ieme entree de compatibilities
+0x4de172e5	32	compatibility_45	positionnels	3e-05	equipment_data.bin : cle de la 45-ieme entree de compatibilities
+0x8530532c	32	compatibility_46	positionnels	3e-05	equipment_data.bin : cle de la 46-ieme entree de compatibilities
+0x62db9cdb	32	compatibility_47	positionnels	3e-05	equipment_data.bin : cle de la 47-ieme entree de compatibilities
+0xf7263996	32	compatibility_48	positionnels	3e-05	equipment_data.bin : cle de la 48-ieme entree de compatibilities
+0x73cd1a75	32	compatibility_49	positionnels	3e-05	equipment_data.bin : cle de la 49-ieme entree de compatibilities
+0x217b35a1	32	compatibility_50	positionnels	3e-05	equipment_data.bin : cle de la 50-ieme entree de compatibilities
+0xa4608236	32	compatibility_51	positionnels	3e-05	equipment_data.bin : cle de la 51-ieme entree de compatibilities
+0x0a3ce0ac	32	compatibility_52	positionnels	3e-05	equipment_data.bin : cle de la 52-ieme entree de compatibilities
+0x4c06d214	32	compatibility_53	positionnels	3e-05	equipment_data.bin : cle de la 53-ieme entree de compatibilities
+0x956c7601	32	compatibility_54	positionnels	3e-05	equipment_data.bin : cle de la 54-ieme entree de compatibilities
+0x1aa95f81	32	compatibility_55	positionnels	3e-05	equipment_data.bin : cle de la 55-ieme entree de compatibilities
+0x4149fe89	32	compatibility_56	positionnels	3e-05	equipment_data.bin : cle de la 56-ieme entree de compatibilities
+0x64cb0692	32	compatibility_57	positionnels	3e-05	equipment_data.bin : cle de la 57-ieme entree de compatibilities
+0xf7827574	32	compatibility_58	positionnels	3e-05	equipment_data.bin : cle de la 58-ieme entree de compatibilities
+0x86a522c8	32	compatibility_59	positionnels	3e-05	equipment_data.bin : cle de la 59-ieme entree de compatibilities
+0xf719f3bb	32	compatibility_60	positionnels	3e-05	equipment_data.bin : cle de la 60-ieme entree de compatibilities
+0x8d41e162	32	compatibility_61	positionnels	3e-05	equipment_data.bin : cle de la 61-ieme entree de compatibilities
+0x54e15657	32	compatibility_62	positionnels	3e-05	equipment_data.bin : cle de la 62-ieme entree de compatibilities
+0xd952c672	32	compatibility_63	positionnels	3e-05	equipment_data.bin : cle de la 63-ieme entree de compatibilities
+0x5a66a974	32	compatibility_64	positionnels	3e-05	equipment_data.bin : cle de la 64-ieme entree de compatibilities
+0x4683225f	32	compatibility_65	positionnels	3e-05	equipment_data.bin : cle de la 65-ieme entree de compatibilities
+0xa7bf44e9	32	compatibility_66	positionnels	3e-05	equipment_data.bin : cle de la 66-ieme entree de compatibilities
+0xeb342d13	32	compatibility_67	positionnels	3e-05	equipment_data.bin : cle de la 67-ieme entree de compatibilities
+0xf0a4d15b	32	compatibility_68	positionnels	3e-05	equipment_data.bin : cle de la 68-ieme entree de compatibilities
+0xc28ca598	32	compatibility_69	positionnels	3e-05	equipment_data.bin : cle de la 69-ieme entree de compatibilities
+0x9cc139f9	32	compatibility_70	positionnels	3e-05	equipment_data.bin : cle de la 70-ieme entree de compatibilities
+0xe5c4d511	32	compatibility_71	positionnels	3e-05	equipment_data.bin : cle de la 71-ieme entree de compatibilities
+0x04c3c02b	32	compatibility_72	positionnels	3e-05	equipment_data.bin : cle de la 72-ieme entree de compatibilities
+0x77a753e1	32	compatibility_73	positionnels	3e-05	equipment_data.bin : cle de la 73-ieme entree de compatibilities
+0xfc86202b	32	compatibility_74	positionnels	3e-05	equipment_data.bin : cle de la 74-ieme entree de compatibilities
+0x57e90c59	32	compatibility_75	positionnels	3e-05	equipment_data.bin : cle de la 75-ieme entree de compatibilities
+0xe513c0a4	32	compatibility_76	positionnels	3e-05	equipment_data.bin : cle de la 76-ieme entree de compatibilities
+0x15ab3f8d	32	compatibility_77	positionnels	3e-05	equipment_data.bin : cle de la 77-ieme entree de compatibilities
+0x03e3a23c	32	compatibility_78	positionnels	3e-05	equipment_data.bin : cle de la 78-ieme entree de compatibilities
+0x2139b6db	32	compatibility_79	positionnels	3e-05	equipment_data.bin : cle de la 79-ieme entree de compatibilities
+0xa98dc72e	32	compatibility_80	positionnels	3e-05	equipment_data.bin : cle de la 80-ieme entree de compatibilities
+0xa7af6a06	32	compatibility_81	positionnels	3e-05	equipment_data.bin : cle de la 81-ieme entree de compatibilities
+0xffc6568f	32	compatibility_82	positionnels	3e-05	equipment_data.bin : cle de la 82-ieme entree de compatibilities
+0x0361dd98	32	compatibility_83	positionnels	3e-05	equipment_data.bin : cle de la 83-ieme entree de compatibilities
+0xbdba8819	32	compatibility_84	positionnels	3e-05	equipment_data.bin : cle de la 84-ieme entree de compatibilities
+0x0efa54d9	32	compatibility_85	positionnels	3e-05	equipment_data.bin : cle de la 85-ieme entree de compatibilities
+0xff393506	32	compatibility_86	positionnels	3e-05	equipment_data.bin : cle de la 86-ieme entree de compatibilities
+0x2dcc7809	32	compatibility_87	positionnels	3e-05	equipment_data.bin : cle de la 87-ieme entree de compatibilities
+0x403532e1	32	compatibility_88	positionnels	3e-05	equipment_data.bin : cle de la 88-ieme entree de compatibilities
+0x1b1d0f6a	32	compatibility_89	positionnels	3e-05	equipment_data.bin : cle de la 89-ieme entree de compatibilities
+0xd78c6d72	32	compatibility_90	positionnels	3e-05	equipment_data.bin : cle de la 90-ieme entree de compatibilities
+0xa19f36ff	32	compatibility_91	positionnels	3e-05	equipment_data.bin : cle de la 91-ieme entree de compatibilities
+0xa0cddfea	32	compatibility_92	positionnels	3e-05	equipment_data.bin : cle de la 92-ieme entree de compatibilities
+0xf966ce8f	32	compatibility_93	positionnels	3e-05	equipment_data.bin : cle de la 93-ieme entree de compatibilities
+0x0e89713e	32	compatibility_94	positionnels	3e-05	equipment_data.bin : cle de la 94-ieme entree de compatibilities
+0x6108d2e4	32	compatibility_95	positionnels	3e-05	equipment_data.bin : cle de la 95-ieme entree de compatibilities
+0xc3bfddab	32	compatibility_96	positionnels	3e-05	equipment_data.bin : cle de la 96-ieme entree de compatibilities
+0xd4786c68	32	compatibility_97	positionnels	3e-05	equipment_data.bin : cle de la 97-ieme entree de compatibilities
+0x3566fcd8	32	compatibility_98	positionnels	3e-05	equipment_data.bin : cle de la 98-ieme entree de compatibilities
+0xab042d1d	32	compatibility_99	positionnels	3e-05	equipment_data.bin : cle de la 99-ieme entree de compatibilities
+0xb7646cad	32	compatibility_100	positionnels	3e-05	equipment_data.bin : cle de la 100-ieme entree de compatibilities
+0x4836c0ff	32	compatibility_101	positionnels	3e-05	equipment_data.bin : cle de la 101-ieme entree de compatibilities
+0xcf44cced	32	compatibility_102	positionnels	3e-05	equipment_data.bin : cle de la 102-ieme entree de compatibilities
+0xf6783f46	32	compatibility_103	positionnels	3e-05	equipment_data.bin : cle de la 103-ieme entree de compatibilities
+0xd58937b1	32	compatibility_104	positionnels	3e-05	equipment_data.bin : cle de la 104-ieme entree de compatibilities
+0x7d654faa	32	compatibility_105	positionnels	3e-05	equipment_data.bin : cle de la 105-ieme entree de compatibilities
+0x9b4b4203	32	compatibility_106	positionnels	3e-05	equipment_data.bin : cle de la 106-ieme entree de compatibilities
+0xc1fa8a7d	32	compatibility_107	positionnels	3e-05	equipment_data.bin : cle de la 107-ieme entree de compatibilities
+0x3d35dd99	32	compatibility_108	positionnels	3e-05	equipment_data.bin : cle de la 108-ieme entree de compatibilities
+0x6647fefa	32	compatibility_109	positionnels	3e-05	equipment_data.bin : cle de la 109-ieme entree de compatibilities
+0x9e388fc3	32	compatibility_110	positionnels	3e-05	equipment_data.bin : cle de la 110-ieme entree de compatibilities
+0xc8a4213c	32	compatibility_111	positionnels	3e-05	equipment_data.bin : cle de la 111-ieme entree de compatibilities
+0x09be5dd6	32	compatibility_112	positionnels	3e-05	equipment_data.bin : cle de la 112-ieme entree de compatibilities
+0xa1e681ba	32	compatibility_113	positionnels	3e-05	equipment_data.bin : cle de la 113-ieme entree de compatibilities
+0x50e3df1b	32	compatibility_114	positionnels	3e-05	equipment_data.bin : cle de la 114-ieme entree de compatibilities
+0xf47ec2f9	32	compatibility_115	positionnels	3e-05	equipment_data.bin : cle de la 115-ieme entree de compatibilities
+0xcdc9a90a	32	compatibility_116	positionnels	3e-05	equipment_data.bin : cle de la 116-ieme entree de compatibilities
+0xc0505f47	32	compatibility_117	positionnels	3e-05	equipment_data.bin : cle de la 117-ieme entree de compatibilities
+0xfcdc7d62	32	compatibility_118	positionnels	3e-05	equipment_data.bin : cle de la 118-ieme entree de compatibilities
+0x449a493c	32	compatibility_119	positionnels	3e-05	equipment_data.bin : cle de la 119-ieme entree de compatibilities
+0x15448746	32	compatibility_120	positionnels	3e-05	equipment_data.bin : cle de la 120-ieme entree de compatibilities
+0x5efd298a	32	compatibility_121	positionnels	3e-05	equipment_data.bin : cle de la 121-ieme entree de compatibilities
+0xf5d29cd1	32	compatibility_122	positionnels	3e-05	equipment_data.bin : cle de la 122-ieme entree de compatibilities
+0x12f52aac	32	compatibility_123	positionnels	3e-05	equipment_data.bin : cle de la 123-ieme entree de compatibilities
+0x9368897b	32	compatibility_124	positionnels	3e-05	equipment_data.bin : cle de la 124-ieme entree de compatibilities
+0x839124d0	32	compatibility_125	positionnels	3e-05	equipment_data.bin : cle de la 125-ieme entree de compatibilities
+0xa78d9f8d	32	compatibility_126	positionnels	3e-05	equipment_data.bin : cle de la 126-ieme entree de compatibilities
+0x76c810b4	32	compatibility_127	positionnels	3e-05	equipment_data.bin : cle de la 127-ieme entree de compatibilities
+0xa10e30c1	32	compatibility_01	positionnels	3e-05	equipment_data.bin : cle d'entree de compatibilities (variante a deux chiffres, 1 occurrence)

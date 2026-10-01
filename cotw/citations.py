@@ -51,6 +51,15 @@ def match_int(value: int, pat: Pattern, width: Optional[int] = None) -> Optional
     return None
 
 
+def match_decimal(value, pat: Pattern) -> bool:
+    """Chaine de chiffres egale au hash32 du terme ("3656775585")."""
+    if isinstance(value, str):
+        value = value.encode('utf-8')
+    if not isinstance(value, (bytes, bytearray)) or not 1 <= len(value) <= 10 or not bytes(value).isdigit():
+        return False
+    return int(value) in pat.h32
+
+
 def match_text(value, pat: Pattern) -> bool:
     if isinstance(value, str):
         value = value.encode('utf-8')
@@ -89,8 +98,11 @@ def find_in_rtpc(tree, pat: Pattern) -> List[Tuple[str, str]]:
                     enc = match_int(v, pat, 64)
                     if enc:
                         out.append(('{}[{}]'.format(where, i), '{} dans un event'.format(enc)))
-            elif p.type == k_type_str and match_text(p.data, pat):
-                out.append((where, 'texte'))
+            elif p.type == k_type_str:
+                if match_text(p.data, pat):
+                    out.append((where, 'texte'))
+                elif match_decimal(p.data, pat):
+                    out.append((where, 'hash32 ecrit en chiffres'))
         for i, c in enumerate(node.child_table):
             walk(c, '{}.{}'.format(path, i))
 
@@ -178,6 +190,8 @@ def find_in_adf(adf, pat: Pattern) -> List[Tuple[Leaf, str]]:
         if leaf.kind in ('chaine', 'octets'):
             if match_text(leaf.value, pat):
                 out.append((leaf, 'texte'))
+            elif match_decimal(leaf.value, pat):
+                out.append((leaf, 'hash32 ecrit en chiffres'))
         elif leaf.kind.startswith('hash'):
             width = int(leaf.kind[4:]) if leaf.kind[4:].isdigit() else None
             enc = match_int(leaf.value, pat, width)

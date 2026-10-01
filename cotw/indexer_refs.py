@@ -58,7 +58,7 @@ from deca.ff_rtpc import (k_type_str, k_type_u32, k_type_array_u32, k_type_objid
 from deca.hashes import hash32_func_bytes  # noqa: E402
 
 INDEX_NAME = 'cotw_refs.db'
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2 : encodage 'decimal' (hash32 ecrit en chiffres)
 M32 = 0xFFFFFFFF
 M48 = 0xFFFFFFFFFFFF
 M64 = 0xFFFFFFFFFFFFFFFF
@@ -71,6 +71,8 @@ MEDIA_TYPES = {'bmp', 'dds', 'avtx', 'atx', 'hmddsc', 'riff', 'FSB5c', 'ogg', 'k
                'tag0', 'mdi', 'pfx'}
 IDENT_CHARS = rb'A-Za-z0-9_./\\-'
 IDENT_RE = re.compile(rb'^[' + IDENT_CHARS + rb']{6,}$')
+# hash32 ecrit en chiffres, comme les identifiants de secondary_ids ("3656775585") : 6 a 10 chiffres isoles
+DECIMAL_RE = re.compile(rb'(?<![0-9])[0-9]{6,10}(?![0-9])')
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -229,13 +231,20 @@ class Matcher:
                     out.add(stem[:i])
         return {c for c in out if c in self.text}
 
-    def match_text(self, data: bytes, hits):
-        if self.text_re is None:
-            return
-        for m in self.text_re.finditer(data):
-            for c in self.text_candidates(m.group(0)):
-                for ident_id in self.text[c]:
-                    hits.add(ident_id, 'texte', m.start(), None)
+    def match_text(self, data: bytes, hits) -> int:
+        """Identifiants en texte, et hash32 ecrits en chiffres. Renvoie le nombre de nombres decimaux examines
+        (ils comptent comme des positions de 32 bits pour l'estimation du hasard)."""
+        if self.text_re is not None:
+            for m in self.text_re.finditer(data):
+                for c in self.text_candidates(m.group(0)):
+                    for ident_id in self.text[c]:
+                        hits.add(ident_id, 'texte', m.start(), None)
+        n = 0
+        for m in DECIMAL_RE.finditer(data):
+            n += 1
+            for ident_id in self.h32.get(int(m.group(0)), ()):
+                hits.add(ident_id, 'decimal', m.start(), None)
+        return n
 
     # -- hashes dans des octets bruts ----------------------------------------------------------------------
     @staticmethod
@@ -340,12 +349,17 @@ class Matcher:
                 elif p.type == k_type_event:
                     for i, v in enumerate(p.data):
                         check64(v, '{} (event, element {})'.format(where, i))
-                elif p.type == k_type_str and self.text_re is not None:
+                elif p.type == k_type_str:
                     value = bytes(p.data)
-                    for m in self.text_re.finditer(value):
-                        for c in self.text_candidates(m.group(0)):
-                            for ident_id in self.text[c]:
-                                hits.add(ident_id, 'texte', None, where + ' (chaine)')
+                    if self.text_re is not None:
+                        for m in self.text_re.finditer(value):
+                            for c in self.text_candidates(m.group(0)):
+                                for ident_id in self.text[c]:
+                                    hits.add(ident_id, 'texte', None, where + ' (chaine)')
+                    if DECIMAL_RE.fullmatch(value):
+                        counts['n32'] += 1
+                        for ident_id in self.h32.get(int(value), ()):
+                            hits.add(ident_id, 'decimal', None, where + ' (hash32 ecrit en chiffres)')
             for i, c in enumerate(node.child_table):
                 walk(c, '{}.{}'.format(path, i), node.name_hash)
 
@@ -384,8 +398,10 @@ def scan_bytes(matcher: Matcher, data: bytes, kind: str, unaligned: bool) -> Tup
             tree = None
         if tree is not None:
             return 'rtpc', hits, matcher.match_rtpc(tree, hits)
-    matcher.match_text(data, hits)
-    return 'brut', hits, matcher.match_raw(data, hits, unaligned)
+    n_decimal = matcher.match_text(data, hits)
+    counts = matcher.match_raw(data, hits, unaligned)
+    counts['n32'] += n_decimal
+    return 'brut', hits, counts
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -420,6 +436,10 @@ def open_index(path: Path, idents: Sequence[Ident], options: dict, rebuild: bool
     meta = dict(db.execute('SELECT key, value FROM meta').fetchall())
     digest = universe_digest(idents)
     if meta:
+        if meta.get('schema') != str(SCHEMA_VERSION):
+            db.close()
+            raise SystemExit('ERREUR : {} vient d\'une version precedente de l\'outil (format {}, attendu {}). '
+                             'Relancer avec --reconstruire.'.format(path, meta.get('schema'), SCHEMA_VERSION))
         if meta.get('universe') != digest or meta.get('options') != json.dumps(options, sort_keys=True):
             db.close()
             raise SystemExit('ERREUR : {} a ete construit avec d\'autres objets ou d\'autres options. '

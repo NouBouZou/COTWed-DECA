@@ -118,15 +118,33 @@ class TestEquipment(unittest.TestCase):
         _, src = C.find_item(self.tree.root_node, SRC, C.H_NAME)
         self.assertEqual(W.node_get_prop(src, C.H_NAME).data, SRC.encode())
 
-    def test_compatibility_with_more_weapons_reuses_known_keys(self):
-        weapons = ['equipment_weapon_ba_rifle_243_01', 'equipment_weapon_pistol_ss_243_01',
-                   'equipment_weapon_pistol_ss_243_02', 'equipment_weapon_ba_rifle_308_01']
+    def test_compat_keys_are_positional(self):
+        # cles relevees dans le jeu : compatibility_0, _1, _2, _4 et "compatibility_01"
+        self.assertEqual(C.compat_key(0), 0x29c1d9ed)
+        self.assertEqual(C.compat_key(1), 0xd4835e23)
+        self.assertEqual(C.compat_key(2), 0x52b65512)
+        self.assertEqual(C.compat_key(4), 0x0dc7fe39)
+        self.assertEqual(W.name_hash('compatibility_01'), 0xa10e30c1)
+        self.assertEqual(C.H_COMPAT, 0x77c2b3ba)
+
+    def test_compatibility_with_more_weapons_uses_positional_keys(self):
+        weapons = ['equipment_weapon_ba_rifle_308_01', 'equipment_weapon_ba_rifle_243_01',
+                   'equipment_weapon_pistol_ss_243_01', 'equipment_weapon_pistol_ss_243_02']
         _, item, _ = C.clone_equipment(self.tree, SRC, NEW, weapons=weapons)
         _, entries = C.compat_entries(item)
-        names = sorted(bytes(W.node_get_prop(e, C.H_EQUIPMENT_NAME).data).decode() for e in entries)
-        self.assertEqual(names, sorted(weapons))
-        self.assertIn(0x0dc7fe39, [e.name_hash for e in entries])  # cle empruntee a une autre liste
+        by_key = {e.name_hash: bytes(W.node_get_prop(e, C.H_EQUIPMENT_NAME).data).decode() for e in entries}
+        self.assertEqual(by_key, {C.compat_key(i): w for i, w in enumerate(weapons)})
         C.verify_addition(self.orig, W.rtpc_to_binary(self.tree), W.name_hash(NEW))
+
+    def test_existing_weapon_keeps_its_entry_fields(self):
+        _, src = C.find_item(self.tree.root_node, SRC, C.H_NAME)
+        _, src_entries = C.compat_entries(src)
+        pistol = [e for e in src_entries if W.node_get_prop(e, C.H_EQUIPMENT_NAME).data == b'equipment_weapon_pistol_ss_243_02'][0]
+        W.node_get_prop(pistol, 0xaa8d9f49).data = 1     # ammunition_slot_index propre a cette arme
+        _, item, _ = C.clone_equipment(self.tree, SRC, NEW, weapons=['equipment_weapon_pistol_ss_243_02'])
+        _, entries = C.compat_entries(item)
+        self.assertEqual(W.node_get_prop(entries[0], 0xaa8d9f49).data, 1)
+        self.assertEqual(entries[0].name_hash, C.compat_key(0))
 
     def test_compatibility_with_one_weapon(self):
         _, item, _ = C.clone_equipment(self.tree, SRC, NEW, weapons=['equipment_weapon_ba_rifle_243_01'])

@@ -10,6 +10,8 @@ is_part_of_dlc), ou combine des mots de ce vocabulaire (cash + price). On fabriq
 des chaines de l'exe, on calcule leur hash, et on garde ceux qui tombent sur un hash cherche. Passes :
   directs  : chaque identifiant et ses variantes (minuscules, snake_case, sans prefixe m_, C, Set, Get...) ;
   affixes  : ces formes avec un prefixe (is_, has_...) ou un suffixe (_id, _list...) courant ;
+  positionnels : un mot suivi d'un index, mot_0 a mot_127 (aussi mot_00 et mot0) : c'est ainsi que le jeu
+             nomme les entrees de ses listes (compatibility_0, compatibility_1...) ;
   paires   : deux mots parmi les plus frequents, joints par "_" ;
   triplets : trois mots pris dans un vocabulaire plus court.
 
@@ -427,6 +429,15 @@ def gen_affixes(forms: Iterable[str]) -> Iterator[str]:
             yield f + s
 
 
+def gen_positional(vocab: List[str], count: int) -> Iterator[str]:
+    for w in vocab:
+        for i in range(count):
+            yield '{}_{}'.format(w, i)
+            if i < 10:
+                yield '{}_0{}'.format(w, i)
+            yield '{}{}'.format(w, i)
+
+
 def gen_pairs(vocab: List[str]) -> Iterator[str]:
     for a in vocab:
         prefix = a + '_'
@@ -554,6 +565,9 @@ def cmd_search(args) -> int:
     if args.affixes:
         forms = snake_forms(identifiers) | set(words)
         passes.append(('affixes', lambda: gen_affixes(forms)))
+    if args.positionnels > 0:
+        vocab_pos = build_vocab(counter, args.paires or 3000, words)
+        passes.append(('positionnels', lambda: gen_positional(vocab_pos, args.positionnels)))
     if args.paires > 0:
         vocab2 = build_vocab(counter, args.paires, words)
         passes.append(('paires', lambda: gen_pairs(vocab2)))
@@ -563,7 +577,7 @@ def cmd_search(args) -> int:
     if search_targets:
         for pass_name, make in passes:
             st = searcher.run(pass_name, make())
-            print('  passe {:<8} : {:>11,} candidats, {:>3} noms, faux positifs attendus {:.3g} ({:.0f} s)'.format(
+            print('  passe {:<12} : {:>11,} candidats, {:>3} noms, faux positifs attendus {:.3g} ({:.0f} s)'.format(
                 pass_name, st.candidates, st.found, st.expected_false, st.seconds).replace(',', ' '))
 
     expected_by_pass = {st.name: st.expected_false for st in searcher.stats}
@@ -640,13 +654,26 @@ def report(args, read_report, targets, search_targets, known_db, known_dict, sou
         known_targets = [k for k in search_targets.items if k in known_db]
         confirmed = {k for k, _n, _d, ok in blind_rows if ok}
         wrong = [(k, n, d) for k, n, d, ok in blind_rows if not ok]
+        expected = sum(st.expected_false for st in searcher.stats)
+        share = len(known_targets) / len(search_targets) if len(search_targets) else 0
+
+        def genre(k):
+            kinds = search_targets.items[k].kinds
+            return 'propriete' if 'propriete' in kinds else sorted(kinds)[0]
         L += ['## Mode aveugle : précision mesurée sur les hashes déjà nommés par DECA', '',
-              '- Hashes déjà nommés cherchés : {}'.format(len(known_targets)),
-              '- Retrouvés avec le même nom : {} ({:.0%})'.format(
-                  len(confirmed), len(confirmed) / len(known_targets) if known_targets else 0),
-              '- Noms différents de ceux de DECA (faux positif ou vraie collision) : {}'.format(len(wrong)), '']
+              'Le générateur vise des noms de champs. Les noms de nœuds enfants sont surtout des noms d\'objets '
+              '(equipment_ammo_...), qu\'il ne sait pas fabriquer : leur rappel est faible par construction.', '',
+              '| Genre | Déjà nommés | Retrouvés avec le même nom | Rappel |', '|---|---:|---:|---:|']
+        for g in sorted({genre(k) for k in known_targets}):
+            ks = [k for k in known_targets if genre(k) == g]
+            ok = [k for k in ks if k in confirmed]
+            L.append('| {} | {} | {} | {:.0%} |'.format(g, len(ks), len(ok), len(ok) / len(ks) if ks else 0))
+        L += ['',
+              '- Noms différents de ceux de DECA (faux positifs) : {}, pour environ {:.1f} attendus sur ces hashes '
+              '({:.1f} faux positifs attendus en tout × {:.0%} de cibles déjà nommées)'.format(
+                  len(wrong), expected * share, expected, share), '']
         for k, n, d in wrong[:50]:
-            L.append('  - `0x{:x}` : trouvé `{}`, DECA connaît `{}`'.format(k[1], n, ', '.join(d[:3])))
+            L.append('  - `0x{:x}` ({}) : trouvé `{}`, DECA connaît `{}`'.format(k[1], genre(k), n, ', '.join(d[:3])))
         L.append('')
 
     found_keys = {e[0] for e in new_entries}
@@ -733,6 +760,7 @@ def main(argv=None):
     s.add_argument('--vocabulaire', default=str(VOCABULARY), help='mots du domaine ajoutes aux paires et triplets')
     s.add_argument('--paires', type=int, default=3000, help='nombre de mots les plus frequents combines par deux (0 = passe sautee)')
     s.add_argument('--triplets', type=int, default=250, help='nombre de mots les plus frequents combines par trois (0 = passe sautee)')
+    s.add_argument('--positionnels', type=int, default=128, help='index essayes apres chaque mot : mot_0 a mot_N-1 (0 = passe sautee)')
     s.add_argument('--sans-affixes', dest='affixes', action='store_false', help='sauter la passe des prefixes et suffixes')
     s.add_argument('--sans-enfants', action='store_true', help='ne chercher que les noms de proprietes RTPC')
     s.add_argument('--aveugle', action='store_true', help='chercher aussi les hashes deja nommes, pour mesurer la precision')

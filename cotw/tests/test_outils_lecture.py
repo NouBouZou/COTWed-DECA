@@ -44,6 +44,12 @@ class TestFormat(unittest.TestCase):
         p = W.make_prop('x', k_type_u32, int(hash32_func(EE.encode())))
         self.assertIn('= hash de "{}"'.format(EE), D.format_value(p, self.names))
 
+    def test_decimal_string_annotated(self):
+        p = W.make_prop('id', k_type_str, str(int(hash32_func(EE.encode()))).encode())
+        self.assertIn('= hash de "{}"'.format(EE), D.format_value(p, self.names))
+        self.assertIsNone(D.decimal_hash(b'-1'))
+        self.assertIsNone(D.decimal_hash(b'99999999999'))
+
     def test_array_and_float(self):
         self.assertIn('2 elements', D.format_value(W.make_prop('a', k_type_array_u32, [1, 2]), {}))
         self.assertEqual(D.format_value(W.make_prop('f', k_type_f32, 0.25), {}), '0.25')

@@ -52,6 +52,17 @@ def _hash_note(v: int, names: Dict[int, List[str]]) -> str:
     return '  = hash de "{}"'.format(candidates[0]) if candidates else ''
 
 
+def decimal_hash(data) -> Optional[int]:
+    """Valeur d'une chaine ecrite en decimal qui tient sur 32 bits ("3656775585"), sinon None.
+
+    equipment_data.bin range ainsi des identifiants dans secondary_ids : ce sont peut-etre des hash32 ecrits
+    en texte. On les annote comme les valeurs u32 pour le verifier."""
+    if not isinstance(data, (bytes, bytearray)) or not 1 <= len(data) <= 10 or not bytes(data).isdigit():
+        return None
+    v = int(data)
+    return v if v <= 0xFFFFFFFF else None
+
+
 def _quote(data) -> str:
     text = data.decode('utf-8', 'replace') if isinstance(data, (bytes, bytearray)) else str(data)
     if len(text) > MAX_STR:
@@ -70,7 +81,8 @@ def format_value(prop, names: Dict[int, List[str]]) -> str:
     if t == k_type_f32:
         return '{:.7g}'.format(d)
     if t == k_type_str:
-        return _quote(d)
+        v = decimal_hash(d)
+        return _quote(d) + (' (0x{:08x}){}'.format(v, _hash_note(v, names)) if v is not None else '')
     if t == k_type_array_u32:
         shown = ['0x{:08x}{}'.format(v, _hash_note(v, names).replace('  = hash de ', '=')) for v in d[:MAX_ARRAY]]
         more = ' ...' if len(d) > MAX_ARRAY else ''
@@ -155,6 +167,8 @@ def collect_hashes(rtpc, max_values: int = 200000) -> set:
             found.add(p.name_hash)
             if p.type == k_type_u32:
                 found.add(p.data)
+            elif p.type == k_type_str and decimal_hash(p.data) is not None:
+                found.add(decimal_hash(p.data))
             elif p.type == k_type_array_u32 and len(found) < max_values:
                 found.update(p.data[:MAX_ARRAY])
         for c in node.child_table:

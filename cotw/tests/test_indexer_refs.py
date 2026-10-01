@@ -20,7 +20,7 @@ import _projet  # noqa: E402,F401
 import indexer_refs as I  # noqa: E402
 import scenario_registre as S  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import k_type_u32  # noqa: E402
+from deca.ff_rtpc import k_type_u32, k_type_str  # noqa: E402
 from deca.hashes import hash48_func  # noqa: E402
 
 NAME = S.AVAILABLE[0]
@@ -49,6 +49,22 @@ class TestText(unittest.TestCase):
         hits = I.FileHits()
         matcher().match_text(b'xx equipment_ammo_243_sp_011 yy', hits)
         self.assertEqual(found(hits, 'texte'), {})
+
+
+class TestDecimal(unittest.TestCase):
+    def test_hash32_written_in_digits(self):
+        data = b'id=' + str(S.h32(NAME)).encode() + b';x=12345678901;'
+        hits = I.FileHits()
+        n = matcher().match_text(data, hits)
+        self.assertEqual(found(hits, 'decimal')[1][1], [3])
+        self.assertEqual(n, 1)   # 12345678901 a 11 chiffres : ignore
+
+    def test_decimal_string_in_rtpc(self):
+        node = W.make_node('secondary_ids', [W.make_prop(0xa4f0837b, k_type_str, str(S.h32(NAME)).encode())])
+        tree = W.rtpc_from_bytes(S.rtpc_bytes(W.make_node(0, [], [node])))
+        hits = I.FileHits()
+        matcher().match_rtpc(tree, hits)
+        self.assertIn('ecrit en chiffres', found(hits, 'decimal')[1][2][0])
 
 
 class TestRaw(unittest.TestCase):
