@@ -24,7 +24,7 @@ import sarc_dump as SD  # noqa: E402
 import sarc_roundtrip as SR  # noqa: E402
 import test_separateurs as TS  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import k_type_str, k_type_u32  # noqa: E402
+from deca.ff_rtpc import k_type_objid, k_type_str, k_type_u32  # noqa: E402
 
 SRC = 'equipment_ammo_243_sp_01'
 NEW = 'equipment_ammo_243_test_01'
@@ -32,11 +32,16 @@ DIR = 'editor/entities/hp_weapons/ammunition/rifles/'
 LINK = 'models/hp_ammunition/rifles/bullet_243.modelc'
 
 
+OBJECT_ID = 0xffff946e7fff1bc6
+
+
 def epe(name: str) -> bytes:
+    """Comme le .epe reel de la .243 SP : tuning_file designe le fichier source ".ammotune", sans le c."""
     obj = W.make_node('item', [
         W.make_prop('item_id', k_type_str, name.encode()),
-        W.make_prop('tuning_file', k_type_str, (DIR.replace('/', '\\') + name + '.ammotunec').encode()),
+        W.make_prop('tuning_file', k_type_str, (DIR + name + '.ammotune').encode()),
         W.make_prop('item_hash', k_type_u32, W.name_hash(name)),
+        W.make_prop('_object_id', k_type_objid, OBJECT_ID),
         W.make_prop('model', k_type_str, LINK.encode())])
     return TS.S.rtpc_bytes(W.make_node(0, [], [obj]))
 
@@ -93,7 +98,11 @@ class TestEntity(unittest.TestCase):
         tree = W.rtpc_from_bytes(s.entries[0].data)
         obj = tree.root_node.child_table[0]
         self.assertEqual(W.node_get_prop(obj, 'item_id').data, NEW.encode())
-        self.assertEqual(W.node_get_prop(obj, 'tuning_file').data, (DIR.replace('/', '\\') + NEW + '.ammotunec').encode())
+        self.assertEqual(W.node_get_prop(obj, 'tuning_file').data, (DIR + NEW + '.ammotune').encode())
+        new_id = W.node_get_prop(obj, '_object_id').data
+        self.assertNotEqual(new_id, OBJECT_ID)
+        self.assertEqual(new_id >> 48, OBJECT_ID >> 48)                       # 0xffff garde
+        self.assertEqual(new_id, E.new_object_id(OBJECT_ID, NEW))             # reproductible
         self.assertEqual(W.node_get_prop(obj, 'item_hash').data, W.name_hash(NEW))
         self.assertEqual(W.node_get_prop(obj, 'model').data, LINK.encode())   # ressource partagee : intacte
         self.assertEqual(s.entries[1].data, S.parse(entity(SRC)).entries[1].data)   # ADF recopie a l'identique

@@ -12,8 +12,12 @@ La copie :
   - garde les liens (entrees qui designent un fichier ailleurs dans le jeu : modeles, textures...) ;
   - dans chaque RTPC inclus, remplace :
       une chaine egale au nom de la source -> le nouveau nom (item_id) ;
-      une chaine egale au chemin d'une entree renommee (avec / ou \\) -> son nouveau chemin (tuning_file) ;
+      une chaine egale au chemin d'une entree renommee (avec / ou \\, et pour un fichier compile, sans le "c"
+      final : le .epe de la .243 SP designe "....ammotune" alors que l'entree s'appelle "....ammotunec")
+      -> son nouveau chemin (tuning_file) ;
       un u32 egal au hash32 de l'un de ces textes -> le hash32 du nouveau texte ;
+      chaque _object_id (objid) -> un identifiant nouveau, deterministe, qui garde les 16 bits de poids fort :
+      deux entites chargees en meme temps ne doivent pas declarer les memes objets ;
   - recopie a l'identique les autres entrees incluses (ADF compris).
 """
 import sys
@@ -24,7 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import sarc as S  # noqa: E402
 
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import k_type_str, k_type_u32, k_type_array_u32  # noqa: E402
+from deca.ff_rtpc import k_type_str, k_type_u32, k_type_array_u32, k_type_objid  # noqa: E402
+
+H_OBJECT_ID = 0xcfff8405  # _object_id
 
 
 class EEntite(Exception):
@@ -32,8 +38,17 @@ class EEntite(Exception):
 
 
 def variants(path: str) -> List[str]:
-    a, b = path.replace('\\', '/'), path.replace('/', '\\')
-    return [a] if a == b else [a, b]
+    """Le chemin avec '/' et avec '\\' ; pour un fichier compile (extension finissant par c), aussi sans le c."""
+    forms = [path]
+    stem, dot, ext = path.rpartition('.')
+    if dot and len(ext) > 1 and ext.endswith('c'):
+        forms.append(stem + '.' + ext[:-1])
+    out = []
+    for f in forms:
+        for v in (f.replace('\\', '/'), f.replace('/', '\\')):
+            if v not in out:
+                out.append(v)
+    return out
 
 
 def rename_path(path: str, old: str, new: str) -> str:
@@ -49,7 +64,15 @@ def text_map(source: str, new: str, renames: Dict[str, str]) -> Dict[bytes, byte
     return m
 
 
-def patch_rtpc(data: bytes, mapping: Dict[bytes, bytes]) -> Tuple[bytes, List[str]]:
+def new_object_id(old: int, new_name: str) -> int:
+    """Identifiant d'objet nouveau et reproductible : 16 bits de poids fort gardes (0xffff dans COTW),
+    48 bits tires du nouveau nom et de l'ancien identifiant."""
+    import mmh3
+    low = mmh3.hash128('{}:{:016x}'.format(new_name, old).encode('utf-8'), x64arch=True) & 0xFFFFFFFFFFFF
+    return (old & 0xFFFF000000000000) | low
+
+
+def patch_rtpc(data: bytes, mapping: Dict[bytes, bytes], new_name: str = None) -> Tuple[bytes, List[str]]:
     tree = W.rtpc_from_bytes(data)
     hashes = {W.name_hash(k): W.name_hash(v) for k, v in mapping.items()}
     changes = []
@@ -67,6 +90,10 @@ def patch_rtpc(data: bytes, mapping: Dict[bytes, bytes]) -> Tuple[bytes, List[st
             elif p.type == k_type_array_u32 and any(v in hashes for v in p.data):
                 p.data = [hashes.get(v, v) for v in p.data]
                 changes.append('{} : tableau u32, hashes remplaces'.format(where))
+            elif p.type == k_type_objid and new_name is not None and p.name_hash == H_OBJECT_ID:
+                old_id = p.data
+                p.data = new_object_id(old_id, new_name)
+                changes.append('{} : _object_id 0x{:016x} -> 0x{:016x}'.format(where, old_id, p.data))
         for i, c in enumerate(node.child_table):
             walk(c, '{}.{}'.format(path, i))
 
@@ -99,7 +126,7 @@ def clone_entity(data: bytes, source: str, new: str) -> Tuple[bytes, Dict[str, s
         path = renames.get(e.path, e.path)
         payload = e.data
         if payload[:4] == W.RTPC_MAGIC:
-            payload, changes = patch_rtpc(payload, mapping)
+            payload, changes = patch_rtpc(payload, mapping, new)
             report += ['  {} :'.format(path)] + ['    ' + c for c in changes] if changes else ['  {} : RTPC sans changement'.format(path)]
         if path != e.path:
             report.append('  entree renommee : {} -> {}'.format(e.path, path))
