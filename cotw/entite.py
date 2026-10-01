@@ -18,8 +18,12 @@ La copie :
       un u32 egal au hash32 de l'un de ces textes -> le hash32 du nouveau texte ;
       chaque _object_id (objid) -> un identifiant nouveau, deterministe, qui garde les 16 bits de poids fort :
       deux entites chargees en meme temps ne doivent pas declarer les memes objets ;
-  - recopie a l'identique les autres entrees incluses (ADF compris).
+  - recopie a l'identique les autres entrees incluses (ADF compris) ;
+  - signale ce qui, dans le nouveau .ee, cite ENCORE la source (texte, hash32 du nom ou d'un ancien chemin) :
+    DECA ne sait pas reecrire un ADF, donc le .ammotunec garde ses citations ; le rapport les montre au lieu
+    de les taire.
 """
+import struct
 import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -104,6 +108,23 @@ def patch_rtpc(data: bytes, mapping: Dict[bytes, bytes], new_name: str = None) -
     return out, changes
 
 
+def residual_citations(payload: bytes, source: str, renames: Dict[str, str]) -> List[str]:
+    """Citations de la source qui restent dans une entree : le nom en texte (sous-chaine), le hash32 du nom
+    et le hash32 de chaque ancien chemin, en u32 little-endian a n'importe quel offset. Pour une entree de
+    quelques Ko, une coincidence de hash est improbable (taille / 2^32)."""
+    found = []
+    n = payload.count(source.encode('utf-8'))
+    if n:
+        found.append('texte "{}" x{}'.format(source, n))
+    texts = [source] + [v for p in renames for v in variants(p)]
+    for t in dict.fromkeys(texts):
+        h = W.name_hash(t.encode('utf-8'))
+        n = payload.count(struct.pack('<I', h))
+        if n:
+            found.append('hash32 de "{}" (0x{:08x}) x{}'.format(t, h, n))
+    return found
+
+
 def clone_entity(data: bytes, source: str, new: str) -> Tuple[bytes, Dict[str, str], List[str]]:
     """(octets du nouveau .ee, renommages d'entrees, rapport)."""
     if not new or source == new:
@@ -130,6 +151,10 @@ def clone_entity(data: bytes, source: str, new: str) -> Tuple[bytes, Dict[str, s
             report += ['  {} :'.format(path)] + ['    ' + c for c in changes] if changes else ['  {} : RTPC sans changement'.format(path)]
         if path != e.path:
             report.append('  entree renommee : {} -> {}'.format(e.path, path))
+        left = residual_citations(payload, source, renames)
+        if left:
+            report.append('  ATTENTION : {} cite encore la source ({}) : {}'.format(
+                path, 'RTPC' if payload[:4] == W.RTPC_MAGIC else 'non modifiable par DECA', ', '.join(left)))
         entries.append(S.Entry(path, payload, len(payload)))
     out, _offsets = S.build(S.Sarc(s.version, entries))
     verify(data, out, renames)

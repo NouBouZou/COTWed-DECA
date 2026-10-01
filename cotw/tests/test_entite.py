@@ -108,6 +108,19 @@ class TestEntity(unittest.TestCase):
         self.assertEqual(s.entries[1].data, S.parse(entity(SRC)).entries[1].data)   # ADF recopie a l'identique
         self.assertEqual(len(renames), 2)
         self.assertTrue(any('item_id' not in line and '->' in line for line in report))
+        # l'ADF recopie cite encore la source en texte : signale ; le .epe corrige ne cite plus rien
+        warnings = [line for line in report if 'ATTENTION' in line]
+        self.assertEqual(len(warnings), 1, report)
+        self.assertIn(DIR + NEW + '.ammotunec', warnings[0])
+        self.assertIn('texte "{}" x1'.format(SRC), warnings[0])
+
+    def test_residual_citations_hash(self):
+        payload = b'\0\0' + struct.pack('<I', W.name_hash(SRC)) + b'\0' * 7 + struct.pack('<I', W.name_hash(SRC))
+        self.assertEqual(E.residual_citations(payload, SRC, {}), ['hash32 de "{}" (0x{:08x}) x2'.format(SRC, W.name_hash(SRC))])
+        path = DIR + SRC + '.ammotunec'
+        payload = struct.pack('<I', W.name_hash((DIR + SRC + '.ammotune').replace('/', '\\')))
+        self.assertEqual(len(E.residual_citations(payload, SRC, {path: path.replace(SRC, NEW)})), 1)
+        self.assertEqual(E.residual_citations(b'rien', SRC, {path: 'x'}), [])
 
     def test_entity_without_named_entry_refused(self):
         data, _ = S.build(S.Sarc(2, [S.Entry('a/other.epe', epe('x_01'), 0)]))

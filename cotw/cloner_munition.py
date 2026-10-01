@@ -284,8 +284,9 @@ def clone_spawn(tree: Rtpc, source: str, new: str, entity: Optional[str] = None)
     n = replace_hash_values(item, W.name_hash(source), W.name_hash(new))
     report.append('  u32 = hash de l\'ancien nom remplaces : {}'.format(n))
     if entity is not None:
-        old = set_str(item, H_ENTITY, entity.replace('/', '\\'), 'entity')
-        report.append('  entite : "{}" -> "{}"'.format(old, entity))
+        written = entity.replace('/', '\\')   # le jeu ecrit ce chemin avec des '\\'
+        old = set_str(item, H_ENTITY, written, 'entity')
+        report.append('  entite : "{}" -> "{}"'.format(old, written))
     else:
         report.append('  entite conservee : "{}"'.format(bytes(W.node_get_prop(item, H_ENTITY).data).decode()))
     index = insert_sorted(parent, item)
