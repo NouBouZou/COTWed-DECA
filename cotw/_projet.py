@@ -14,7 +14,11 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 if not sys.platform.startswith('win'):
     # Sous Linux, deca importe zugbruecke (pont vers les DLL Windows, qui exige Wine) : inutile pour COTW.
+    # "import zugbruecke.ctypes" exige aussi le paquet parent dans sys.modules.
     import ctypes
+    import types
+    _zb = sys.modules.setdefault('zugbruecke', types.ModuleType('zugbruecke'))
+    _zb.ctypes = ctypes
     sys.modules.setdefault('zugbruecke.ctypes', ctypes)
 
 

@@ -17,6 +17,8 @@ import unittest
 if not sys.platform.startswith('win'):
     # Sous Linux, deca importe zugbruecke (pont vers les DLL Windows, qui exige Wine) : inutile pour COTW.
     import ctypes
+    import types
+    sys.modules.setdefault('zugbruecke', types.ModuleType('zugbruecke')).ctypes = ctypes  # paquet parent
     sys.modules['zugbruecke.ctypes'] = ctypes
 
 from deca.hashes import hash32_func

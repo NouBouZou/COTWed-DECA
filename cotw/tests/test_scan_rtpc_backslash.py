@@ -30,6 +30,8 @@ if not sys.platform.startswith('win'):
     # Sous Linux, deca.decompress importe zugbruecke (pont vers les DLL Windows, qui exige Wine).
     # COTW n'utilise pas Oodle : on substitue ctypes pour pouvoir lancer le test sans Wine.
     import ctypes
+    import types
+    sys.modules.setdefault('zugbruecke', types.ModuleType('zugbruecke')).ctypes = ctypes  # paquet parent
     sys.modules['zugbruecke.ctypes'] = ctypes
 
 K_TYPE_STR = 3  # deca.ff_rtpc.PropType.type_str
