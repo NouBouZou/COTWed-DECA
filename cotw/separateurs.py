@@ -10,8 +10,9 @@ en premier lieu. Cet outil compare, champ par champ, les valeurs des absents a c
                        d'autres objets absents que la communaute n'a pas signales).
 Les enfants comptent comme des champs (present ou absent, et resume de leur contenu).
 
-Il affiche aussi la repartition de quelques champs sur toutes les categories (--champ pour en choisir), avec
-la liste des objets pour les valeurs rares.
+Il affiche aussi la repartition de quelques champs sur toutes les categories (--champ pour en choisir, avec
+enfant/champ pour un champ d'un enfant, ex : secondary_ids/0xa4f0837b), avec la liste des objets pour les
+valeurs rares.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\separateurs.py D:\\dev\\work\\hp --out D:\\dev\\audits\\separateurs.md
@@ -34,7 +35,8 @@ import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import k_type_none, k_type_str, k_type_u32, k_type_f32  # noqa: E402
 
 MISSING = '—'
-DEFAULT_FIELDS = ['locked', '0x4923c2e2', '0xcff03e33', '0x3c814744', 'received', 'is_featured']
+DEFAULT_FIELDS = ['locked', '0x4923c2e2', '0xcff03e33', '0x3c814744', 'received', 'is_featured',
+                  'secondary_ids/0xa4f0837b']
 RARE = 12
 
 
@@ -98,13 +100,32 @@ def separators(items, presents: Sequence[str], absents: Sequence[str], names):
     return perfect, partial
 
 
+def field_value(node, field: str, names) -> str:
+    """Valeur d'un champ de l'objet, ou d'un champ d'un de ses enfants avec la syntaxe enfant/champ
+    (ex : secondary_ids/0xa4f0837b)."""
+    if '/' in field:
+        child_name, _, prop_name = field.partition('/')
+        child = W.node_get_child(node, C.field_hash(child_name))
+        if child is None:
+            return MISSING
+        return value_text(W.node_get_prop(child, C.field_hash(prop_name)))
+    return value_text(W.node_get_prop(node, C.field_hash(field)))
+
+
+def field_label(field: str, names) -> str:
+    parts = []
+    for part in field.split('/'):
+        h = C.field_hash(part)
+        parts.append('0x{:08x} {}'.format(h, D.name_of(h, names)))
+    return ' / '.join(parts)
+
+
 def distribution(items, field: str, names) -> List[str]:
-    h = C.field_hash(field)
-    label = '0x{:08x} {}'.format(h, D.name_of(h, names))
     by_value: Dict[str, List[Tuple[str, str]]] = collections.defaultdict(list)
     for name, (category, node) in items.items():
-        by_value[value_text(W.node_get_prop(node, h))].append((category, name))
-    L = ['### {}'.format(label), '', '| Valeur | Objets | Par catégorie | Objets (valeurs rares) |', '|---|---:|---|---|']
+        by_value[field_value(node, field, names)].append((category, name))
+    L = ['### {}'.format(field_label(field, names)), '',
+         '| Valeur | Objets | Par catégorie | Objets (valeurs rares) |', '|---|---:|---|---|']
     for value, lst in sorted(by_value.items(), key=lambda kv: -len(kv[1])):
         cats = collections.Counter(c for c, _n in lst)
         names_rare = ', '.join('`{}`'.format(n) for _c, n in sorted(lst)) if len(lst) <= RARE else ''
@@ -126,7 +147,8 @@ def main(argv=None):
     ap.add_argument('--absents', help='objets absents, separes par des virgules (defaut : placeholders du Mod Builder)')
     ap.add_argument('--presents', help='objets presents, separes par des virgules')
     ap.add_argument('--presents-fichier', help='fichier : un objet present par ligne (ex : vus au magasin)')
-    ap.add_argument('--champ', action='append', default=[], help='champ dont afficher la repartition (repetable)')
+    ap.add_argument('--champ', action='append', default=[],
+                    help='champ dont afficher la repartition (repetable) ; enfant/champ pour le champ d\'un enfant')
     ap.add_argument('--base', help='dossier au format dropzone dont lire equipment_data.bin s\'il y est')
     ap.add_argument('--out', help='rapport markdown (sinon : affichage a l\'ecran)')
     args = ap.parse_args(argv)

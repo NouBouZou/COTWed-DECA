@@ -39,7 +39,9 @@ def ammo(name, price, locked, flag):
         W.make_prop('locked', k_type_u32, locked),
         W.make_prop(0x4923c2e2, k_type_u32, flag),
         W.make_prop('capacity_cost', k_type_f32, 0.02),
-        W.make_prop('note', k_type_str, b'Libelle')], [W.make_node('compatibilities', [], [entry])])
+        W.make_prop('note', k_type_str, b'Libelle')],
+        [W.make_node('compatibilities', [], [entry]),
+         W.make_node('secondary_ids', [W.make_prop(0xa4f0837b, k_type_str, b'-1' if price == 0 else b'1095272277')])])
 
 
 def equipment_data() -> bytes:
@@ -84,6 +86,13 @@ class TestSeparators(unittest.TestCase):
         part3 = text.split('## 3.')[1]
         self.assertIn('| 3 | 5 |', part3)
         self.assertRegex(part3, r'\| 1 \| 1 \| \S+ 1 \| `{}` \|'.format(SP243))   # categorie : nom ou hash
+
+    def test_child_field_distribution(self):
+        text = self.report('--champ', 'secondary_ids/0xa4f0837b')
+        part3 = text.split('## 3.')[1]
+        self.assertIn('secondary_ids / 0xa4f0837b', part3)
+        self.assertRegex(part3, r'\| "1095272277" \| 6 \|')
+        self.assertRegex(part3, r'\| "-1" \| 1 \| \S+ 1 \| `{}` \|'.format(SP243))
 
     def test_presents_list_marks_partial(self):
         # si l'on declare la .243 SP absente aussi, 0x4923c2e2 = 0 n'appartient qu'a elle : separateur partiel
