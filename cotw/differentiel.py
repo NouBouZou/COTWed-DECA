@@ -140,8 +140,36 @@ class Index:
 # ---------------------------------------------------------------------------------------------------------
 
 def read_names(path: Path) -> List[str]:
-    return [line.strip() for line in path.read_text(encoding='utf-8').splitlines()
+    """Un nom par ligne, ou une liste a cocher (CSV de liste_objets.py) : les objets coches."""
+    checked = read_checklist(path)
+    if checked is not None:
+        return checked[0]
+    return [line.strip() for line in path.read_text(encoding='utf-8-sig').splitlines()
             if line.strip() and not line.startswith('#')]
+
+
+CHECKED = {'x', 'oui', 'o', '1', 'yes', 'y', 'v', 'ok', '✓', '✔'}
+
+
+def read_checklist(path: Path) -> Optional[Tuple[List[str], List[str]]]:
+    """(coches, non coches) d'un CSV produit par liste_objets.py ; None si le fichier n'en est pas un.
+
+    Le separateur (';', ',' ou tabulation) est detecte : Excel en francais enregistre avec ';'. Une case est
+    cochee si elle contient x, oui, 1, ok ou une coche ; tout autre contenu (vide compris) la laisse decochee."""
+    import csv
+    text = path.read_text(encoding='utf-8-sig')
+    first = text.splitlines()[0] if text else ''
+    delimiter = max(';,\t', key=first.count)
+    header = [h.strip().lower() for h in first.split(delimiter)]
+    if 'nom' not in header or 'visible' not in header:
+        return None
+    checked, unchecked = [], []
+    for row in csv.DictReader(text.splitlines(), delimiter=delimiter):
+        row = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items()}
+        if not row.get('nom'):
+            continue
+        (checked if row.get('visible', '').lower() in CHECKED else unchecked).append(row['nom'])
+    return checked, unchecked
 
 
 def cell(text: str, limit: int = 80) -> str:
@@ -286,6 +314,7 @@ def main(argv=None):
     ap.add_argument('--absents-fichier', help='fichier : un objet absent par ligne')
     ap.add_argument('--presents', help='objets presents, separes par des virgules')
     ap.add_argument('--presents-fichier', help='fichier : un objet present par ligne (ex : vus au magasin)')
+    ap.add_argument('--liste', help='liste a cocher de liste_objets.py : coches = presents, non coches = absents')
     ap.add_argument('--categorie', action='append', default=[],
                     help='categories dont les objets non absents sont presents par defaut (defaut : celles des absents)')
     ap.add_argument('--roles', help='roles comptes, ex : nom,entite (defaut : tous)')
@@ -298,6 +327,17 @@ def main(argv=None):
     index = Index(Path(args.index) if args.index else Path(args.projet) / INDEX_NAME)
     if args.objet:
         L = object_report(index, args.objet)
+    elif args.liste:
+        checklist = read_checklist(Path(args.liste))
+        if checklist is None:
+            raise SystemExit('ERREUR : {} n\'est pas une liste de liste_objets.py (colonnes nom et visible)'.format(args.liste))
+        presents = [p for p in checklist[0] if p in index.items]
+        absents = [a for a in checklist[1] if a in index.items]
+        if not presents or not absents:
+            raise SystemExit('ERREUR : la liste doit avoir des objets coches et des objets non coches '
+                             '({} coches, {} non coches connus de l\'index)'.format(len(presents), len(absents)))
+        roles = {r.strip() for r in args.roles.split(',')} if args.roles else None
+        L = differential(index, presents, absents, roles, args.bruit_max, args.top)
     else:
         absents = (read_names(Path(args.absents_fichier)) if args.absents_fichier else
                    [a.strip() for a in args.absents.split(',')] if args.absents else list(DEFAULT_ABSENTS))

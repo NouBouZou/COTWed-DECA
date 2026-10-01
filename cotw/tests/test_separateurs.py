@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402,F401
 import cloner_munition as C  # noqa: E402
+import differentiel as DF  # noqa: E402
 import faux_projet  # noqa: E402
+import liste_objets as LO  # noqa: E402
 import scenario_registre as S  # noqa: E402
 import separateurs as SE  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
@@ -98,6 +100,33 @@ class TestSeparators(unittest.TestCase):
         # si l'on declare la .243 SP absente aussi, 0x4923c2e2 = 0 n'appartient qu'a elle : separateur partiel
         text = self.report('--absents', '{},{}'.format(FMJ, SP243))
         self.assertIn('0x4923c2e2', text.split('## 2.')[1].split('## 3.')[0])
+
+    def test_checklist_round_trip(self):
+        csv_path = Path(self.tmp.name) / 'objets.csv'
+        LO.main([self.project, '--out', str(csv_path)])
+        raw = csv_path.read_bytes()
+        self.assertTrue(raw.startswith(b'\xef\xbb\xbf'))           # BOM : Excel lit l'UTF-8
+        lines = raw.decode('utf-8-sig').splitlines()
+        self.assertEqual(lines[0], 'categorie;nom;libelle;prix;locked;secondary_ids;visible')
+        self.assertEqual(len(lines), 1 + len(SOLD) + 2 + 1)            # munitions + l'arme
+        # l'utilisateur coche dans Excel les munitions vendues
+        edited = [lines[0]] + [l + 'x' if any(';{};'.format(n) in l for n in SOLD) else l for l in lines[1:]]
+        csv_path.write_text('\n'.join(edited) + '\n', encoding='utf-8-sig')
+        checked, unchecked = DF.read_checklist(csv_path)
+        self.assertEqual(sorted(checked), sorted(SOLD))
+        self.assertIn(FMJ, unchecked)
+        text = self.report('--liste', str(csv_path))
+        part1 = text.split('## 1.')[1].split('## 2.')[0]
+        self.assertIn('locked', part1)                                  # 1 et 5 contre 3 : separateur parfait
+        self.assertIn('Présents : 5 objets (liste fournie)', text)
+
+    def test_checklist_variants(self):
+        path = Path(self.tmp.name) / 'v.csv'
+        path.write_text('Nom,Visible\na_01,X\nb_01,oui\nc_01,\nd_01,non\n', encoding='utf-8')
+        self.assertEqual(DF.read_checklist(path), (['a_01', 'b_01'], ['c_01', 'd_01']))
+        path.write_text('a_01\nb_01\n', encoding='utf-8')
+        self.assertIsNone(DF.read_checklist(path))
+        self.assertEqual(DF.read_names(path), ['a_01', 'b_01'])
 
     def test_cloner_champ_and_modifier(self):
         out = Path(self.tmp.name) / 'mod'

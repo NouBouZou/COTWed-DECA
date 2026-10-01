@@ -98,6 +98,16 @@ class TestScenario(unittest.TestCase):
         text = self.report('--presents-fichier', str(names))
         self.assertIn('Présents : 2 objets', text)
 
+    def test_checklist(self):
+        path = Path(self.tmp.name) / 'liste.csv'
+        rows = ['categorie;nom;visible'] + ['ammo;{};x'.format(n) for n in S.AVAILABLE] + ['ammo;{};'.format(n) for n in S.ABSENT]
+        path.write_text('\n'.join(rows) + '\n', encoding='utf-8-sig')
+        out = Path(self.tmp.name) / 'diff_liste.md'
+        DF.main([self.project, '--index', str(self.index), '--liste', str(path), '--out', str(out)])
+        text = out.read_text(encoding='utf-8')
+        self.assertIn('Présents : 3 objets', text)
+        self.assertIn(S.REGISTRY, text.split('## 2.')[0])
+
     def test_object_report(self):
         out = Path(self.tmp.name) / 'objet.md'
         DF.main([self.project, '--index', str(self.index), '--objet', S.AVAILABLE[0], '--out', str(out)])

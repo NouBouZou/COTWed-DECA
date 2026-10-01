@@ -139,6 +139,18 @@ def short_counter(c: collections.Counter, limit: int = 6) -> str:
     return ', '.join(parts) + (' …' if len(c) > limit else '')
 
 
+def absent_values(uv: Dict[str, str]) -> str:
+    """Valeurs des absents : nom par nom s'ils sont peu nombreux, sinon regroupees par valeur."""
+    if len(uv) <= 5:
+        return '; '.join('{} = {}'.format(n, DF.cell(v, 50)) for n, v in uv.items())
+    return short_counter(collections.Counter(uv.values()))
+
+
+def names_list(names: Sequence[str], limit: int = 20) -> str:
+    shown = ', '.join('`{}`'.format(n) for n in names[:limit])
+    return shown + (' … ({} en tout)'.format(len(names)) if len(names) > limit else '')
+
+
 def main(argv=None):
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(errors='replace')
@@ -147,6 +159,7 @@ def main(argv=None):
     ap.add_argument('--absents', help='objets absents, separes par des virgules (defaut : placeholders du Mod Builder)')
     ap.add_argument('--presents', help='objets presents, separes par des virgules')
     ap.add_argument('--presents-fichier', help='fichier : un objet present par ligne (ex : vus au magasin)')
+    ap.add_argument('--liste', help='liste a cocher de liste_objets.py : coches = presents, non coches = absents')
     ap.add_argument('--champ', action='append', default=[],
                     help='champ dont afficher la repartition (repetable) ; enfant/champ pour le champ d\'un enfant')
     ap.add_argument('--base', help='dossier au format dropzone dont lire equipment_data.bin s\'il y est')
@@ -160,12 +173,20 @@ def main(argv=None):
     names = _projet.resolve_hash32(vfs, D.collect_hashes(tree))
     items = load_items(tree, names)
 
-    absents = [a.strip() for a in args.absents.split(',')] if args.absents else list(DF.DEFAULT_ABSENTS)
+    checklist = None
+    if args.liste:
+        checklist = DF.read_checklist(Path(args.liste))
+        if checklist is None:
+            raise SystemExit('ERREUR : {} n\'est pas une liste de liste_objets.py (colonnes nom et visible)'.format(args.liste))
+    absents = (checklist[1] if checklist else
+               [a.strip() for a in args.absents.split(',')] if args.absents else list(DF.DEFAULT_ABSENTS))
     ignored = [a for a in absents if a not in items]
     absents = [a for a in absents if a in items]
     if not absents:
         raise SystemExit('ERREUR : aucun des objets absents n\'est dans equipment_data.bin ({})'.format(', '.join(ignored)))
-    if args.presents_fichier or args.presents:
+    if checklist:
+        presents = [p for p in checklist[0] if p in items]
+    elif args.presents_fichier or args.presents:
         presents = (DF.read_names(Path(args.presents_fichier)) if args.presents_fichier
                     else [p.strip() for p in args.presents.split(',')])
         presents = [p for p in presents if p in items and p not in absents]
@@ -176,23 +197,20 @@ def main(argv=None):
     perfect, partial = separators(items, presents, absents, names)
     L = ['# Champs qui distinguent les absents des présents', '',
          '- equipment_data : {}'.format(src),
-         '- Absents ({}) : {}'.format(len(absents), ', '.join('`{}`'.format(a) for a in absents)),
+         '- Absents ({}) : {}'.format(len(absents), names_list(absents)),
          '- Ignorés (pas dans equipment_data.bin) : {}'.format(', '.join('`{}`'.format(a) for a in ignored) or 'aucun'),
-         '- Présents : {} objets ({})'.format(len(presents), 'liste fournie' if (args.presents or args.presents_fichier)
+         '- Présents : {} objets ({})'.format(len(presents), 'liste fournie' if (args.presents or args.presents_fichier or args.liste)
                                               else 'autres objets des mêmes catégories'), '',
          '## 1. Séparateurs parfaits : aucun présent n\'a la valeur d\'un absent', '',
          '| Champ | Valeur des absents | Valeurs des présents |', '|---|---|---|']
     for f, uv, pv in perfect:
-        L.append('| {} | {} | {} |'.format(DF.cell(f, 50), '; '.join('{} = {}'.format(n, DF.cell(v, 50)) for n, v in uv.items()),
-                                          short_counter(pv)))
+        L.append('| {} | {} | {} |'.format(DF.cell(f, 50), absent_values(uv), short_counter(pv)))
     if not perfect:
         L.append('| aucun | | |')
     L += ['', '## 2. Séparateurs partiels : peu de présents partagent la valeur d\'un absent', '',
           '| Champ | Valeur des absents | Valeurs des présents | Présents concernés |', '|---|---|---|---|']
     for f, uv, pv, sharing in partial:
-        L.append('| {} | {} | {} | {} |'.format(DF.cell(f, 50), '; '.join('{} = {}'.format(n, DF.cell(v, 50)) for n, v in uv.items()),
-                                               short_counter(pv), ', '.join('`{}`'.format(n) for n in sharing[:12])
-                                               + (' …' if len(sharing) > 12 else '')))
+        L.append('| {} | {} | {} | {} |'.format(DF.cell(f, 50), absent_values(uv), short_counter(pv), names_list(sharing, 12)))
     if not partial:
         L.append('| aucun | | | |')
     L += ['', '## 3. Répartition de quelques champs sur tous les objets ({} objets)'.format(len(items)), '']
