@@ -39,9 +39,10 @@ from typing import List, Optional, Sequence, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402  (installe aussi le substitut de zugbruecke hors Windows)
+import rtpc_dump as D  # noqa: E402
 
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import Rtpc, RtpcNode, k_type_str, k_type_u32  # noqa: E402
+from deca.ff_rtpc import Rtpc, RtpcNode, k_type_f32, k_type_str, k_type_u32  # noqa: E402
 
 EQUIPMENT_DATA = 'settings/hp_settings/equipment_data.bin'
 SPAWN_AMMO = 'settings/spawn_ammunition_defs.bin'
@@ -108,6 +109,48 @@ def set_u32(node: RtpcNode, prop_hash: int, value: int, what: str):
     p.data = value
     W.prop_value_bytes(p)
     return old
+
+
+def field_hash(field: str) -> int:
+    """Nom d'un champ (cash_price, locked...) ou son hash en hexadecimal (0x4923c2e2)."""
+    field = field.strip()
+    return int(field, 16) if field.lower().startswith('0x') else W.name_hash(field)
+
+
+def set_field(node: RtpcNode, field: str, text: str, what: str) -> Tuple[str, str]:
+    """Change la valeur d'une propriete EXISTANTE en gardant son type (u32, f32 ou chaine)."""
+    h = field_hash(field)
+    p = W.node_get_prop(node, h)
+    if p is None:
+        raise EClone('{} : pas de propriete "{}" (0x{:08x})'.format(what, field, h))
+    old = D.format_value(p, {})
+    try:
+        if p.type == k_type_u32:
+            p.data = int(text, 0)
+        elif p.type == k_type_f32:
+            p.data = float(text)
+        elif p.type == k_type_str:
+            p.data = text.encode('utf-8')
+        else:
+            raise EClone('{} : type {} non modifiable par cet outil'.format(what, D.type_name(p.type)))
+        W.prop_value_bytes(p)  # valide la valeur (bornes du u32, octet nul...)
+    except (ValueError, W.ERtpcWrite) as e:
+        raise EClone('{} : valeur "{}" refusee pour {} ({})'.format(what, text, field, e))
+    return old, D.format_value(p, {})
+
+
+def parse_field_spec(spec: str, with_item: bool) -> Tuple[Optional[str], str, str]:
+    """'OBJET:CHAMP=VALEUR' (with_item) ou 'CHAMP=VALEUR'."""
+    left, sep, value = spec.partition('=')
+    if not sep:
+        raise EClone('attendu {}CHAMP=VALEUR, recu "{}"'.format('OBJET:' if with_item else '', spec))
+    item = None
+    if with_item:
+        item, sep, left = left.partition(':')
+        if not sep:
+            raise EClone('attendu OBJET:CHAMP=VALEUR, recu "{}"'.format(spec))
+        item = item.strip()
+    return item, left.strip(), value.strip()
 
 
 def replace_hash_values(node: RtpcNode, old_h: int, new_h: int) -> int:
@@ -304,6 +347,11 @@ def main(argv=None):
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
     ap.add_argument('--forcer', action='store_true', help='accepter des armes absentes de la categorie weapons')
+    ap.add_argument('--champ', action='append', default=[], metavar='CHAMP=VALEUR',
+                    help='change un champ de la NOUVELLE munition (option repetable), ex : locked=3, 0x4923c2e2=1')
+    ap.add_argument('--modifier', action='append', default=[], metavar='OBJET:CHAMP=VALEUR',
+                    help='change un champ d\'un objet EXISTANT (option repetable), '
+                         'ex : equipment_ammo_762x54r_fmj_01:locked=3')
     ap.add_argument('--controle-prix', action='append', default=[], metavar='NOM=PRIX',
                     help='change aussi le prix d\'un objet EXISTANT (option repetable) : si ce prix apparait en jeu, '
                          'le fichier produit est bien lu par le jeu')
@@ -333,10 +381,19 @@ def main(argv=None):
             _, node = find_item(eq_tree.root_node, name.strip(), H_NAME)
             old = set_u32(node, H_PRICE, int(value), 'prix de controle')
             report.append('Controle : prix de {} : {} -> {}'.format(name.strip(), old, value))
-        # reference de la verification : l'original avec les seuls changements de controle
-        eq_reference = W.rtpc_to_binary(eq_tree) if args.controle_prix else eq_bytes
+        for spec in args.modifier:
+            item, field, value = parse_field_spec(spec, with_item=True)
+            _, node = find_item(eq_tree.root_node, item, H_NAME)
+            old, new = set_field(node, field, value, 'modification de ' + item)
+            report.append('Modification : {} : {} : {} -> {}'.format(item, field, old, new))
+        # reference de la verification : l'original avec les seuls changements volontaires d'objets existants
+        eq_reference = W.rtpc_to_binary(eq_tree) if (args.controle_prix or args.modifier) else eq_bytes
         _, eq_item, lines = clone_equipment(eq_tree, args.source, args.nom, args.libelle, args.prix, weapons, args.forcer)
         report += lines
+        for spec in args.champ:
+            _, field, value = parse_field_spec(spec, with_item=False)
+            old, new = set_field(eq_item, field, value, 'nouvelle munition')
+            report.append('  champ {} : {} -> {}'.format(field, old, new))
         _, sp_item, lines = clone_spawn(sp_tree, args.source, args.nom, args.entite)
         report += lines
         eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
