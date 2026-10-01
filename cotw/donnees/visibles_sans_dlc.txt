@@ -1,10 +1,12 @@
 # Munitions et armes visibles au magasin SANS aucun DLC achete (releve de l'utilisateur, 2026-10-01).
 # Utilisable comme liste des presents : differentiel.py / separateurs.py --presents-fichier ce_fichier
-# Releve limite aux categories ammo et weapons. A confirmer : equipment_ammo_223_pt_01 et _223_sp_01
-# (non cochees alors qu'elles ressemblent aux munitions visibles : secondary_ids -1, locked 1).
+# Releve limite aux categories ammo et weapons. Les .223 PT et SP, oubliees dans le releve, sont visibles
+# (confirme par l'utilisateur) : tout objet de secondary_ids -1 est visible, sauf locked = 5.
 # Trois armes de DLC sont visibles : leur DLC est offert a tous (secondary_ids 3988076135, 2667029300,
 # 1246326955).
 # --- ammo
+equipment_ammo_223_pt_01
+equipment_ammo_223_sp_01
 equipment_ammo_243_pt_01
 equipment_ammo_243_sp_01
 equipment_ammo_270_pt_01
