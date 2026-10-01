@@ -70,6 +70,16 @@ class TestPatch(unittest.TestCase):
         header = after['sheet.Rows[0].Name'].header
         self.assertEqual(struct.unpack_from('<I', patched, header + 4)[0], len(NEW))   # longueur mise a jour
 
+    def test_second_field_not_a_length_is_kept(self):
+        # cas reel (equipment_stats_ui.bin de COTW) : le second u32 de l'en-tete vaut 8, quelle que soit la chaine
+        data = bytearray(self.data)
+        header = leaves(bytes(data))['sheet.Rows[0].Name'].header
+        struct.pack_into('<I', data, header + 4, 8)
+        patched, changed = self.run_patch([(FMJ, NEW)], bytes(data))
+        self.assertEqual(changed, 1)
+        self.assertEqual(struct.unpack_from('<I', patched, header + 4)[0], 8)
+        self.assertEqual(leaves(patched)['sheet.Rows[0].Name'].value, NEW.encode())
+
     def test_longer_text_refused(self):
         with self.assertRaises(AR.EPatch):
             self.run_patch([('equipment_ammo_308_pt_01', NEW)])   # 26 octets > 24

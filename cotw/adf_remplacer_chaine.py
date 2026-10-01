@@ -8,8 +8,11 @@ Le nouveau texte doit etre au plus aussi long que l'ancien : il est ecrit a la m
 octets nuls, et le champ longueur de chaque en-tete de chaine concerne est mis a jour. Aucun offset ne bouge.
 
 Une chaine ADF (type String) est un en-tete de 8 octets dans la structure : u32 offset (relatif au debut de
-l'instance), u32 longueur ; le texte, termine par un octet nul, est a cet offset. Controles avant ecriture :
-  - chaque en-tete pointe bien sur le texte attendu, avec la longueur attendue (avec ou sans l'octet nul) ;
+l'instance), puis un u32 que DECA appelle "longueur" ; le texte, termine par un octet nul, est a cet offset.
+Dans les XLSBook de COTW ce second u32 vaut 8 quelle que soit la chaine (releve sur equipment_stats_ui.bin) :
+ce n'est pas une longueur. On ne le met a jour que s'il vaut la longueur de l'ancien texte (avec ou sans
+l'octet nul) ; sinon on le laisse tel quel. Controles avant ecriture :
+  - chaque en-tete pointe bien sur le texte attendu ;
   - aucune autre chaine ne partage ces octets (une chaine qui en serait le suffixe serait corrompue) ;
   - apres ecriture, DECA relit le fichier et seules les chaines remplacees ont change.
 
@@ -86,17 +89,23 @@ def plan_replacements(adf, data: bytes, base: int, pairs: List[Tuple[str, str]])
             rel, length = struct.unpack_from('<II', data, base + l.header)
             if not any(io + rel == l.offset for io in instance_offsets):
                 raise EPatch('{} : l\'en-tete (offset relatif 0x{:x}) ne pointe pas sur le texte'.format(l.path, rel))
-            if length not in (len(old_b), len(old_b) + 1):
-                raise EPatch('{} : longueur {} inattendue pour "{}" ({} octets)'.format(l.path, length, old, len(old_b)))
-            plans.append((base + l.header, text_at, old_b, new_b, length, length == len(old_b) + 1))
+            # longueur : None si le second u32 n'est pas une longueur (il est alors laisse intact)
+            if length == len(old_b):
+                new_length = len(new_b)
+            elif length == len(old_b) + 1:
+                new_length = len(new_b) + 1
+            else:
+                new_length = None
+            plans.append((base + l.header, text_at, old_b, new_b, length, new_length))
     return plans
 
 
 def apply(data: bytes, plans) -> bytes:
     out = bytearray(data)
-    for header, text_at, old_b, new_b, _length, with_nul in plans:
+    for header, text_at, old_b, new_b, _length, new_length in plans:
         out[text_at:text_at + len(old_b)] = new_b + b'\0' * (len(old_b) - len(new_b))
-        struct.pack_into('<I', out, header + 4, len(new_b) + (1 if with_nul else 0))
+        if new_length is not None:
+            struct.pack_into('<I', out, header + 4, new_length)
     return bytes(out)
 
 
@@ -156,9 +165,11 @@ def main(argv=None):
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(patched)
     lines = ['Origine : {}'.format(src)]
-    for header, text_at, old_b, new_b, length, with_nul in plans:
-        lines.append('  "{}" -> "{}" : texte @0x{:x}, en-tete @0x{:x}, longueur {} -> {}'.format(
-            old_b.decode(), new_b.decode(), text_at, header, length, len(new_b) + (1 if with_nul else 0)))
+    for header, text_at, old_b, new_b, length, new_length in plans:
+        lines.append('  "{}" -> "{}" : texte @0x{:x}, en-tete @0x{:x}, {}'.format(
+            old_b.decode(), new_b.decode(), text_at, header,
+            'longueur {} -> {}'.format(length, new_length) if new_length is not None
+            else 'second champ de l\'en-tete laisse a {} (pas une longueur)'.format(length)))
     lines += ['Verification : relu par DECA, {} valeur(s) changee(s), rien d\'autre ; taille identique ({} octets).'.format(
         changed, len(patched)), 'Ecrit : {}'.format(target)]
     print('\n'.join(lines))
