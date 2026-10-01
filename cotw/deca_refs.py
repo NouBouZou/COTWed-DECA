@@ -101,11 +101,13 @@ def scan_contents(vfs, patterns: Dict[bytes, str], types: List[str], max_size: i
             errors += 1
             continue
         found = collections.defaultdict(list)
+        # Un hash32 stocke dans un ADF ou un format binaire inconnu est aligne sur 4 octets : une
+        # correspondance non alignee y est presque toujours une coincidence (maillages, terrain).
+        # Exception : dans un RTPC, un en-tete de propriete fait 9 octets, donc la plupart des valeurs u32
+        # inline ne sont PAS alignees. On garde tout pour les RTPC (indexer_refs.py les lit par structure).
+        aligned_only = node.file_type != 'rtpc'
         for m in rx.finditer(data):
-            # Un hash32 stocke dans une structure (RTPC, ADF) est aligne sur 4 octets. Une correspondance
-            # non alignee est presque toujours une coincidence dans des donnees binaires (maillages,
-            # terrain) : sur le premier essai COTW, la plupart des faux positifs etaient non alignes.
-            if m.group(0) in hash_patterns and m.start() % 4:
+            if aligned_only and m.group(0) in hash_patterns and m.start() % 4:
                 continue
             found[m.group(0)].append(m.start())
         if found:
