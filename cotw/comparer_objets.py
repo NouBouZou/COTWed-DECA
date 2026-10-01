@@ -10,7 +10,10 @@ Pour chaque objet :
   1. ses proprietes et ses enfants dans settings/hp_settings/equipment_data.bin ;
   2. son entree dans chaque settings/spawn_*_defs.bin (entite, etiquettes) ;
   3. l'existence de son entite (.ee) dans les archives du jeu ;
-  4. la liste des fichiers ou le scan DECA a trouve son nom en texte.
+  4. ses citations dans des fichiers de reference RTPC ou ADF (par defaut equipment_stats_ui,
+     player_initial_loadout, player_rewards, equipment_tuning ; --fichier pour d'autres), en texte ou par
+     hash32/48/64, avec le chemin du champ ;
+  5. la liste des fichiers ou le scan DECA a trouve son nom en texte.
 Les lignes dont les valeurs different entre objets sont marquees d'un "≠".
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
@@ -26,12 +29,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402
 import rtpc_dump as D  # noqa: E402
 import cloner_munition as C  # noqa: E402
+import citations as CI  # noqa: E402
 
 import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import k_type_none, k_type_str  # noqa: E402
 
 EQUIPMENT_DATA = C.EQUIPMENT_DATA
 MISSING = '—'
+REFERENCE_FILES = [
+    'settings/hp_settings/equipment_stats_ui.bin',
+    'settings/hp_settings/player_initial_loadout.bin',
+    'settings/hp_settings/player_rewards.bin',
+    'settings/hp_settings/equipment_tuning.bin',
+]
+
+
+def reference_rows(vfs, base, files, items) -> List[List[str]]:
+    """Une ligne par fichier de reference : nombre de citations de chaque objet et premier champ concerne."""
+    import resoudre_hashes as RH
+    reader = RH.FileReader(vfs)
+    rows = []
+    for v_path in files:
+        local = base / Path(v_path) if base is not None else None
+        kind, obj = reader.decode(str(local) if local is not None and local.is_file() else v_path)
+        row = ['{} ({})'.format(Path(v_path).name, kind.upper() if kind in ('rtpc', 'adf') else obj)]
+        for it in items:
+            found = CI.find(kind, obj, it)
+            row.append('{} : {}'.format(len(found), found[0]) if found else MISSING)
+        rows.append(row)
+    return rows
 
 
 def cell(text: str, limit: int = 60) -> str:
@@ -156,6 +182,9 @@ def main(argv=None):
     ap.add_argument('projet', help='projet DECA (dossier contenant db\\core.db)')
     ap.add_argument('objets', nargs='+', help='noms des objets, ex : equipment_ammo_762x54r_sp_01')
     ap.add_argument('--base', help='dossier au format dropzone dont lire les fichiers s\'ils y sont (ex : sortie de cloner_munition)')
+    ap.add_argument('--fichier', action='append', default=[],
+                    help='fichier de reference RTPC ou ADF ou chercher les objets (option repetable ; '
+                         'defaut : equipment_stats_ui, player_initial_loadout, player_rewards, equipment_tuning)')
     ap.add_argument('--out', help='fichier markdown de sortie (sinon : affichage a l\'ecran)')
     args = ap.parse_args(argv)
 
@@ -192,7 +221,10 @@ def main(argv=None):
     rows.append(entity_row)
     L += markdown_table(items, rows)
 
-    L += ['', '## 2. Fichiers ou le scan a trouve le nom en texte', '']
+    L += ['', '## 2. Citations dans les fichiers de reference (texte, hash32, hash48, hash64)', '']
+    L += markdown_table(items, reference_rows(vfs, base, args.fichier or REFERENCE_FILES, items))
+
+    L += ['', '## 3. Fichiers ou le scan a trouve le nom en texte', '']
     import deca_refs as R
     per_item = {}
     for it in items:
