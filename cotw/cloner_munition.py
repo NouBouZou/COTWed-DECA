@@ -343,6 +343,9 @@ def main(argv=None):
     ap.add_argument('--prix', type=int, help='prix en magasin')
     ap.add_argument('--armes', help='armes compatibles, separees par des virgules (defaut : celles de la source)')
     ap.add_argument('--entite', help='chemin de l\'entite .ee (defaut : celle de la source)')
+    ap.add_argument('--entite-propre', action='store_true',
+                    help='copier l\'entite .ee de la source pour la nouvelle munition (item_id au nouveau nom) : '
+                         'sans cela, l\'arme charge les munitions de la source')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -359,6 +362,8 @@ def main(argv=None):
 
     if not args.nom.isascii() or not args.nom.replace('_', '').isalnum():
         raise SystemExit('ERREUR : le nom ne doit contenir que des lettres ASCII, des chiffres et des _')
+    if args.entite and args.entite_propre:
+        raise SystemExit('ERREUR : --entite et --entite-propre sont incompatibles')
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO)}
     existing = [str(p) for p in targets.values() if p.exists()]
@@ -394,7 +399,25 @@ def main(argv=None):
             _, field, value = parse_field_spec(spec, with_item=False)
             old, new = set_field(eq_item, field, value, 'nouvelle munition')
             report.append('  champ {} : {} -> {}'.format(field, old, new))
-        _, sp_item, lines = clone_spawn(sp_tree, args.source, args.nom, args.entite)
+        entity_out = None
+        entity_path = args.entite
+        if args.entite_propre:
+            import entite as E
+            _, src_spawn = find_item(sp_tree.root_node, args.source, H_SPAWN_NAME)
+            src_entity = bytes(W.node_get_prop(src_spawn, H_ENTITY).data).decode('utf-8').replace('\\', '/')
+            if args.source not in src_entity:
+                raise EClone('le chemin de l\'entite source ne contient pas son nom : {}'.format(src_entity))
+            entity_path = src_entity.replace(args.source, args.nom)
+            ee_bytes, ee_src = load(vfs, base, src_entity)
+            try:
+                entity_out, _renames, lines = E.clone_entity(ee_bytes, args.source, args.nom)
+            except (E.EEntite, E.S.ESarc) as e:
+                raise EClone('entite : {}'.format(e))
+            report += ['Origine : ' + ee_src] + lines
+            targets[entity_path] = out_root / Path(entity_path)
+            if targets[entity_path].exists() and not args.ecraser:
+                raise EClone('fichier deja present (option --ecraser) : {}'.format(targets[entity_path]))
+        _, sp_item, lines = clone_spawn(sp_tree, args.source, args.nom, entity_path)
         report += lines
         eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
         verify_addition(eq_reference, eq_out, eq_item.name_hash)
@@ -403,7 +426,10 @@ def main(argv=None):
         raise SystemExit('ERREUR : {}'.format(e))
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.']
 
-    for v_path, data in ((EQUIPMENT_DATA, eq_out), (SPAWN_AMMO, sp_out)):
+    outputs = [(EQUIPMENT_DATA, eq_out), (SPAWN_AMMO, sp_out)]
+    if entity_out is not None:
+        outputs.append((entity_path, entity_out))
+    for v_path, data in outputs:
         targets[v_path].parent.mkdir(parents=True, exist_ok=True)
         targets[v_path].write_bytes(data)
         report.append('Ecrit : {} ({} octets)'.format(targets[v_path], len(data)))
