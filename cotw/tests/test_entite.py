@@ -127,6 +127,12 @@ class TestClonerOwnEntity(unittest.TestCase):
             self.assertEqual(W.node_get_prop(entry, C.H_ENTITY).data, (DIR + new + '.ee').replace('/', '\\').encode())
             report = (out / 'rapport_clonage.txt').read_text(encoding='utf-8')
             self.assertIn('entree renommee', report)
+            # variante de diagnostic : copie a l'identique sous un nouveau chemin
+            out2 = Path(root) / 'mod2'
+            C.main([project, '--source', src, '--nom', new, '--entite-copie', '--sortie', str(out2)])
+            self.assertEqual((out2 / 'dropzone' / Path(DIR + new + '.ee')).read_bytes(), entity(src))
+            with self.assertRaises(SystemExit):
+                C.main([project, '--source', src, '--nom', new, '--entite-copie', '--entite-propre', '--sortie', str(out2)])
             # outils de lecture sur le meme projet
             rt = Path(root) / 'rt.md'
             SR.main([project, '--out', str(rt)])
