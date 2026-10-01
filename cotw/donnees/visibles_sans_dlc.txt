@@ -1,0 +1,52 @@
+# Munitions et armes visibles au magasin SANS aucun DLC achete (releve de l'utilisateur, 2026-10-01).
+# Utilisable comme liste des presents : differentiel.py / separateurs.py --presents-fichier ce_fichier
+# Releve limite aux categories ammo et weapons. A confirmer : equipment_ammo_223_pt_01 et _223_sp_01
+# (non cochees alors qu'elles ressemblent aux munitions visibles : secondary_ids -1, locked 1).
+# Trois armes de DLC sont visibles : leur DLC est offert a tous (secondary_ids 3988076135, 2667029300,
+# 1246326955).
+# --- ammo
+equipment_ammo_243_pt_01
+equipment_ammo_243_sp_01
+equipment_ammo_270_pt_01
+equipment_ammo_270_sp_01
+equipment_ammo_3030_hp_01
+equipment_ammo_3030_sprn_01
+equipment_ammo_338_pt_01
+equipment_ammo_338_sp_01
+equipment_ammo_357m_fnhc_01
+equipment_ammo_357m_jhp_01
+equipment_ammo_44m_fnhc_01
+equipment_ammo_44m_jhp_01
+equipment_ammo_4570_hp_01
+equipment_ammo_4570_spfn_01
+equipment_ammo_454_fnhc_01
+equipment_ammo_454_jhp_01
+equipment_ammo_12ga_bird_01
+equipment_ammo_12ga_buck_01
+equipment_ammo_12ga_slug_01
+equipment_ammo_jp_bow_arrow_300gr_01
+equipment_ammo_bh_bow_arrow_420gr_01
+equipment_ammo_bh_bow_arrow_600gr_01
+equipment_ammo_7mm_pt_01
+equipment_ammo_7mm_sp_01
+# --- weapons
+equipment_weapon_ba_rifle_223_01
+equipment_weapon_ba_rifle_243_01
+equipment_weapon_ba_rifle_270_01
+equipment_weapon_ba_rifle_270_02
+equipment_weapon_ba_rifle_270_03
+equipment_weapon_la_rifle_3030_01
+equipment_weapon_ss_rifle_338_01
+equipment_weapon_revolver_357m_01
+equipment_weapon_revolver_44m_01
+equipment_weapon_la_rifle_4570_01
+equipment_weapon_revolver_454_01
+equipment_weapon_revolver_454_02
+equipment_weapon_ou_shotgun_12ga_01
+equipment_weapon_ou_shotgun_12ga_02
+equipment_weapon_pa_shotgun_12ga_01
+equipment_weapon_compound_bow_60lb_02
+equipment_weapon_compound_bow_60lb_01
+equipment_weapon_compound_bow_70lb_01
+equipment_weapon_ss_rifle_7mm_02
+equipment_weapon_ss_rifle_7mm_01

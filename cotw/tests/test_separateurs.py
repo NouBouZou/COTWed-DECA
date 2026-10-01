@@ -122,8 +122,9 @@ class TestSeparators(unittest.TestCase):
 
     def test_checklist_variants(self):
         path = Path(self.tmp.name) / 'v.csv'
-        path.write_text('Nom,Visible\na_01,X\nb_01,oui\nc_01,\nd_01,non\n', encoding='utf-8')
-        self.assertEqual(DF.read_checklist(path), (['a_01', 'b_01'], ['c_01', 'd_01']))
+        path.write_text('Nom,Visible\na_01,X\nb_01,oui\nc_01,\nd_01,non\ne_01,x (gratuite)\nf_01,d\n'
+                        'g_01,c\u2019est un dlc\n', encoding='utf-8')
+        self.assertEqual(DF.read_checklist(path), (['a_01', 'b_01', 'e_01'], ['c_01', 'd_01', 'f_01', 'g_01']))
         path.write_text('a_01\nb_01\n', encoding='utf-8')
         self.assertIsNone(DF.read_checklist(path))
         self.assertEqual(DF.read_names(path), ['a_01', 'b_01'])

@@ -132,6 +132,7 @@ class Leaf:
     kind: str                 # nombre, chaine, octets, hash32, hash48, hash64, enum
     note: Optional[str]       # chaine de la table du fichier (StringHash) ou nom d'enum
     ancestors: list           # [(chemin, AdfValue)] des structures englobantes, de la racine vers la feuille
+    header: Optional[int] = None  # chaine : offset de son en-tete (u32 offset relatif a l'instance, u32 longueur)
 
 
 def adf_leaves(adf) -> Iterator[Leaf]:
@@ -168,7 +169,7 @@ def adf_leaves(adf) -> Iterator[Leaf]:
                 note = v.hash_string.decode('utf-8', 'replace') if isinstance(v.hash_string, bytes) else v.hash_string
                 yield Leaf(path, v.value, v.data_offset, 'hash{}'.format(width) if width else 'hash', note, ancestors)
             elif v.type_id == STRING_TYPE:
-                yield Leaf(path, v.value, v.data_offset, 'chaine', None, ancestors)
+                yield Leaf(path, v.value, v.data_offset, 'chaine', None, ancestors, v.info_offset)
             elif mt == MetaType.Enumeration:
                 note = v.enum_string.decode('utf-8', 'replace') if isinstance(v.enum_string, bytes) else v.enum_string
                 yield Leaf(path, v.value, v.data_offset, 'enum', note, ancestors)

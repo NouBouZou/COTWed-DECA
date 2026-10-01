@@ -155,7 +155,8 @@ def read_checklist(path: Path) -> Optional[Tuple[List[str], List[str]]]:
     """(coches, non coches) d'un CSV produit par liste_objets.py ; None si le fichier n'en est pas un.
 
     Le separateur (';', ',' ou tabulation) est detecte : Excel en francais enregistre avec ';'. Une case est
-    cochee si elle contient x, oui, 1, ok ou une coche ; tout autre contenu (vide compris) la laisse decochee."""
+    cochee si son premier mot est x, oui, 1, ok ou une coche ("x (gratuite)" compte) ; tout autre contenu
+    (vide, "d", commentaire seul) la laisse decochee."""
     import csv
     text = path.read_text(encoding='utf-8-sig')
     first = text.splitlines()[0] if text else ''
@@ -168,7 +169,9 @@ def read_checklist(path: Path) -> Optional[Tuple[List[str], List[str]]]:
         row = {(k or '').strip().lower(): (v or '').strip() for k, v in row.items()}
         if not row.get('nom'):
             continue
-        (checked if row.get('visible', '').lower() in CHECKED else unchecked).append(row['nom'])
+        # le premier mot decide : "x", "x (gratuite)" et "oui, achetable" cochent ; un commentaire seul non
+        first = row.get('visible', '').lower().replace(',', ' ').replace('(', ' ').split()
+        (checked if first and first[0] in CHECKED else unchecked).append(row['nom'])
     return checked, unchecked
 
 
