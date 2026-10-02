@@ -69,6 +69,20 @@ class DataViewWidget(QWidget):
         self.data_source.signal_selection_changed.connect(self.vnode_selection_changed)
         self.tab_sarc.signal_archive_open.connect(self.data_source.archive_open)
 
+    def clear(self):
+        """
+        Forget the node shown, e.g. when another project is opened.
+
+        Viewers keep their last node: the SARC viewer's "Open Archive" used it as a node id of the new project, i.e.
+        opened an unrelated file. Every tab is disabled until a node of the new project is double-clicked.
+        """
+        self.tab_sarc.vnode = None
+        self.tab_info.text_box.clear()
+        for index in range(self.tab_widget.count()):
+            self.tab_widget.setTabEnabled(index, index == self.tab_info_index)
+        self.tab_widget.setCurrentIndex(self.tab_info_index)
+        self.tab_widget.setEnabled(False)
+
     def vnode_selection_changed(self):
         print('DataViewWidget:vnode_selection_changed')
 

@@ -1,5 +1,6 @@
 from typing import Optional
-from .vfs_widgets import used_color_calc
+from .vfs_widgets import used_color_calc, NodeCache
+from deca.util import gc_paused
 from deca.db_view import VfsView
 from deca.db_processor import VfsNode
 from deca.ff_types import *
@@ -10,6 +11,9 @@ from PySide6.QtWidgets import QHeaderView, QSizePolicy, QWidget, QHBoxLayout, QT
 
 
 class VfsDirLeaf(object):
+    # __slots__: one object per named file (hundreds of thousands on COTW), a per-instance dict tripled memory use
+    __slots__ = ('name', 'parent', 'row', 'uids', 'uids_hard', 'uids_sym', 'in_gdcc_count')
+
     def __init__(self, name, uids_hard, uids_sym, in_gdcc_count):
         self.name = name
         self.parent = None
@@ -20,7 +24,7 @@ class VfsDirLeaf(object):
         self.in_gdcc_count = in_gdcc_count
 
     def v_path(self):
-        pn = b''
+        pn = ''
         if self.parent is not None:
             pn = self.parent.v_path(True)
         return pn + self.name
@@ -30,6 +34,8 @@ class VfsDirLeaf(object):
 
 
 class VfsDirBranch(object):
+    __slots__ = ('name', 'parent', 'row', 'children', 'child_name_map')
+
     def __init__(self, name):
         self.name = name
         self.parent = None
@@ -66,6 +72,8 @@ class VfsDirModel(QAbstractItemModel):
         self.vfs_view: Optional[VfsView] = None
         self.gdc_body_uids = set()
         self.root_node = None
+        self._branches = []  # every branch of the current tree, to break its cycles when it is replaced
+        self._nodes = NodeCache()
         self.n_rows = 0
         self.n_cols = 0
 
@@ -96,35 +104,61 @@ class VfsDirModel(QAbstractItemModel):
             self.vfs_view.signal_visible_changed.connect(self, lambda x: x.vfs_changed_signal.emit())
             self.vfs_changed_signal.emit()
 
+    def _release_tree(self):
+        """
+        Break the parent <-> children cycles of the current tree.
+
+        Without this, a replaced tree (hundreds of thousands of nodes on COTW) could only be freed by a cyclic
+        garbage collection, which walked every object and froze the window for seconds after a filter change.
+        Once the children lists are emptied, reference counting frees the whole tree immediately.
+        Must be called between beginResetModel() and endResetModel(): views may hold indexes pointing to it.
+        """
+        for branch in self._branches:
+            branch.children = []
+            branch.child_name_map = {}
+            branch.parent = None
+        self._branches = []
+        self.root_node = None
+
     def update_model(self):
         self.beginResetModel()
+        self._nodes.clear()
+        self._release_tree()
 
-        vpaths0: dict = self.vfs_view.nodes_visible_map_get()
-        tmp = list(vpaths0.keys())
-        tmp.sort()
-        vpaths = dict([(k, vpaths0[k]) for k in tmp])
+        with gc_paused():
+            vpaths: dict = self.vfs_view.nodes_visible_map_get()
+            self.root_node = VfsDirBranch('/')
+            # directory path -> branch: each directory is created once, instead of building (and mostly discarding)
+            # one VfsDirBranch per path component of every file
+            branches = {(): self.root_node}
 
-        self.root_node = None
-        self.root_node = VfsDirBranch('/')
-        for v_path, (vp_uids, sym_uids) in vpaths.items():
+            def branch_for(parts):
+                branch = branches.get(parts)
+                if branch is None:
+                    branch = branch_for(parts[:-1]).child_add(VfsDirBranch(parts[-1]))
+                    branches[parts] = branch
+                return branch
 
-            if v_path.find('\\') >= 0:
-                print(f'GUI: Warning: Windows Path {v_path}')
-                path = v_path.split('\\')
-            else:
-                path = v_path.split('/')
+            gdc_body_uids = self.gdc_body_uids
+            for v_path in sorted(vpaths):
+                vp_uids, sym_uids = vpaths[v_path]
 
-            name = path[-1]
-            path = path[0:-1]
-            cnode = self.root_node
-            for p in path:
-                cnode = cnode.child_add(VfsDirBranch(p))
+                if v_path.find('\\') >= 0:
+                    print(f'GUI: Warning: Windows Path {v_path}')
+                    path = v_path.split('\\')
+                else:
+                    path = v_path.split('/')
 
-            in_gdcc_count = 0
-            for uid in vp_uids:
-                if uid in self.gdc_body_uids:
-                    in_gdcc_count += 1
-            cnode.child_add(VfsDirLeaf(name, vp_uids, sym_uids, in_gdcc_count=in_gdcc_count))
+                cnode = branch_for(tuple(path[:-1]))
+
+                in_gdcc_count = 0
+                if gdc_body_uids:
+                    for uid in vp_uids:
+                        if uid in gdc_body_uids:
+                            in_gdcc_count += 1
+                cnode.child_add(VfsDirLeaf(path[-1], vp_uids, sym_uids, in_gdcc_count=in_gdcc_count))
+
+            self._branches = list(branches.values())
 
         self.endResetModel()
 
@@ -176,7 +210,7 @@ class VfsDirModel(QAbstractItemModel):
                 return node.name
             elif isinstance(node, VfsDirLeaf):
                 uid = node.uids[0]
-                vnode: VfsNode = self.vfs_view.node_where_uid(uid)
+                vnode: VfsNode = self._nodes.get(self.vfs_view, uid)
                 if column == 1:
                     return '{}'.format(vnode.uid)
                 elif column == 2:
@@ -206,7 +240,7 @@ class VfsDirModel(QAbstractItemModel):
         elif role == Qt.BackgroundRole:
             if isinstance(node, VfsDirLeaf):
                 uid = node.uids[0]
-                vnode: VfsNode = self.vfs_view.node_where_uid(uid)
+                vnode: VfsNode = self._nodes.get(self.vfs_view, uid)
                 if column == 8:
                     if node.in_gdcc_count > 0:
                         return QColor(Qt.yellow)

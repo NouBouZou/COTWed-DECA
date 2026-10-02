@@ -1,3 +1,4 @@
+import functools
 import sqlite3
 import re
 from deca.util import make_dir_for_file, DecaSignal
@@ -48,15 +49,36 @@ def make_hash_string_tuple(string):
     return string, hash32, hash48, hash64, ext_hash32
 
 
+@functools.lru_cache(maxsize=128)
+def _regex_pair(expr):
+    """
+    Text and bytes forms of one regular expression, compiled once.
+
+    SQLite calls the REGEXP functions once per row: compiling inside the call (as before) dominated the cost of a
+    filter. Both forms are needed because v_path is stored as TEXT by the scan but as BLOB by other writers, and the
+    old implementation encoded everything to ASCII, which raised on any non-ASCII path or filter.
+    """
+    text = expr.decode('utf-8') if isinstance(expr, (bytes, bytearray)) else expr
+    return re.compile(text), re.compile(text.encode('utf-8'))
+
+
+def _regex_for(expr, item):
+    text_re, bytes_re = _regex_pair(expr)
+    return bytes_re if isinstance(item, (bytes, bytearray)) else text_re
+
+
 def regexp(expr, item):
+    """SQLite REGEXP operator (``item REGEXP expr``): true if expr is found anywhere in item (re.search)."""
     if item is None or expr is None:
         return False
-    if isinstance(expr, str):
-        expr = expr.encode('ascii')
-    if isinstance(item, str):
-        item = item.encode('ascii')
-    reg = re.compile(expr)
-    return reg.search(item) is not None
+    return _regex_for(expr, item).search(item) is not None
+
+
+def regexp_match(expr, item):
+    """SQLite REGEXP_MATCH(expr, item): true if expr matches at the start of item (re.match), like VfsView masks."""
+    if item is None or expr is None:
+        return False
+    return _regex_for(expr, item).match(item) is not None
 
 
 class DbBase:
@@ -69,9 +91,13 @@ class DbBase:
         self.db_filename = db_filename
         make_dir_for_file(self.db_filename)
 
-        self.db_conn = sqlite3.connect(self.db_filename)
+        # check_same_thread=False: the GUI opens and scans a project in a worker thread, then hands the whole object
+        # to the GUI thread. The connection is never used by two threads at the same time (the worker is finished
+        # before the hand-off), which is the condition sqlite3 requires when the same-thread check is disabled.
+        self.db_conn = sqlite3.connect(self.db_filename, check_same_thread=False)
         # self.db_conn.text_factory = bytes
-        self.db_conn.create_function("REGEXP", 2, regexp)
+        self.db_conn.create_function("REGEXP", 2, regexp, deterministic=True)
+        self.db_conn.create_function("REGEXP_MATCH", 2, regexp_match, deterministic=True)
         self.db_cur = self.db_conn.cursor()
 
     def logger_set(self, logger):

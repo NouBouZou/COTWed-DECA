@@ -44,4 +44,5 @@ class DataViewerSarc(DataViewer):
         self.text_box.setText(sbuf)
 
     def open_archive(self):
-        self.signal_archive_open.emit(self.vnode)
+        if self.vnode is not None:
+            self.signal_archive_open.emit(self.vnode)

@@ -1,10 +1,15 @@
+import argparse
+import multiprocessing
 import re
+import shutil
 import sys
 import os
+import time
 from typing import Optional, List
 from deca.errors import *
 from deca.db_core import VfsNode
-from deca.db_processor import VfsProcessor, vfs_structure_new, vfs_structure_open, vfs_structure_empty
+from deca.db_processor import VfsProcessor, vfs_structure_empty, project_working_dir
+from deca.game_info import determine_game
 from deca.db_view import VfsView
 from deca.builder import Builder
 from deca.path import UniPath
@@ -16,9 +21,14 @@ from .main_window import Ui_MainWindow
 from .deca_interfaces import IVfsViewSrc
 from .vfsdirwidget import VfsDirWidget
 from .vfsnodetablewidget import VfsNodeTableWidget
-from PySide6.QtCore import Slot, QUrl, Signal, QEvent
-from PySide6.QtWidgets import QApplication, QMainWindow, QTabBar, QMessageBox, QFileDialog, QStyle
-from PySide6.QtGui import QDesktopServices, QKeyEvent
+from .project_task import ProjectTask, start_task, project_scan_state, KIND_NEW, KIND_OPEN, SCAN_STARTED, \
+    SCAN_COMPLETE
+from PySide6.QtCore import Slot, QUrl, Signal, QEvent, Qt, QTimer
+from PySide6.QtWidgets import QApplication, QMainWindow, QTabBar, QMessageBox, QFileDialog, QStyle, QDockWidget, \
+    QPlainTextEdit, QProgressBar, QLabel
+from PySide6.QtGui import QDesktopServices, QKeyEvent, QFont, QCloseEvent
+
+LOG_MAX_LINES = 5000
 
 window_title = 'decaGUI: v0.2.19rc'
 
@@ -29,7 +39,8 @@ class MainWindowDataSource(IVfsViewSrc):
         self.main_window: MainWindow = main_window
 
     def vfs_get(self) -> Optional[VfsProcessor]:
-        return self.main_window.vfs_view_current().vfs()
+        vfs_view = self.main_window.vfs_view_current()
+        return None if vfs_view is None else vfs_view.vfs()
 
     def vfs_view_get(self) -> Optional[VfsView]:
         return self.main_window.vfs_view_current()
@@ -58,6 +69,15 @@ class MainWindow(QMainWindow):
         self.vfs_view_root: Optional[VfsView] = None
 
         self.tab_nodes_deletable = set()
+
+        # background open / scan (see project_task.py)
+        self._task: Optional[ProjectTask] = None
+        self._task_thread = None
+        self._task_started_at = 0.0
+        self._task_label = ''
+        self._setup_task_widgets()
+        # replaced by the tests: leaving during a scan must not end the test process
+        self.hard_exit = os._exit
 
         self.signal_visible_changed.connect(self.slot_visible_changed)
         self.signal_selection_changed.connect(self.slot_selection_changed)
@@ -131,6 +151,146 @@ class MainWindow(QMainWindow):
 
         self.update_ui_state()
 
+    def _setup_task_widgets(self):
+        """Log dock and status-bar widgets used while a project is being opened or scanned."""
+        self.log_view = QPlainTextEdit()
+        self.log_view.setReadOnly(True)
+        self.log_view.setMaximumBlockCount(LOG_MAX_LINES)
+        self.log_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        font = QFont('Courier', 8)
+        font.setStyleHint(QFont.Monospace)
+        self.log_view.setFont(font)
+
+        self.log_dock = QDockWidget('Log', self)
+        self.log_dock.setObjectName('log_dock')
+        self.log_dock.setWidget(self.log_view)
+        self.log_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.RightDockWidgetArea)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+        self.log_dock.hide()
+
+        self.task_label = QLabel()
+        self.task_progress = QProgressBar()
+        self.task_progress.setRange(0, 0)  # busy indicator: DECA does not know the total amount of work
+        self.task_progress.setMaximumWidth(160)
+        self.task_progress.setTextVisible(False)
+        self.ui.statusbar.addPermanentWidget(self.task_label)
+        self.ui.statusbar.addPermanentWidget(self.task_progress)
+        self.task_label.hide()
+        self.task_progress.hide()
+
+        self.task_timer = QTimer(self)
+        self.task_timer.setInterval(1000)
+        self.task_timer.timeout.connect(self._task_tick)
+
+    def task_running(self) -> bool:
+        return self._task is not None
+
+    def _task_tick(self):
+        elapsed = int(time.time() - self._task_started_at)
+        self.task_label.setText('{}  {:d}:{:02d}'.format(self._task_label, elapsed // 60, elapsed % 60))
+
+    def task_start(self, kind: str, path: str):
+        """Open (KIND_OPEN, project.json) or create and scan (KIND_NEW, game exe) a project in the background."""
+        if self.task_running():
+            self.error_dialog('A project is already being opened or scanned.')
+            return
+
+        resumed = False
+        if kind == KIND_NEW:
+            self._task_label = 'Scanning game'
+        else:
+            state = project_scan_state(path)
+            resumed = state == SCAN_STARTED
+            if state == SCAN_COMPLETE:
+                self._task_label = 'Opening project'
+            elif resumed:
+                self._task_label = 'Resuming unfinished scan'
+            else:
+                self._task_label = 'Scanning game'  # project.json without a scanned database: full scan
+        self._task_started_at = time.time()
+        self.log_view.appendPlainText('---- {}: {}'.format(self._task_label, path))
+        if resumed:
+            self.log_view.appendPlainText(
+                'The scan of this project was interrupted: DECA resumes it. For a reference scan (audits), delete the '
+                'project and create it again (File > New Project > Delete and rescan).')
+        self.log_dock.show()
+        self.task_label.show()
+        self.task_progress.show()
+        self._task_tick()
+        self.task_timer.start()
+
+        self._task = ProjectTask(kind, path)
+        self._task.message.connect(self.log_view.appendPlainText)
+        self._task.succeeded.connect(self._task_succeeded)
+        self._task.failed.connect(self._task_failed)
+        self._task.done.connect(self._task_done)
+        self._task_thread = start_task(self._task, self)
+        self.update_ui_state()
+
+    def _task_succeeded(self, vfs):
+        self.ui.statusbar.showMessage('Building views...')
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.vfs_set(vfs)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _task_failed(self, reason):
+        self.log_view.appendPlainText(reason)
+        self.ui.statusbar.showMessage('FAILED')
+        self.error_dialog('{} failed.\n\n{}'.format(self._task_label, reason.strip().splitlines()[-1] if reason else ''))
+
+    def _task_done(self):
+        elapsed = time.time() - self._task_started_at
+        self.log_view.appendPlainText('---- {} finished in {:.1f} s'.format(self._task_label, elapsed))
+        self.task_timer.stop()
+        self.task_label.hide()
+        self.task_progress.hide()
+        self._task = None
+        self._task_thread = None
+        self.update_ui_state()
+
+    def project_open_path(self, path: str):
+        """Open a project from a project.json file or from the folder that contains it."""
+        if os.path.isdir(path):
+            path = os.path.join(path, 'project.json')
+        if not os.path.isfile(path):
+            self.error_dialog('Project file not found: {}'.format(path))
+            return
+        self.task_start(KIND_OPEN, path)
+
+    def closeEvent(self, event: QCloseEvent):
+        if not self.task_running():
+            event.accept()
+            return
+        answer = QMessageBox.question(
+            self, 'DECA',
+            'A project is still being opened or scanned.\n\nQuit anyway? The scan stops and the project is left '
+            'unfinished. To scan it again from the start: File > New Project > Delete and rescan.',
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            event.ignore()
+            return
+        event.accept()
+        self.task_abort_and_exit()
+
+    def task_abort_and_exit(self):
+        """
+        Stop a running open / scan and end the process immediately.
+
+        DECA's scan has no cancellation point. A normal exit would hang: Python's shutdown waits for the scan worker
+        processes, which only stop when the scan thread sends them 'exit' at the end of the scan, and the scan thread
+        itself keeps running. So the worker processes are terminated and the process ends without the normal Python
+        shutdown. The database is left as an unfinished scan (PRAGMA user_version 1); SQLite rolls back the
+        interrupted transaction the next time it is opened.
+        """
+        children = multiprocessing.active_children()
+        for child in children:
+            child.terminate()
+        for child in children:
+            child.join(timeout=5)
+        self.hard_exit(1)
+
     def eventFilter(self, source, event):
         if event.type() == QEvent.KeyRelease and source is self.ui.filter_edit:
             self.filter_text_key_release(source, event)
@@ -146,7 +306,7 @@ class MainWindow(QMainWindow):
         # msg.setInformativeText("This is additional information")
         # msg.setDetailedText("The details are as follows:")
         msg.setStandardButtons(QMessageBox.Ok)
-        retval = msg.exec_()
+        msg.exec()
 
     def dialog_good(self, s):
         msg = QMessageBox()
@@ -157,7 +317,7 @@ class MainWindow(QMainWindow):
         # msg.setInformativeText("This is additional information")
         # msg.setDetailedText("The details are as follows:")
         msg.setStandardButtons(QMessageBox.Ok)
-        retval = msg.exec_()
+        msg.exec()
 
     def vfs_view_create(self, *args, **kwargs):
         vfs_view = VfsView(*args, **kwargs)
@@ -168,7 +328,36 @@ class MainWindow(QMainWindow):
 
         return vfs_view
 
+    def tabs_nodes_clear(self):
+        """Remove every node tab, so that opening a second project does not add its tabs next to the first one."""
+        while self.ui.tabs_nodes.count() > 0:
+            widget = self.ui.tabs_nodes.widget(0)
+            self.ui.tabs_nodes.removeTab(0)
+            self.tab_nodes_deletable.discard(widget)
+            if widget is not None:
+                widget.deleteLater()
+
+    def project_close(self):
+        """
+        Remove the views of the current project and close its database.
+
+        Without the explicit close, the previous project's database stayed open after another project was opened:
+        on Windows an open SQLite file cannot be deleted (File > New Project > Delete and rescan failed).
+        """
+        self.tabs_nodes_clear()
+        self.ui.data_view.clear()
+        self.current_uids = None
+        self.vfs_view_root = None
+        if self.vfs is not None:
+            self.vfs.db_conn.close()
+        self.vfs = None
+
     def vfs_set(self, vfs):
+        if self.vfs is not vfs:
+            self.project_close()
+        else:
+            self.tabs_nodes_clear()
+            self.ui.data_view.clear()
         self.vfs = vfs
         self.vfs_view_root = self.vfs_view_create(vfs, None, b'^.*$')
 
@@ -223,9 +412,13 @@ class MainWindow(QMainWindow):
             self.ui.tabs_nodes.removeTab(index)
 
     def slot_nodes_tab_current_changed(self, index):
-        widget = self.ui.tabs_nodes.widget(index)
-        self.setWindowTitle("{}: Archive: {}".format(window_title, self.vfs_view_current().vfs().game_info.game_dir))
-        self.update_select_state(self.vfs_view_current())
+        vfs_view = self.vfs_view_current()
+        if vfs_view is None:
+            # no tab left (all closed, or the tabs of the previous project are being removed)
+            self.setWindowTitle(window_title)
+            return
+        self.setWindowTitle("{}: Archive: {}".format(window_title, vfs_view.vfs().game_info.game_dir))
+        self.update_select_state(vfs_view)
 
     def slot_visible_changed(self, vfs_view: VfsView):
         self.update_select_state(vfs_view)
@@ -234,7 +427,11 @@ class MainWindow(QMainWindow):
         self.update_select_state(vfs_view)
 
     def update_ui_state(self):
-        if self.vfs_view_current() is None:
+        busy = self.task_running()
+        self.ui.action_project_new.setEnabled(not busy)
+        self.ui.action_project_open.setEnabled(not busy)
+        self.ui.action_file_gz_open.setEnabled(not busy)
+        if self.vfs_view_current() is None or busy:
             self.ui.bt_mod_build_folder_show.setEnabled(False)
             self.ui.bt_mod_build.setEnabled(False)
             self.ui.action_external_add.setEnabled(False)
@@ -247,7 +444,7 @@ class MainWindow(QMainWindow):
         self.filter_text_changed()
 
     def update_select_state(self, vfs_view):
-        if vfs_view == self.vfs_view_current():
+        if vfs_view is not None and vfs_view == self.vfs_view_current():
             any_selected = vfs_view.capture_count() > 0
 
             if not self.ui.filter_edit.hasFocus():
@@ -455,7 +652,7 @@ class MainWindow(QMainWindow):
     def filter_text_accepted(self, checked):
         if self.vfs_view_current():
             txt = self.filter_text_get()
-            self.vfs_view_current().mask_set(txt.encode('ascii'))
+            self.vfs_view_current().mask_set(txt.encode('utf-8'))
             self.filter_text_changed()
 
     def filter_text_cleared(self, checked):
@@ -490,15 +687,74 @@ class MainWindow(QMainWindow):
 
         filename = QFileDialog.getOpenFileName(self, 'Create Project ...', game_loc, 'Game EXE (*.exe *.EXE)')
 
-        if filename is not None and len(filename[0]) > 0:
-            vfs = vfs_structure_new(filename)
-            if vfs is None:
-                self.logger.log('Unknown Game {}'.format(filename))
-            else:
-                self.vfs_set(vfs)
-                
-        else:
+        if filename is None or len(filename[0]) == 0:
             self.logger.log('No game executable file selected')
+            return
+
+        exe_path = UniPath.normpath(filename[0])
+        game_dir, exe_name = UniPath.split(exe_path)
+        game_info = determine_game(UniPath.join(game_dir, ''), exe_name)
+        if game_info is None:
+            self.logger.log('Unknown Game {}'.format(filename))
+            self.error_dialog(
+                'Unknown game: {}\n\nFor COTW the path must contain "theHunterCotW" (case-sensitive).'.format(exe_path))
+            return
+
+        working_dir = project_working_dir(game_info)
+        if os.path.isfile(os.path.join(working_dir, 'project.json')):
+            choice = self.existing_project_dialog(working_dir)
+            if choice == 'open':
+                self.task_start(KIND_OPEN, os.path.join(working_dir, 'project.json'))
+                return
+            if choice != 'rescan':
+                return
+            if not self.project_delete(working_dir):
+                return
+
+        self.task_start(KIND_NEW, exe_path)
+
+    def existing_project_dialog(self, working_dir) -> str:
+        """'open', 'rescan' or 'cancel'. Creating a project over an existing one only re-opens it in DECA."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle('DECA')
+        text = 'A project already exists for this game:\n{}'.format(working_dir)
+        if project_scan_state(os.path.join(working_dir, 'project.json')) != SCAN_COMPLETE:
+            text += '\n\nIts scan is not finished: opening it resumes the scan.'
+        box.setText(text)
+        box.setInformativeText(
+            'Open it, or delete it and scan the game again (about 40 minutes for COTW). Rescanning is needed after '
+            'a change that affects the scan, such as a new dictionary in work\\filenames.txt.')
+        bt_open = box.addButton('Open existing', QMessageBox.AcceptRole)
+        bt_rescan = box.addButton('Delete and rescan', QMessageBox.DestructiveRole)
+        box.addButton(QMessageBox.Cancel)
+        box.setDefaultButton(bt_open)
+        box.exec()
+        if box.clickedButton() is bt_open:
+            return 'open'
+        if box.clickedButton() is bt_rescan:
+            return 'rescan'
+        return 'cancel'
+
+    def project_delete(self, working_dir) -> bool:
+        """Delete a project folder and its log (DECA writes it next to the folder: work/hplog.txt)."""
+        log_file = working_dir + 'log.txt'
+        answer = QMessageBox.warning(
+            self, 'DECA', 'Delete these files?\n\n{}\n{}'.format(working_dir, log_file),
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if answer != QMessageBox.Yes:
+            return False
+        if self.vfs is not None and UniPath.normpath(self.vfs.working_dir) == UniPath.normpath(working_dir):
+            # the project shown is the one being deleted: release its database first
+            self.project_close()
+        try:
+            shutil.rmtree(working_dir)
+            if os.path.isfile(log_file):
+                os.remove(log_file)
+        except OSError as exc:
+            self.error_dialog('Could not delete the project (is DB Browser or another tool using it?)\n\n{}'.format(exc))
+            return False
+        return True
 
     @Slot()
     def project_open(self, checked):
@@ -506,9 +762,7 @@ class MainWindow(QMainWindow):
         filename = QFileDialog.getOpenFileName(self, 'Open Project ...', UniPath.join(deca_root(), '..', 'work'),
                                                'Project File (project.json)')
         if filename is not None and len(filename[0]) > 0:
-            project_file = filename[0]
-            vfs = vfs_structure_open(project_file)
-            self.vfs_set(vfs)
+            self.project_open_path(filename[0])
         else:
             self.logger.log('No project file selected')
 
@@ -548,18 +802,21 @@ class MainWindow(QMainWindow):
         tool.make_web_map(self.vfs_view_current().vfs().working_dir, True)
 
 
-def main():
-    # options = argparse.ArgumentParser()
-    # options.add_argument("-f", "--file", type=str, required=True)
-    # args = options.parse_args()
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='DECA GUI')
+    parser.add_argument('project', nargs='?', default=None,
+                        help='project to open at start-up: a project.json file or the folder that contains it')
+    args, qt_args = parser.parse_known_args(sys.argv[1:] if argv is None else argv)
 
     deca_root()
 
     # Qt Application
-    app = QApplication(sys.argv)
+    app = QApplication([sys.argv[0]] + qt_args)
     window = MainWindow()
     window.setWindowTitle(window_title)
     window.show()
-    app.exec_()
+    if args.project:
+        window.project_open_path(args.project)
+    app.exec()
 
     return window.vfs

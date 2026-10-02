@@ -1,4 +1,6 @@
+import contextlib
 import datetime
+import gc
 import os
 import struct
 import weakref
@@ -7,7 +9,30 @@ import ctypes
 
 from deca.path import UniPath
 
+
+@contextlib.contextmanager
+def gc_paused():
+    """
+    Pause the cyclic garbage collector while building large structures.
+
+    Building the views of a project allocates millions of small objects; each allocation burst triggers a collection
+    that walks every live object (including the previous tree), which cost more than the build itself. Reference
+    counting still frees memory normally; only cycle detection waits until the block ends.
+    """
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
 class Logger:
+    # Callables (level, message) notified of every message logged in this process. The GUI registers one while it
+    # opens or scans a project, to show the log live; scan worker processes have their own interpreter and are not
+    # affected.
+    listeners = []
+
     def __init__(self, working_dir):
         self.working_dir = working_dir
 
@@ -18,6 +43,9 @@ class Logger:
                 f.write(msg + '\n')
                 if level <= 2:
                     print(msg)
+
+        for listener in tuple(Logger.listeners):
+            listener(level, msg)
 
         return msg
 

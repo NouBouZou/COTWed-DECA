@@ -23,11 +23,15 @@ if not sys.platform.startswith('win'):
 DEFAULT_EXE = b'MZ' + b'\0' * 4094
 
 
-def build_fake_project(root: str, files: Iterable[Tuple[str, bytes]], exe: bytes = DEFAULT_EXE) -> str:
-    """Cree le faux jeu dans root, le scanne et renvoie le dossier du projet (contient db/core.db)."""
+def build_fake_game(root: str, files: Iterable[Tuple[str, bytes]], exe: bytes = DEFAULT_EXE) -> str:
+    """
+    Cree le faux jeu dans root et le fichier project.json d'un projet pas encore scanne ; renvoie son chemin.
+
+    Ouvrir ce projet (vfs_structure_open) lance le scan complet : c'est ce que font les tests de l'interface pour
+    verifier un scan en arriere-plan sans passer par vfs_structure_new.
+    """
     from deca.hashes import hash32_func
     from deca.game_info import determine_game
-    from deca.db_processor import vfs_structure_prep
     from deca.path import UniPath
 
     files = list(files)
@@ -55,7 +59,19 @@ def build_fake_project(root: str, files: Iterable[Tuple[str, bytes]], exe: bytes
     working_dir = UniPath.join(root, 'work', 'hp', '')
     os.makedirs(working_dir, exist_ok=True)
     game_info.save(UniPath.join(working_dir, 'project.json'))
-    vfs = vfs_structure_prep(UniPath.join(working_dir, 'project.json'), working_dir)
+    return UniPath.join(working_dir, 'project.json')
+
+
+def build_fake_project(root: str, files: Iterable[Tuple[str, bytes]], exe: bytes = DEFAULT_EXE) -> str:
+    """Cree le faux jeu dans root, le scanne et renvoie le dossier du projet (contient db/core.db)."""
+    from deca.hashes import hash32_func
+    from deca.db_processor import vfs_structure_prep
+    from deca.path import UniPath
+
+    files = list(files)
+    project_file = build_fake_game(root, files, exe)
+    working_dir = UniPath.join(UniPath.split(project_file)[0], '')
+    vfs = vfs_structure_prep(project_file, working_dir)
     vfs.db_conn.close()
 
     db = sqlite3.connect(os.path.join(working_dir, 'db', 'core.db'))

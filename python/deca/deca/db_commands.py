@@ -187,6 +187,7 @@ class MultiProcessControl:
                 p.start()
 
             processes_available = set(mp_processes.keys())
+            processes_dead_pending = set()  # workers found dead while still expected to report, see queue.Empty
 
             while len(processes_available) > 0 and (len(command_todo) + len(command_active)) > 0:
                 if idle_call is not None:
@@ -216,7 +217,11 @@ class MultiProcessControl:
                     q_command.put(command[1])
                 else:
                     try:
-                        msg = mp_q_results.get(block=False, timeout=1)
+                        # Blocking wait with a short timeout. block=False (as before) ignored the timeout and turned
+                        # this loop into an active wait: one core at 100 % for the whole scan, competing with the
+                        # worker processes and, in the GUI, holding the GIL against the interface thread. A message
+                        # already queued is returned at once; the timeout only bounds the idle_call / progress period.
+                        msg = mp_q_results.get(block=True, timeout=0.05)
                         proc_name = msg[0]
                         proc_cmd = msg[1]
                         proc_params = msg[2]
@@ -247,12 +252,24 @@ class MultiProcessControl:
                                 'Manager: {} completed {} {}'.format(proc_name, proc_params[0], len(proc_params[1])))
                         elif proc_cmd == 'process_done':
                             self.logger.debug('Manager: {} DONE'.format(proc_name))
-                            command_active.pop(proc_name)
+                            command_active.pop(proc_name, None)  # None: failed before receiving a command
                             processes_available.discard(proc_name)
                         else:
                             print(msg)
                     except queue.Empty:
-                        pass
+                        # A worker that dies without reporting (killed, out of memory, error before its first message
+                        # such as a failed import in a spawned process) never sends 'process_done': this loop used to
+                        # wait for it forever. Everything a worker sent is in the queue by the time it has exited, so
+                        # a worker found dead is declared lost only if it is still expected once the queue has been
+                        # emptied again (next Empty), i.e. after its last messages have been handled.
+                        for name in sorted(processes_dead_pending & processes_available):
+                            exitcode = mp_processes[name][1].exitcode
+                            exception_list.append([name, 'ended without reporting', exitcode])
+                            self.logger.error('Manager: {} ended without reporting (exit code {})'.format(name, exitcode))
+                            processes_available.discard(name)
+                            command_active.pop(name, None)
+                        processes_dead_pending = {
+                            name for name in processes_available if not mp_processes[name][1].is_alive()}
 
             # shutdown processes
             for k in processes_available:
@@ -263,7 +280,16 @@ class MultiProcessControl:
             # join
             for k, v in mp_processes.items():
                 self.logger.debug('Manager: Joining {}'.format(k))
-                v[1].join()
+                if not exception_list:
+                    v[1].join()
+                    continue
+                # After a failure a worker may never exit, e.g. blocked on the results queue whose lock was held by a
+                # worker that was killed. The scan has failed anyway: give it a few seconds, then stop it.
+                v[1].join(10)
+                if v[1].is_alive():
+                    self.logger.error('Manager: {} did not exit, terminated'.format(k))
+                    v[1].terminate()
+                    v[1].join()
 
             if exception_list:
                 raise Exception('Manager: PROCESSING FAILED')

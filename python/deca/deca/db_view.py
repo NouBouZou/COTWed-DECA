@@ -1,13 +1,64 @@
 import re
 from typing import TypeVar, Optional
 
-from .util import DecaSignal, to_unicode
+from .util import DecaSignal, to_unicode, gc_paused
 from .path import UniPath
 from .ff_types import *
 from .db_core import VfsDatabase, VfsNode
 from .ff_adf import AdfDatabase
 
 NodeListElement = TypeVar('NodeListElement', str, bytes, VfsNode)
+
+# Masks that keep every path: no REGEXP_MATCH call is needed for them.
+MATCH_ALL_MASKS = frozenset(['', '.*', '^.*', '.*$', '^.*$'])
+
+_REGEX_META = frozenset('.^$*+?{}[]\\|()')
+_REGEX_QUANTIFIERS = frozenset('*+?{')
+# escaped characters that stand for themselves (r'\.' is a dot); other escapes (\d, \w, \b...) end the prefix
+_REGEX_LITERAL_ESCAPES = frozenset('.^$*+?{}[]\\|()/-_ ')
+
+
+def mask_is_match_all(mask) -> bool:
+    return mask is None or to_unicode(mask) in MATCH_ALL_MASKS
+
+
+def regex_literal_prefix(mask) -> str:
+    """
+    Literal text every match of ``mask`` must start with (re.match semantics), or '' if none can be deduced.
+
+    Used to add ``v_path LIKE 'prefix%'`` in front of REGEXP_MATCH: LIKE runs inside SQLite, so the Python
+    callback only sees the rows that can match. The prefix is a necessary condition only; the regular
+    expression is still applied, so a conservative (short) prefix never changes the result.
+    """
+    s = to_unicode(mask) or ''
+    i = 1 if s.startswith('^') else 0
+    out = []
+    while i < len(s):
+        c = s[i]
+        if c == '\\':
+            if i + 1 < len(s) and s[i + 1] in _REGEX_LITERAL_ESCAPES:
+                lit, step = s[i + 1], 2
+            else:
+                break
+        elif c in _REGEX_META:
+            break
+        else:
+            lit, step = c, 1
+        nxt = s[i + step] if i + step < len(s) else ''
+        if nxt in _REGEX_QUANTIFIERS:
+            break  # 'ab?' : the last literal is optional or repeated, it cannot be part of the prefix
+        if nxt == '|':
+            return ''  # alternation at top level: 'a|b' has no common prefix
+        out.append(lit)
+        i += step
+    if '|' in s[i:]:
+        # an alternation later in the expression may apply to the whole pattern ('ab.*|cd'): stay safe
+        return ''
+    return ''.join(out)
+
+
+def like_escape(text: str) -> str:
+    return text.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 class VfsView:
@@ -18,6 +69,7 @@ class VfsView:
         self.capture = None
         self.mask = None
         self.parent_id = None
+        self._uids_dirty = True
         self._nodes_visible_dirty = True
         self._nodes_visible = dict()
         self._nodes_visible_uids = set()
@@ -110,7 +162,22 @@ class VfsView:
             return to_unicode(UniPath.commonpath(paths))
         return str()
 
+    @staticmethod
+    def _map_add(nodes_map, uid, v_path, file_type, parent_offset):
+        """Group a named node under its path: [hard nodes (real data), symlinks / nodes without data]."""
+        v_path = to_unicode(v_path)
+        lst = nodes_map.get(v_path, None)
+        if lst is None:
+            lst = [[], []]
+            nodes_map[v_path] = lst
+
+        if file_type != FTYPE_SYMLINK and parent_offset is not None:
+            lst[0].append(uid)
+        else:
+            lst[1].append(uid)
+
     def node_accumulate(self, nodes_map, nodes_uids, nodes_uids_no_vpath, mask=None, pid_in=None, capture=None):
+        """Selection: nodes matching ``capture`` (a VfsNode or a LIKE pattern); the mask only filters the map."""
         if isinstance(capture, VfsNode):
             nodes_all = [(capture.uid, capture.v_path, capture.p_path, capture.file_type, capture.offset)]
         else:
@@ -120,51 +187,90 @@ class VfsView:
                 output='node_id, v_path, p_path, file_type, parent_offset',
             )
 
+        match_all = mask_is_match_all(mask)
+        mask_expr = None if match_all else re.compile(to_unicode(mask))
         for uid, v_path, p_path, file_type, parent_offset in nodes_all:
             nodes_uids.add(uid)
 
             if v_path is None:
                 if p_path is None:
                     nodes_uids_no_vpath.add(uid)
-            else:
-                v_path = to_unicode(v_path)
-                    
-                lst = nodes_map.get(v_path, None)
+            elif match_all or mask_expr.match(to_unicode(v_path)) is not None:
+                self._map_add(nodes_map, uid, v_path, file_type, parent_offset)
+
+    def _visible_uids_update(self):
+        """
+        All nodes of the view, and those with neither a virtual nor a physical path.
+
+        These sets never depended on the mask (the Raw and Non-Mapped lists ignore the filter), so they are only
+        rebuilt when the database changes, not on every filter change.
+        """
+        if self.parent_id is None:
+            where, params = '', []
+        else:
+            where, params = ' WHERE parent_id == (?)', [self.parent_id]
+        with gc_paused():
+            rows = self.vfs().db_query_all(
+                'SELECT node_id, (v_path IS NULL AND p_path IS NULL) FROM core_nodes' + where, params,
+                dbg='VfsView._visible_uids_update')
+            self._nodes_visible_uids = {row[0] for row in rows}
+            self._nodes_visible_uids_no_vpaths = {row[0] for row in rows if row[1]}
+            del rows
+
+    def _visible_map_update(self):
+        """
+        Named nodes whose path matches the mask, grouped by path.
+
+        The mask is applied by SQLite (REGEXP_MATCH, same re.match semantics as before) so that only matching rows
+        reach Python. Before, every node of the project was read and tested in Python on each filter change.
+        """
+        wheres = ['v_path IS NOT NULL']
+        params = []
+        if self.parent_id is not None:
+            wheres.append('parent_id == (?)')
+            params.append(self.parent_id)
+        if not mask_is_match_all(self.mask):
+            prefix = regex_literal_prefix(self.mask)
+            if prefix:
+                # CAST: on a BLOB value (paths written as bytes) LIKE never matches without it (tested, SQLite 3.45)
+                wheres.append("CAST(v_path AS TEXT) LIKE (?) ESCAPE '\\'")
+                params.append(like_escape(prefix) + '%')
+            wheres.append('REGEXP_MATCH((?), v_path)')
+            params.append(to_unicode(self.mask))
+        with gc_paused():
+            rows = self.vfs().db_query_all(
+                'SELECT node_id, v_path, file_type, parent_offset FROM core_nodes WHERE ' + ' AND '.join(wheres), params,
+                dbg='VfsView._visible_map_update')
+            # Same grouping as _map_add, inlined: this loop runs once per named node of the project.
+            nodes_map = dict()
+            get = nodes_map.get
+            for uid, v_path, file_type, parent_offset in rows:
+                if isinstance(v_path, bytes):
+                    v_path = v_path.decode('utf-8')
+                lst = get(v_path)
                 if lst is None:
-                    lst = [[], []]
-                    nodes_map[v_path] = lst
-
-                if file_type != FTYPE_SYMLINK and parent_offset is not None:
-                    lst[0].append(uid)
-                else:
-                    lst[1].append(uid)
-
-        mask_expr = re.compile(to_unicode(mask))
-        to_erase = [vp for vp in nodes_map.keys() if mask_expr.match(vp) is None]
-        for vp in to_erase:
-            nodes_map.pop(vp)
+                    lst = nodes_map[v_path] = [[], []]
+                lst[0 if (file_type != FTYPE_SYMLINK and parent_offset is not None) else 1].append(uid)
+            del rows
+        self._nodes_visible = nodes_map
 
     def node_update(self):
         selection_changed = False
         if self.source_changed:
             self._adf_db.load_from_database(self._vfs)
             self.source_changed = False
+            self._uids_dirty = True
             self._nodes_visible_dirty = True
             self._nodes_selected_dirty = True
             selection_changed = True
 
+        if self._uids_dirty:
+            self._visible_uids_update()
+            self._uids_dirty = False
+
         if self._nodes_visible_dirty:
             self.vfs().logger.log(f'Nodes Visible Begin')
-
-            # visible nodes
-            self._nodes_visible = dict()
-            self._nodes_visible_uids = set()
-            self._nodes_visible_uids_no_vpaths = set()
-
-            self.node_accumulate(
-                self._nodes_visible, self._nodes_visible_uids, self._nodes_visible_uids_no_vpaths,
-                mask=self.mask, pid_in=self.parent_id)
-
+            self._visible_map_update()
             self._nodes_visible_dirty = False
             self._nodes_selected_dirty = True
             selection_changed = True
@@ -184,7 +290,7 @@ class VfsView:
                     if isinstance(capture, str):
                         if len(capture) > 0 and capture[-1] == '/':
                             capture = capture + r'%'
-                        capture = capture.encode('ascii')
+                        capture = capture.encode('utf-8')
 
                     self.node_accumulate(
                         self._nodes_selected, self._nodes_selected_uids, self._nodes_selected_uids_no_vpaths,
@@ -237,6 +343,26 @@ class VfsView:
             if uid in self._nodes_selected_uids:
                 return True
         return False
+
+    def nodes_visible_uids_sorted(self, order_by: str, descending: bool = False, no_vpath_only: bool = False):
+        """
+        Same nodes as nodes_visible_uids_get() (or the no-path subset), ordered by a SQL expression of core_nodes.
+
+        Sorting is done by SQLite: sorting in Qt would ask the model for one value per row, i.e. one query per node.
+        ``order_by`` must come from a fixed list in the caller, never from user input.
+        """
+        wheres, params = [], []
+        if self.parent_id is not None:
+            wheres.append('parent_id == (?)')
+            params.append(self.parent_id)
+        if no_vpath_only:
+            wheres.append('v_path IS NULL AND p_path IS NULL')
+        where = (' WHERE ' + ' AND '.join(wheres)) if wheres else ''
+        direction = 'DESC' if descending else 'ASC'
+        rows = self.vfs().db_query_all(
+            'SELECT node_id FROM core_nodes{} ORDER BY {} {}, node_id {}'.format(where, order_by, direction, direction),
+            params, dbg='VfsView.nodes_visible_uids_sorted')
+        return [row[0] for row in rows]
 
     def node_where_uid(self, uid):
         return self.vfs().node_where_uid(uid)

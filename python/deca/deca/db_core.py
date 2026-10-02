@@ -382,6 +382,7 @@ class VfsDatabase(DbBase):
         self.db_execute_one('DROP INDEX IF EXISTS index_core_node_blocks_node_id;')
         self.db_execute_one('DROP INDEX IF EXISTS index_core_nodes_v_path_to_vnode;')
         self.db_execute_one('DROP INDEX IF EXISTS index_core_nodes_v_hash_to_vnode;')
+        self.db_execute_one('DROP INDEX IF EXISTS index_core_nodes_parent_id;')
 
         self.db_execute_one('DROP INDEX IF EXISTS core_strings_hash32_asc;')
         self.db_execute_one('DROP INDEX IF EXISTS core_strings_hash48_asc;')
@@ -430,6 +431,13 @@ class VfsDatabase(DbBase):
         self.db_execute_one(
             '''
             CREATE INDEX IF NOT EXISTS "index_core_nodes_content_hash_to_vnode" ON "core_nodes" ("content_hash" ASC);
+            '''
+        )
+        # Children of a node (archive tabs of the GUI, nodes_where_match(pid_in=...)) were found by scanning the whole
+        # table. Created once on an existing project the first time it is opened.
+        self.db_execute_one(
+            '''
+            CREATE INDEX IF NOT EXISTS "index_core_nodes_parent_id" ON "core_nodes" ("parent_id" ASC);
             '''
         )
 

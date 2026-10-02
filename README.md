@@ -26,8 +26,25 @@ Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammo
 ## Contenu
 
 ### Modifications du cœur DECA (`python/deca`)
-- **Scan** : un nom RTPC contenant un antislash n'interrompt plus le scan.
+- **Scan** :
+  - un nom RTPC contenant un antislash n'interrompt plus le scan ;
+  - un processus de travail qui meurt sans prévenir (tué, mémoire insuffisante) fait échouer le scan, au lieu de le bloquer indéfiniment ;
+  - le gestionnaire du scan n'occupe plus un cœur à 100 % pendant tout le scan (attente bloquante au lieu d'une attente active).
 - **Écriture RTPC** (`deca/ff_rtpc_write.py`) : versions 1 et 2, identique à l'octet près sur les 6 348 RTPC du jeu.
+- **Vues** (`db_view.py`, `db_types.py`) : le filtre est appliqué par SQLite. Les chemins non ASCII sont acceptés. La table `core_nodes` a un index sur `parent_id`, créé à la première ouverture d'un projet existant.
+
+### Interface (`python/deca_gui`, en anglais)
+- **Ouverture et scan en arrière-plan.** La fenêtre reste utilisable. Le journal s'affiche en direct dans un panneau **Log**, et la barre d'état indique la durée écoulée.
+  - **File → New Project** sur un jeu qui a déjà un projet propose de l'ouvrir, ou de le supprimer et de rescanner.
+  - Un projet dont le scan a été interrompu est signalé : l'ouvrir reprend le scan.
+  - Si on ferme la fenêtre pendant un scan, ses processus sont arrêtés.
+- **Filtre et affichage**, mesurés sur 900 000 nœuds :
+  - filtre : 4 à 6 s avant, 0,4 à 1 s maintenant ;
+  - construction des vues : 5,5 s avant, 2,3 s maintenant ;
+  - repeinture : plus aucune requête SQL par cellule.
+- **Onglet Info** rempli : chemins, hash, type, magic, flags décodés, archives parentes, nombre d'enfants, autres copies du même fichier.
+- **Tri** des listes Raw et Non-Mapped par colonne.
+- **Projet de démonstration** (`cotw/demo_projet.py`, `cotw/lancer_demo.bat`) : un faux COTW scanné par DECA, pour travailler sur l'interface sans le jeu.
 
 ### Outils COTW (`cotw/`)
 | Outil | Rôle |
@@ -56,6 +73,8 @@ pip install -e python\deca -e python\deca_gui
 ```
 
 - **Scan du jeu** : `cotw\lancer_deca.bat`, puis **File → New Project…** et `theHunterCotW_F.exe`. Le projet est créé dans `..\work\hp`.
+- **Ouvrir un projet au lancement** : `python python\deca_gui\deca_gui\entry_point.py <project.json ou son dossier>`.
+- **Sans le jeu** (portable) : `cotw\lancer_demo.bat` crée au besoin le projet de démonstration dans `..\work_demo` et l'ouvre. Le vrai projet `..\work\hp` n'est jamais touché.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam

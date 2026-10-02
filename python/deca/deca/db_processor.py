@@ -27,6 +27,11 @@ def none_to_str(v):
         return v
 
 
+def project_working_dir(game_info):
+    """Folder of the project of a game: <repo>/../work/<game_id> (no trailing separator, as DECA always did)."""
+    return UniPath.normpath(UniPath.join(deca_root(), '..', 'work', game_info.game_id))
+
+
 def vfs_structure_new(filename):
     exe_path = UniPath.normpath(filename[0])
     game_dir, exe_name = UniPath.split(exe_path)
@@ -36,7 +41,7 @@ def vfs_structure_new(filename):
     vfs = None
 
     if game_info is not None:
-        working_dir = UniPath.normpath(UniPath.join(deca_root(), '..', 'work', game_info.game_id))
+        working_dir = project_working_dir(game_info)
         project_file = UniPath.join(working_dir, 'project.json')
         make_dir_for_file(project_file)
         game_info.save(project_file)
