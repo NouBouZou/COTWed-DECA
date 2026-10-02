@@ -17,17 +17,20 @@ Ce que fait l'outil (structure observee sur COTW le 2026-09-30, voir le journal 
   5. il relit les fichiers produits et verifie que, la copie retiree, ils sont identiques aux originaux.
 
 Tout le reste de la munition source est garde tel quel : cles de traduction du nom et de la
-description, icone, et par defaut la meme entite (.ee). La nouvelle munition partage donc les modeles,
-les sons et la balistique de la source. C'est volontaire pour le premier essai : seuls deux fichiers
-changent, et on teste uniquement l'ajout d'un objet.
+description, icone, et par defaut la meme entite (.ee). Options qui completent la copie (constats en jeu du
+2026-10-01, essais test7 et test8) :
+  --entite-propre  une entite .ee propre a la nouvelle munition (entite.py) : sans elle, l'arme charge les
+                   munitions de la source ;
+  --stats-de OBJET une ligne d'equipment_stats_ui.bin copiee de celle d'OBJET (adf_ajouter_ligne.py) : sans
+                   elle, ni stats affichees ni logo de possession au magasin.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
         --nom equipment_ammo_243_test_01 --libelle ".243 Test" --prix 10 ^
-        --sortie D:\\dev\\mods\\munition_test
+        --entite-propre --stats-de equipment_ammo_243_sp_01 --sortie D:\\dev\\mods\\munition_test
 
 Puis copier le CONTENU de D:\\dev\\mods\\munition_test\\dropzone dans le dossier dropzone du jeu.
-Pour annuler : supprimer ces deux fichiers du dropzone.
+Pour annuler : supprimer ces fichiers du dropzone.
 
 --base DOSSIER : partir des fichiers presents dans DOSSIER (par exemple ton dropzone actuel, s'il
 contient deja un equipment_data.bin modifie par un autre mod) plutot que des originaux du jeu.
@@ -350,6 +353,9 @@ def main(argv=None):
     ap.add_argument('--entite-propre', action='store_true',
                     help='copier l\'entite .ee de la source pour la nouvelle munition (item_id au nouveau nom) : '
                          'sans cela, l\'arme charge les munitions de la source')
+    ap.add_argument('--stats-de', metavar='OBJET',
+                    help='ajouter a equipment_stats_ui.bin une ligne copiee de celle de OBJET (ex : la source), au nom '
+                         'de la nouvelle munition : stats affichees et logo de possession au magasin')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -369,7 +375,8 @@ def main(argv=None):
     if sum(bool(x) for x in (args.entite, args.entite_propre, args.entite_copie)) > 1:
         raise SystemExit('ERREUR : --entite, --entite-copie et --entite-propre sont incompatibles')
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
-    targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO)}
+    import adf_ajouter_ligne as AL
+    targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO) + ((AL.STATS_UI,) if args.stats_de else ())}
     existing = [str(p) for p in targets.values() if p.exists()]
     if existing and not args.ecraser:
         raise SystemExit('ERREUR : fichiers deja presents (option --ecraser pour les remplacer) : {}'.format(existing))
@@ -429,6 +436,16 @@ def main(argv=None):
         eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
         verify_addition(eq_reference, eq_out, eq_item.name_hash)
         verify_addition(sp_bytes, sp_out, sp_item.name_hash)
+        stats_out = None
+        if args.stats_de:
+            import resoudre_hashes as RH
+            st_bytes, st_src = load(vfs, base, AL.STATS_UI)
+            try:
+                stats_out, lines = AL.add_rows(AL.decoder(RH.FileReader(vfs)), st_bytes, [(args.stats_de, args.nom)])
+            except (AL.X.EXls, AL.AE.EAdfEcriture) as e:
+                raise EClone('equipment_stats_ui : {}'.format(e))
+            report += ['Origine : ' + st_src, 'equipment_stats_ui : ligne ajoutee, relue par DECA (original plus '
+                       'cette ligne, rien d\'autre)'] + lines
     except EClone as e:
         raise SystemExit('ERREUR : {}'.format(e))
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.']
@@ -436,6 +453,8 @@ def main(argv=None):
     outputs = [(EQUIPMENT_DATA, eq_out), (SPAWN_AMMO, sp_out)]
     if entity_out is not None:
         outputs.append((entity_path, entity_out))
+    if stats_out is not None:
+        outputs.append((AL.STATS_UI, stats_out))
     for v_path, data in outputs:
         targets[v_path].parent.mkdir(parents=True, exist_ok=True)
         targets[v_path].write_bytes(data)
