@@ -443,6 +443,18 @@ class TestTools(unittest.TestCase):
             self.assertIn('| verifiee | 1 |', text)
             self.assertIn('| tete 0x0 | 1 |', text)
 
+            # 4. extraire.py : octets bruts, par chemin et par motif
+            import extraire as EX
+            ex = Path(root) / 'extrait'
+            EX.main([project, STATS, '--sortie', str(ex)])
+            self.assertEqual((ex / Path(STATS)).read_bytes(), stats)
+            EX.main([project, '--motif', 'settings/%.bin', '--sortie', str(ex / 'motif')])
+            self.assertEqual(sorted(str(q.relative_to(ex / 'motif')).replace('\\', '/') for q in (ex / 'motif').rglob('*.bin')),
+                             ['settings/hp_settings/equipment_data.bin', 'settings/hp_settings/equipment_stats_ui.bin',
+                              'settings/spawn_ammunition_defs.bin'])
+            with self.assertRaises(SystemExit):
+                EX.main([project, '--motif', 'settings/%', '--max', '1', '--sortie', str(ex)])
+
 
 if __name__ == '__main__':
     import multiprocessing

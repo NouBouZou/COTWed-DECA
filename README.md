@@ -59,6 +59,7 @@ Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammo
 | `indexer_refs.py`, `differentiel.py`, `deca_refs.py`, `citations.py` | qui cite quoi, dans tout le jeu |
 | `resoudre_hashes.py` | retrouve les noms en clair des hashes (dictionnaire `cotw/dictionnaires/hp_noms.tsv`) |
 | `rtpc_roundtrip.py`, `sarc_roundtrip.py`, `adf_ecriture_controle.py` | validation des écrivains sur les fichiers réels |
+| `extraire.py` | copie octet pour octet de fichiers du jeu (par chemin ou motif), pour étude |
 | `deca_audit.py` | audit en lecture seule d'un projet DECA |
 
 ## Utilisation (Windows, Invite de commandes)
