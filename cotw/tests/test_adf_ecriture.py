@@ -198,6 +198,31 @@ class TestAddRow(unittest.TestCase):
                 self.assertEqual(chain[-1], pos)
                 self.assertEqual(AE.verify_chain(adf, out, 1, exact=True), [8])    # autre instance intacte
 
+    def test_trailer_stays_after_instance_and_arrays_aligned(self):
+        trailer = b'\x04\0\0\0\0\0'
+        for order in ('donnees_avant', 'tables_avant'):
+            with self.subTest(order=order):
+                data = F.xlsbook(F.STATS_SHEETS, order=order, extra_instance=True, trailer=trailer)
+                out, plan = X.add_row(decode(data), data, SP, NEW)
+                X.verify(decode, data, out, plan)
+                new = decode(out)
+                for ins in new.table_instance:                          # octets colles a la fin de chaque instance
+                    end = ins.offset + ins.size
+                    self.assertEqual(out[end:end + len(trailer)], trailer)
+                h, h0 = AE.Header(out, 0), AE.Header(data, 0)
+                for name, (count, offset) in h.tables.items():     # chaque table garde son alignement
+                    if count:
+                        self.assertEqual(offset % 16, h0.tables[name][1] % 16, name)
+                start = new.table_instance[0].offset
+                full = new.table_instance_full_values[0].value
+                for key in ('Sheet', 'Cell', 'StringData', 'ValueData', 'BoolData', 'ColorData', 'Attribute'):
+                    target, _link, count = struct.unpack_from('<III', out, full[key].info_offset)
+                    if count:
+                        self.assertEqual((start + target) % 8, 0, key)     # donnees de tableau alignees sur 8
+                for s in full['Sheet'].value:
+                    target, _link, count = struct.unpack_from('<III', out, s.value['CellIndex'].info_offset)
+                    self.assertEqual((start + target) % 8, 0)
+
     def test_empty_string_cell_is_copied(self):
         sheets = [('ammo', [['name', 'note'], [SP, ''], ['equipment_ammo_243_pt_01', 'pt']])]
         data = F.xlsbook(sheets)

@@ -71,6 +71,19 @@ def select_nodes(vfs, files: List[str], pattern: Optional[str], everything: bool
     return out[:limit] if limit else out
 
 
+def trailers(data: bytes, adf) -> List[str]:
+    """Octets entre la fin de chaque instance et la zone suivante (8 premiers, en hexadecimal)."""
+    base = AE.adf_base(data)
+    h = AE.Header(data, base)
+    starts = [o for _n, (c, o) in h.tables.items() if c] + [ins.offset for ins in adf.table_instance]
+    out = []
+    for ins in adf.table_instance:
+        end = ins.offset + ins.size
+        nxt = min([o for o in starts if o >= end] or [len(data) - base])
+        out.append(data[base + end:base + min(nxt, end + 8)].hex(' ') or '(aucun)')
+    return out
+
+
 def layout(data: bytes, adf) -> Tuple[str, bool, tuple]:
     """(ordre des zones, taille totale == taille de l'ADF, 5 u32 inconnus de l'en-tete)."""
     base = AE.adf_base(data)
@@ -209,6 +222,7 @@ def main(argv=None):
     layouts = collections.Counter()
     totals = collections.Counter()
     unknowns = collections.Counter()
+    gaps = collections.Counter()
     chain_states = collections.Counter()
     chain_examples = []
     rows_out = []
@@ -225,6 +239,8 @@ def main(argv=None):
                 order, total_ok, unknown = layout(data, adf)
                 layouts[order] += 1
                 unknowns[' '.join('0x{:x}'.format(u) for u in unknown)] += 1
+                for g in trailers(data, adf):
+                    gaps[g] += 1
                 totals['taille totale = taille de l\'ADF' if total_ok else 'taille totale differente'] += 1
                 moved, added = check_moves(decode, data, adf, args.tableaux)
                 moved_total += moved
@@ -266,6 +282,10 @@ def main(argv=None):
     L += ['| {} | {} |'.format(r, n) for r, n in chain_states.most_common()]
     if chain_examples:
         L += [''] + ['- `{}` {} : {}'.format(label, name, state) for label, name, state in chain_examples]
+    L += ['', '## Octets apres la fin des instances (avant la zone suivante)', '', '| Octets | Instances |', '|---|---:|']
+    L += ['| `{}` | {} |'.format(g, n) for g, n in gaps.most_common(15)]
+    if len(gaps) > 15:
+        L.append('| ... {} autres | |'.format(len(gaps) - 15))
     L += ['', '## 5 u32 inconnus de l\'en-tete (0x2c..0x40)', '', '| Valeurs | Fichiers |', '|---|---:|']
     L += ['| `{}` | {} |'.format(u, n) for u, n in unknowns.most_common(15)]
     if len(unknowns) > 15:

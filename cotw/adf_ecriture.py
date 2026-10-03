@@ -38,7 +38,9 @@ Methode :
      partie d'origine ne changent pas, sauf celui de la fin (0 -> premier ajout) et ceux qui encadrent un tableau
      auparavant vide. La tete de la chaine ne doit pas changer : refus sinon (on ne sait pas ou elle est notee).
   4. Les octets ajoutes sont inseres juste apres l'instance, completes a un multiple de 16 : tout ce qui suit
-     garde son alignement. Chaque offset absolu situe apres le point d'insertion (offsets des tables dans
+     garde son alignement. Les octets qui suivaient l'instance avant la zone suivante (04 00 00 00 00 00 dans
+     equipment_stats_ui.bin, role inconnu) restent colles a sa nouvelle fin ; le bourrage va apres eux. Les
+     donnees de tableau ajoutees sont alignees sur 8, comme dans les fichiers du jeu. Chaque offset absolu situe apres le point d'insertion (offsets des tables dans
      l'en-tete, offsets des autres instances) est decale d'autant ; la taille de l'instance et la taille totale
      grandissent.
 Refus aussi : taille totale differente de la taille de l'ADF, table situee a l'interieur de l'instance, instances
@@ -53,6 +55,7 @@ HEADER = struct.Struct('<4sIIIIIIIIII')   # magic, version, (nombre, offset) x 4
 INSTANCE_ENTRY = 24
 ARRAY_HEADER = 16                          # u32 offset, u32 flags, u32 nombre, u32 inconnu
 INSERT_ALIGN = 16
+ARRAY_DATA_ALIGN = 8                       # alignement des donnees de tableau observe dans les fichiers du jeu
 META_ARRAY, META_INLINE_ARRAY, META_STRUCT = 3, 4, 1
 
 
@@ -138,7 +141,15 @@ def insert(data: bytes, index: int, new_instance: bytes) -> bytes:
 
     delta = len(new_instance) - size
     shift = -(-delta // INSERT_ALIGN) * INSERT_ALIGN
-    out = bytearray(data[:base + start]) + new_instance + b'\0' * (shift - delta) + data[base + end:]
+    # octets entre la fin de l'instance et la zone suivante (table ou instance) : gardes COLLES a la fin de
+    # l'instance, le bourrage d'alignement va apres eux. Dans equipment_stats_ui.bin ils valent 04 00 00 00 00 00 ;
+    # role inconnu : le jeu pourrait les lire a offset + taille.
+    following = [o for _n, (c, o) in header.tables.items() if c and o >= end]
+    following += [o for j, (_p, o, s) in enumerate(entries) if j != index and o >= end]
+    next_start = min(following) if following else len(data) - base
+    gap = data[base + end:base + next_start]
+    out = (bytearray(data[:base + start]) + new_instance + gap + b'\0' * (shift - delta)
+           + data[base + next_start:])
 
     def moved(offset: int) -> int:
         return offset + shift if offset >= end else offset
@@ -279,7 +290,8 @@ class InstanceEditor:
         old = bytes(self.buf[offset:offset + count * size]) if count else b''
         if len(old) != count * size:
             raise EAdfEcriture('tableau hors de l\'instance')
-        new_offset = self.append(old + b''.join(new_elements), max(align, 4))
+        # donnees de tableau alignees sur 8 (au moins), comme tous les tableaux des fichiers du jeu
+        new_offset = self.append(old + b''.join(new_elements), max(align, ARRAY_DATA_ALIGN))
         inner = type_pointer_fields(self.types, self._prims, elem_type)
         for i in range(count + len(new_elements)):
             self.new_fields += [new_offset + i * size + f for f in inner]

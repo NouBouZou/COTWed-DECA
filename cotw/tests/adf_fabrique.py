@@ -105,7 +105,9 @@ def _align(out: bytearray, n: int):
 
 
 def build(types: Types, instances: Sequence[Tuple[str, int, bytes]], stringhashes=(), order='tables_avant',
-          comment=b'', prefix=b'') -> bytes:
+          comment=b'', prefix=b'', trailer=b'') -> bytes:
+    """trailer : octets places juste apres les donnees de chaque instance (hors instance), comme le
+    04 00 00 00 00 00 qui suit l'instance d'equipment_stats_ui.bin."""
     for name, _t, _d in instances:
         types.name(name)
     names = types.names
@@ -134,6 +136,7 @@ def build(types: Types, instances: Sequence[Tuple[str, int, bytes]], stringhashe
             _align(out, 16)
             pos['data'].append(len(out))
             out.extend(d)
+            out.extend(trailer)
 
     if order == 'tables_avant':
         tables()
@@ -216,7 +219,7 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], chain: 
             text_pos[s] = b.alloc(s + b'\0', 1)
         return text_pos[s]
 
-    def array(root_pos, data: bytes, count: int, align=4):
+    def array(root_pos, data: bytes, count: int, align=8):          # donnees alignees sur 8, comme dans le jeu
         off = b.alloc(data, align) if count else 0
         b.pointer(root_pos, off, flags)
         b.put(root_pos + 8, '<II', count, 0)
@@ -236,7 +239,7 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], chain: 
     for i, s in enumerate(strings):
         b.pointer(headers_pos + 8 * i, text(s), second_of(s))
     array(48, b''.join(struct.pack('<f', v) for v in values), len(values))
-    array(64, bytes(bools), len(bools), 1)
+    array(64, bytes(bools), len(bools))
     array(80, struct.pack('<II', 1, 2) * 3, 3)
     array(96, struct.pack('<II', 0x000000, 0xFFFFFF), 2)
     array(112, b'', 0)                      # tableau vide (cible 0), hors chaine, comme DateData dans le jeu
@@ -246,7 +249,7 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], chain: 
 
 
 def xlsbook(sheets, order: str = 'tables_avant', extra_instance: bool = False, prefix: bytes = b'',
-            chain: bool = True) -> bytes:
+            chain: bool = True, trailer: bytes = b'') -> bytes:
     """Fichier ADF XLSBook complet ; extra_instance ajoute une seconde instance (structure Meta) placee apres."""
     t = xlsbook_types()
     instances = [('stats', XLSBOOK, xlsbook_data(sheets, chain))]
@@ -258,7 +261,7 @@ def xlsbook(sheets, order: str = 'tables_avant', extra_instance: bool = False, p
         m.pointer(8, lab, 0 if chain else 10)
         instances.append(('meta', T_META, bytes(m.b)))
     return build(t, instances, stringhashes=[(b'equipment_ammo', 0x1122334455667788)], order=order,
-                 comment=b'cotw test', prefix=prefix)
+                 comment=b'cotw test', prefix=prefix, trailer=trailer)
 
 
 STATS_SHEETS = [
