@@ -78,11 +78,9 @@ class EClone(Exception):
 # Outils sur l'arbre
 # ---------------------------------------------------------------------------
 
-def find_item(root: RtpcNode, name: str, name_prop: int) -> Tuple[RtpcNode, RtpcNode]:
-    """
-    Renvoie (parent, noeud) de l'objet ``name`` : hash du noeud = hash32(name) ET propriete ``name_prop``
-    egale a ``name``. La double condition evite de confondre avec un autre noeud de meme hash.
-    """
+def item_matches(root: RtpcNode, name: str, name_prop: int) -> List[Tuple[RtpcNode, RtpcNode]]:
+    """[(parent, noeud)] des objets ``name`` : hash du noeud = hash32(name) ET propriete ``name_prop`` egale a
+    ``name``. La double condition evite de confondre avec un autre noeud de meme hash."""
     h = W.name_hash(name)
     target = name.encode('utf-8')
     found = []
@@ -96,6 +94,12 @@ def find_item(root: RtpcNode, name: str, name_prop: int) -> Tuple[RtpcNode, Rtpc
             walk(child)
 
     walk(root)
+    return found
+
+
+def find_item(root: RtpcNode, name: str, name_prop: int) -> Tuple[RtpcNode, RtpcNode]:
+    """(parent, noeud) de l'unique objet ``name`` (voir item_matches)."""
+    found = item_matches(root, name, name_prop)
     if not found:
         raise EClone('objet "{}" introuvable'.format(name))
     if len(found) > 1:
@@ -427,7 +431,7 @@ def main(argv=None):
         raise SystemExit('ERREUR : fichiers deja presents (option --ecraser pour les remplacer) : {}'.format(existing))
 
     vfs = _projet.open_project(args.projet)
-    base = Path(args.base).expanduser().resolve() if args.base else None
+    base = _projet.base_dir(args.base)
     weapons = [w.strip() for w in args.armes.split(',') if w.strip()] if args.armes else None
     report = ['# Nouvelle munition "{}" copiee de "{}"'.format(args.nom, args.source), '']
     try:
@@ -435,6 +439,11 @@ def main(argv=None):
         sp_bytes, sp_src = load(vfs, base, SPAWN_AMMO)
         report += ['Origine : ' + eq_src, 'Origine : ' + sp_src, '']
         eq_tree, sp_tree = W.rtpc_from_bytes(eq_bytes), W.rtpc_from_bytes(sp_bytes)
+        for tree, prop, src in ((eq_tree, H_NAME, eq_src), (sp_tree, H_SPAWN_NAME, sp_src)):
+            if not item_matches(tree.root_node, args.nom, prop):
+                continue
+            raise EClone('"{}" existe deja dans {} : nom deja utilise (commande deja lancee sur cette base ?)'.format(
+                args.nom, src))
         for spec in args.controle_prix:
             name, _, value = spec.partition('=')
             if not value.isdigit():

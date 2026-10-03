@@ -50,6 +50,18 @@ def open_project(project_dir):
     return VfsDatabase(str(project_dir / 'project.json').replace('\\', '/'), working_dir, SilentLogger())
 
 
+def base_dir(arg: Optional[str]) -> Optional[Path]:
+    """Dossier --base (format dropzone) : None sans l'option ; un chemin qui n'est pas un dossier est refuse.
+    Pourquoi : un fichier absent de la base est lu dans le jeu, sans erreur ; une base mal tapee (ou pas encore
+    produite) ferait donc partir silencieusement des originaux."""
+    if not arg:
+        return None
+    path = Path(arg).expanduser().resolve()
+    if not path.is_dir():
+        raise SystemExit('ERREUR : --base {} : dossier absent (commande precedente pas lancee, ou chemin mal tape ?)'.format(path))
+    return path
+
+
 def nodes_by_path(vfs, v_path: str):
     """Noeuds portant ce chemin virtuel (un meme fichier peut exister dans plusieurs archives)."""
     return vfs.nodes_where_match(v_path=v_path.replace('\\', '/'))

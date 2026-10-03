@@ -107,7 +107,7 @@ def main(argv=None):
     if target.exists() and not args.ecraser:
         raise SystemExit('ERREUR : {} existe deja (option --ecraser pour le remplacer)'.format(target))
     vfs = _projet.open_project(args.projet)
-    base = Path(args.base).expanduser().resolve() if args.base else None
+    base = _projet.base_dir(args.base)
     data, src = C.load(vfs, base, args.fichier)
     try:
         out, lines = add_rows(decoder(RH.FileReader(vfs)), data, pairs, args.feuille,

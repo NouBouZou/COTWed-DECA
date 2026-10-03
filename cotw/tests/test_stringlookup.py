@@ -306,6 +306,22 @@ class TestTools(unittest.TestCase):
         report = (out / 'rapport_clonage.txt').read_text(encoding='utf-8')
         self.assertIn('display_name : "{}" -> "{}_name"'.format(SP_NAME, new), report)
         self.assertIn('string_ids : cles ajoutees dans les 10 langues', report)
+
+        # second clone empile sur le premier (--base) : les deux objets et leurs textes dans les fichiers produits
+        other = 'equipment_ammo_243_test_12'
+        self.run_main(C.main, [self.project, '--source', sp, '--nom', other, '--prix', '66', '--base', str(dz),
+                               '--nom-affiche', 'AUTRE TEST', '--sortie', str(out), '--ecraser'])
+        tree = W.rtpc_from_bytes((dz / Path(C.EQUIPMENT_DATA)).read_bytes())
+        self.assertTrue(C.item_matches(tree.root_node, new, C.H_NAME) and C.item_matches(tree.root_node, other, C.H_NAME))
+        vue = SL.Vue((dz / Path(SL.STRING_IDS)).read_bytes())
+        self.assertEqual((vue.texts(new + '_name')[1], vue.texts(other + '_name')[1]), ('BALLES DE TEST .243', 'AUTRE TEST'))
+        # relancer sur une base qui contient deja l'objet : refus qui nomme le fichier ; base absente : refus
+        with self.assertRaisesRegex(SystemExit, 'existe deja dans'):
+            self.run_main(C.main, [self.project, '--source', sp, '--nom', other, '--base', str(dz),
+                                   '--sortie', str(Path(self.tmp.name) / 'relance')])
+        with self.assertRaisesRegex(SystemExit, 'dossier absent'):
+            self.run_main(C.main, [self.project, '--source', sp, '--nom', 'equipment_ammo_243_test_11',
+                                   '--base', str(Path(self.tmp.name) / 'base_absente'), '--sortie', str(Path(self.tmp.name) / 'x')])
         self.assertIn('    fr : BALLES DE TEST .243', report)
 
         # sans --nom-affiche ni --description : string_ids n'est pas produit, les cles de la source restent

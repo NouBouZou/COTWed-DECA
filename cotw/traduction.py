@@ -28,7 +28,7 @@ import stringlookup as SL  # noqa: E402
 def load(projet: str, base: str, fichier: str):
     import cloner_munition as C
     vfs = _projet.open_project(projet)
-    return C.load(vfs, Path(base).expanduser().resolve() if base else None, fichier)
+    return C.load(vfs, _projet.base_dir(base), fichier)
 
 
 def entries_from_args(adds: List[str], texts: List[str], model: str) -> List[SL.Entree]:
