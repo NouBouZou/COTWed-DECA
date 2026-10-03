@@ -13,30 +13,40 @@ dire a ' FDA', qui est en 0 ou en 5 dans le fichier) :
         u64 index du nom.
   types, StringHash, noms : aucun offset absolu.
   donnees d'une instance : [offset, offset + taille). A l'interieur, chaines et tableaux sont designes par des
-        offsets RELATIFS au debut de l'instance :
-          chaine (String, 8 octets) : u32 offset, u32 second champ (longueur pour DECA ; vaut 8 dans les XLSBook
-                                     de COTW, quelle que soit la chaine) ;
-          tableau (Array)           : u32 offset, u32 flags, u32 nombre d'elements, u32 inconnu ; les elements
-                                     se suivent sans bourrage, chacun de la taille de son type.
+        CHAMPS POINTEURS de 8 octets : u32 offset de la cible, RELATIF au debut de l'instance, puis u32 LIEN :
+          chaine (String, 8 octets) : [u32 cible][u32 lien] ; le texte, termine par 0, est a la cible ;
+          tableau (Array, 16 octets): [u32 cible][u32 lien][u32 nombre d'elements][u32 0] ; les elements se
+                                     suivent sans bourrage, chacun de la taille de son type.
+
+Chaine de relocation (constat sur le vrai equipment_stats_ui.bin, 2026-10-03) : le lien d'un champ pointeur est la
+distance, en octets, jusqu'au champ pointeur suivant ; 0 termine la chaine. Elle part du premier champ pointeur et
+visite, en ordre croissant, les 545 champs pointeurs de l'instance dont la cible est non nulle (un tableau vide, de
+cible 0, n'en fait pas partie). DECA appelle ce lien "longueur" pour une chaine et "flags" pour un tableau, et
+l'ignore. [hypothese forte] Le jeu convertit les offsets en adresses en suivant cette chaine : un champ pointeur
+absent de la chaine resterait un offset brut.
 
 Methode :
-  1. Tout ajout va a la FIN de l'instance. Un tableau qui grandit est recopie en entier a la fin, suivi des
-     nouveaux elements, puis son en-tete est repointe (offset et nombre ; flags et 4e champ gardes). Les
-     elements recopies gardent leurs offsets internes, qui sont relatifs a l'instance : ils designent toujours
-     les memes sous-donnees. L'ancienne copie reste en place, inutilisee. Aucun offset relatif existant ne change.
-  2. Les octets ajoutes sont inseres juste apres l'instance, completes a un multiple de 16 : tout ce qui suit
+  1. La chaine d'origine est controlee (read_chain) : elle doit partir du premier champ pointeur, croitre et
+     contenir tous les champs pointeurs a cible non nulle que donnent les types. Sinon, refus (disposition
+     inconnue). Dans un fichier deja produit par cet outil, elle contient en plus les anciennes copies.
+  2. Tout ajout va a la FIN de l'instance. Un tableau qui grandit est recopie en entier a la fin, suivi des
+     nouveaux elements, puis son en-tete est repointe (cible et nombre). Les elements recopies gardent leurs
+     cibles, relatives a l'instance : ils designent toujours les memes sous-donnees. L'ancienne copie reste en
+     place, inutilisee ; ses champs pointeurs restent dans la chaine (cibles valides).
+  3. Les champs pointeurs des octets ajoutes (copies d'elements, nouveaux en-tetes de chaine) sont rattaches a
+     la chaine : tous les liens sont recalcules sur l'ensemble trie des champs a cible non nulle. Les liens de la
+     partie d'origine ne changent pas, sauf celui de la fin (0 -> premier ajout) et ceux qui encadrent un tableau
+     auparavant vide. La tete de la chaine ne doit pas changer : refus sinon (on ne sait pas ou elle est notee).
+  4. Les octets ajoutes sont inseres juste apres l'instance, completes a un multiple de 16 : tout ce qui suit
      garde son alignement. Chaque offset absolu situe apres le point d'insertion (offsets des tables dans
      l'en-tete, offsets des autres instances) est decale d'autant ; la taille de l'instance et la taille totale
      grandissent.
-Refus : taille totale differente de la taille de l'ADF, table situee a l'interieur de l'instance, instances qui
-se chevauchent, tableau en ligne (InlineArray, taille fixe), instance raccourcie.
-
-[hypothese] Le moteur suit les offsets d'apres les types, sans table de relocation : un tableau deplace est lu a sa
-nouvelle place. A verifier en jeu (essai test9) ; adf_ecriture_controle.py le verifie d'abord avec DECA sur les
-fichiers reels.
+Refus aussi : taille totale differente de la taille de l'ADF, table situee a l'interieur de l'instance, instances
+qui se chevauchent, tableau en ligne (InlineArray, taille fixe), instance raccourcie, types Pointer ou Deferred
+(champs pointeurs de forme inconnue).
 """
 import struct
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 STRING_TYPE = 0x8955583e
 HEADER = struct.Struct('<4sIIIIIIIIII')   # magic, version, (nombre, offset) x 4, taille totale
@@ -145,8 +155,14 @@ def insert(data: bytes, index: int, new_instance: bytes) -> bytes:
     return bytes(out)
 
 
+DEFERRED_TYPE = 0xdefe88ed
+META_POINTER = 2
+CHAIN_LINK = 4                             # position du lien dans un champ pointeur
+
+
 class InstanceEditor:
-    """Octets d'une instance, avec des ajouts en fin d'instance. Les positions sont relatives a l'instance."""
+    """Octets d'une instance, avec des ajouts en fin d'instance. Les positions sont relatives a l'instance.
+    result() rattache les nouveaux champs pointeurs a la chaine de relocation et renvoie le fichier complet."""
 
     def __init__(self, adf, data: bytes, index: int = 0):
         self.adf = adf
@@ -161,6 +177,10 @@ class InstanceEditor:
             raise EAdfEcriture('instance {} tronquee'.format(index))
         self.types = adf.extended_map_typedef
         self._prims = prim_sizes()
+        self.fields = pointer_fields(adf, index)          # champs pointeurs d'origine (positions relatives)
+        self.chain, self.dead = read_chain(self.buf, self.fields)   # chaine d'origine, controlee
+        self.new_fields: List[int] = []
+        self.final_chain: List[int] = []
 
     # --- octets ---
     def rel(self, abs_offset: int) -> int:
@@ -185,20 +205,28 @@ class InstanceEditor:
         return pos
 
     def result(self) -> bytes:
-        """Le fichier complet, avec l'instance agrandie."""
+        """Rattache les nouveaux champs pointeurs a la chaine, puis renvoie le fichier complet."""
+        self.link()
         return insert(self.data, self.index, bytes(self.buf))
+
+    def link(self) -> List[int]:
+        """Recalcule les liens sur l'ensemble trie des champs pointeurs a cible non nulle ; renvoie la chaine."""
+        candidates = set(self.fields) | set(self.new_fields)
+        chain = sorted(p for p in candidates if struct.unpack_from('<I', self.buf, p)[0] != 0)
+        if self.chain and chain and chain[0] != self.chain[0]:
+            raise EAdfEcriture('la tete de la chaine de relocation changerait (0x{:x} -> 0x{:x}) : on ne sait pas '
+                               'ou elle est notee, refus'.format(self.chain[0], chain[0]))
+        if not self.chain and chain:
+            raise EAdfEcriture('instance sans chaine de relocation : impossible d\'y ajouter des champs pointeurs')
+        for i, p in enumerate(chain):
+            struct.pack_into('<I', self.buf, p + CHAIN_LINK, chain[i + 1] - p if i + 1 < len(chain) else 0)
+        self.final_chain = chain
+        return chain
 
     # --- types ---
     def type_layout(self, type_hash: int) -> Tuple[int, int]:
         """(taille, alignement) d'une valeur du type."""
-        if type_hash in self._prims:
-            return self._prims[type_hash], self._prims[type_hash]
-        if type_hash == STRING_TYPE:
-            return 8, 8
-        td = self.types.get(type_hash)
-        if td is None:
-            raise EAdfEcriture('type 0x{:08x} inconnu'.format(type_hash))
-        return td.size, max(1, td.alignment)
+        return type_layout(self.types, self._prims, type_hash)
 
     def member(self, struct_type: int, name: str):
         td = self.types.get(struct_type)
@@ -226,8 +254,8 @@ class InstanceEditor:
         return self.rel(array_value.info_offset), td.element_type_hash, size, align
 
     def array_state(self, header_pos: int) -> Tuple[int, int]:
-        """(offset, nombre) actuels du tableau, lus dans les octets (un tableau deja deplace est suivi)."""
-        offset, _flags, count = struct.unpack_from('<III', self.buf, header_pos)
+        """(cible, nombre) actuels du tableau, lus dans les octets (un tableau deja deplace est suivi)."""
+        offset, _link, count = struct.unpack_from('<III', self.buf, header_pos)
         return offset, count
 
     def element(self, array_value, i: int) -> Tuple[int, bytes]:
@@ -240,9 +268,10 @@ class InstanceEditor:
         return pos, bytes(self.buf[pos:pos + size])
 
     def grow(self, array_value, new_elements: List[bytes]) -> int:
-        """Recopie le tableau a la fin de l'instance, suivi de new_elements, et repointe son en-tete.
-        Renvoie l'index du premier nouvel element. Avec new_elements vide : simple deplacement."""
-        header, _t, size, align = self.array(array_value)
+        """Recopie le tableau a la fin de l'instance, suivi de new_elements, et repointe son en-tete. Les champs
+        pointeurs des elements recopies et ajoutes sont notes pour la chaine. Renvoie l'index du premier nouvel
+        element. Avec new_elements vide : simple deplacement."""
+        header, elem_type, size, align = self.array(array_value)
         offset, count = self.array_state(header)
         for e in new_elements:
             if len(e) != size:
@@ -251,79 +280,142 @@ class InstanceEditor:
         if len(old) != count * size:
             raise EAdfEcriture('tableau hors de l\'instance')
         new_offset = self.append(old + b''.join(new_elements), max(align, 4))
+        inner = type_pointer_fields(self.types, self._prims, elem_type)
+        for i in range(count + len(new_elements)):
+            self.new_fields += [new_offset + i * size + f for f in inner]
         struct.pack_into('<I', self.buf, header, new_offset)
         struct.pack_into('<I', self.buf, header + 8, count + len(new_elements))
+        if header not in self.fields:
+            self.fields.append(header)
         return count
 
     # --- chaines ---
-    def string_rule(self, array_value) -> Tuple[Callable[[int], int], str]:
-        """Regle du second champ des en-tetes de chaine d'un tableau de String, deduite des chaines existantes :
-        longueur, longueur + 1, ou constante. Refus si les chaines existantes ne suivent aucune regle.
-        Renvoie (fonction longueur -> second champ, description)."""
-        header, elem_type, size, _a = self.array(array_value)
-        if elem_type != STRING_TYPE:
-            raise EAdfEcriture('pas un tableau de chaines')
-        offset, count = self.array_state(header)
-        pairs = []
-        for i in range(count):
-            text_off, second = struct.unpack_from('<II', self.buf, offset + i * size)
-            end = self.buf.find(b'\0', text_off)
-            pairs.append((end - text_off, second))
-        return string_rule_from(pairs)
-
-    def new_string(self, text: bytes, second: int) -> bytes:
-        """Ecrit le texte (termine par 0) a la fin de l'instance ; renvoie l'en-tete de chaine (8 octets)."""
+    def new_string(self, text: bytes) -> bytes:
+        """Ecrit le texte (termine par 0, aligne sur 8 comme dans les fichiers du jeu) a la fin de l'instance ;
+        renvoie l'en-tete de chaine (8 octets), lien a 0 : result() le rattache a la chaine."""
         if b'\0' in text:
             raise EAdfEcriture('chaine contenant un octet nul')
-        pos = self.append(text + b'\0', 1)
-        return struct.pack('<II', pos, second)
+        pos = self.append(text + b'\0', 8)
+        return struct.pack('<II', pos, 0)
 
 
-def _exact_rule(pairs: List[Tuple[int, int]]) -> Optional[Tuple[Callable[[int], int], str]]:
-    if all(s == n for n, s in pairs):
-        return (lambda n: n), 'longueur'
-    if all(s == n + 1 for n, s in pairs):
-        return (lambda n: n + 1), 'longueur + 1'
-    if len({s for _n, s in pairs}) == 1:
-        c = pairs[0][1]
-        return (lambda n: c), 'constante {}'.format(c)
-    return None
+def type_layout(types, prims, type_hash: int) -> Tuple[int, int]:
+    if type_hash in prims:
+        return prims[type_hash], prims[type_hash]
+    if type_hash == STRING_TYPE:
+        return 8, 8
+    td = types.get(type_hash)
+    if td is None:
+        raise EAdfEcriture('type 0x{:08x} inconnu'.format(type_hash))
+    return td.size, max(1, td.alignment)
 
 
-def describe_seconds(pairs: List[Tuple[int, int]], top: int = 8) -> str:
-    """Repartition du second champ : valeur x nombre (longueurs min..max des textes)."""
-    by_value = {}
-    for n, s in pairs:
-        by_value.setdefault(s, []).append(n)
-    parts = []
-    for s, ns in sorted(by_value.items(), key=lambda kv: -len(kv[1]))[:top]:
-        parts.append('{} x{} (longueurs {}..{})'.format(s, len(ns), min(ns), max(ns)))
-    if len(by_value) > top:
-        parts.append('{} autres valeurs'.format(len(by_value) - top))
-    return ', '.join(parts)
+def type_pointer_fields(types, prims, type_hash: int) -> List[int]:
+    """Positions des champs pointeurs a l'interieur d'une valeur du type (sans suivre les cibles)."""
+    if type_hash in prims:
+        return []
+    if type_hash == STRING_TYPE:
+        return [0]
+    if type_hash == DEFERRED_TYPE:
+        raise EAdfEcriture('type Deferred : forme du champ pointeur inconnue, refus')
+    td = types.get(type_hash)
+    if td is None:
+        raise EAdfEcriture('type 0x{:08x} inconnu'.format(type_hash))
+    if td.metatype == META_STRUCT:
+        return [m.offset + f for m in td.members for f in type_pointer_fields(types, prims, m.type_hash)]
+    if td.metatype == META_ARRAY:
+        return [0]
+    if td.metatype == META_INLINE_ARRAY:
+        size, _a = type_layout(types, prims, td.element_type_hash)
+        inner = type_pointer_fields(types, prims, td.element_type_hash)
+        return [i * size + f for i in range(td.element_length) for f in inner]
+    if td.metatype == META_POINTER:
+        raise EAdfEcriture('type Pointer : forme du champ pointeur inconnue, refus')
+    return []
 
 
-def string_rule_from(pairs: List[Tuple[int, int]]) -> Tuple[Callable[[int], int], str]:
-    """pairs : (longueur du texte, second champ) des chaines existantes. Regles essayees : longueur, longueur + 1,
-    constante, sur toutes les chaines, puis sur les seules chaines non vides (une chaine vide peut avoir un second
-    champ different ; le nouveau nom n'est jamais vide). Si les chaines ont toutes la meme longueur, longueur et
-    constante sont indiscernables : la longueur l'emporte (lecture de DECA). Sinon, refus avec la repartition
-    observee : ecrire une valeur au hasard pourrait donner un fichier que le jeu lit mal sans que DECA, qui ignore
-    ce champ, le voie."""
-    if not pairs:
-        raise EAdfEcriture('aucune chaine existante : regle du second champ inconnue')
-    rule = _exact_rule(pairs)
-    if rule:
-        return rule
-    nonempty = [(n, s) for n, s in pairs if n > 0]
-    if nonempty and len(nonempty) < len(pairs):
-        rule = _exact_rule(nonempty)
-        if rule:
-            empty = sorted({s for n, s in pairs if n == 0})
-            return rule[0], '{} (chaines non vides ; {} chaine(s) vide(s) : {})'.format(
-                rule[1], len(pairs) - len(nonempty), ', '.join(str(s) for s in empty))
-    raise EAdfEcriture('second champ des chaines sans regle (ni longueur, ni constante) sur {} chaines : {}'.format(
-        len(pairs), describe_seconds(pairs)))
+def pointer_fields(adf, index: int) -> List[int]:
+    """Champs pointeurs (chaines et tableaux) de l'instance, atteints par les types depuis la racine, positions
+    relatives a l'instance, d'apres la lecture de DECA."""
+    from deca.ff_adf import AdfValue
+    types = adf.extended_map_typedef
+    start = adf.table_instance[index].offset
+    root = adf.table_instance_full_values[index]
+    if root is None:
+        raise EAdfEcriture('instance {} illisible par DECA'.format(index))
+    found = set()
+
+    def walk(v):
+        if not isinstance(v, AdfValue):
+            return
+        if v.type_id in (DEFERRED_TYPE,):
+            raise EAdfEcriture('type Deferred dans l\'instance : forme du champ pointeur inconnue, refus')
+        td = types.get(v.type_id)
+        if td is not None and td.metatype == META_POINTER:
+            raise EAdfEcriture('type Pointer dans l\'instance : forme du champ pointeur inconnue, refus')
+        if v.type_id == STRING_TYPE or (td is not None and td.metatype == META_ARRAY):
+            found.add(v.info_offset - start)
+        val = v.value
+        if isinstance(val, dict):
+            for x in val.values():
+                walk(x)
+        elif isinstance(val, list):
+            for x in val:
+                walk(x)
+
+    walk(root)
+    return sorted(found)
+
+
+def walk_chain(buf: bytes, head: int) -> List[int]:
+    """Positions visitees en suivant les liens depuis head, jusqu'au lien 0."""
+    chain, pos = [], head
+    while True:
+        if not 0 <= pos <= len(buf) - 8:
+            raise EAdfEcriture('chaine de relocation : champ 0x{:x} hors de l\'instance'.format(pos))
+        chain.append(pos)
+        link = struct.unpack_from('<I', buf, pos + CHAIN_LINK)[0]
+        if link == 0:
+            return chain
+        if link % 4 or len(chain) > len(buf) // 8:
+            raise EAdfEcriture('chaine de relocation : lien {} invalide en 0x{:x}'.format(link, pos))
+        pos += link
+
+
+def read_chain(buf: bytes, fields: List[int]) -> Tuple[List[int], List[int]]:
+    """Lit et controle la chaine de relocation d'une instance. fields : champs pointeurs atteignables par les types.
+    La chaine part du premier champ a cible non nulle, croit strictement, contient tous les champs atteignables a
+    cible non nulle, et chacun de ses champs a une cible dans l'instance. Renvoie (chaine, champs en trop) : les
+    champs en trop sont d'anciennes copies laissees par une ecriture precedente (inutilisees, cibles valides) ; un
+    fichier du jeu n'en a pas. Instance sans champ pointeur a cible non nulle : ([], [])."""
+    targets = sorted(p for p in fields if struct.unpack_from('<I', buf, p)[0] != 0)
+    if not targets:
+        return [], []
+    chain = walk_chain(buf, targets[0])
+    if any(b <= a for a, b in zip(chain, chain[1:])):
+        raise EAdfEcriture('chaine de relocation non croissante : disposition inconnue, refus')
+    missing = sorted(set(targets) - set(chain))
+    if missing:
+        raise EAdfEcriture('chaine de relocation absente ou incomplete : {} champ(s) pointeur(s) non rattache(s) '
+                           'sur {}, ex. 0x{:x} : disposition inconnue, refus'.format(len(missing), len(targets), missing[0]))
+    for p in chain:
+        if not 0 < struct.unpack_from('<I', buf, p)[0] < len(buf):
+            raise EAdfEcriture('chaine de relocation : cible invalide en 0x{:x}'.format(p))
+    return chain, sorted(set(chain) - set(targets))
+
+
+def verify_chain(adf, data: bytes, index: int, head: Optional[int] = None, exact: bool = False) -> List[int]:
+    """Chaine de relocation d'une instance (adf : la lecture de data par DECA), controlee par read_chain ; head :
+    tete attendue (celle du fichier d'origine) ; exact : aucun champ en trop (fichier du jeu)."""
+    ins = adf.table_instance[index]
+    base = adf_base(data)
+    buf = data[base + ins.offset:base + ins.offset + ins.size]
+    chain, extras = read_chain(buf, pointer_fields(adf, index))
+    if head is not None and chain and chain[0] != head:
+        raise EAdfEcriture('tete de la chaine de relocation changee (0x{:x} -> 0x{:x})'.format(head, chain[0]))
+    if exact and extras:
+        raise EAdfEcriture('chaine de relocation : {} champ(s) en trop, ex. 0x{:x}'.format(len(extras), extras[0]))
+    return chain
 
 
 def normalize(v):

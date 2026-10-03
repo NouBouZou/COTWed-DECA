@@ -12,7 +12,12 @@ Disposition lue par deca.ff_adf.Adf.deserialize (voir aussi adf_minimal.py) :
   instances : u32 hash du nom, u32 type, u32 offset, u32 taille, u64 index du nom.
 
 Deux dispositions : "tables_avant" (tables puis donnees, comme adf_minimal) et "donnees_avant" (donnees puis
-tables). On ne sait pas encore laquelle le jeu utilise : adf_ecriture doit accepter les deux.
+tables, comme equipment_stats_ui.bin du jeu) : adf_ecriture doit accepter les deux.
+
+Chaine de relocation (comme dans le jeu) : dans chaque champ pointeur (en-tete de chaine ou de tableau), le u32 qui
+suit la cible est la distance au champ pointeur suivant, 0 a la fin ; un tableau vide (cible 0) n'en fait pas
+partie. chain=False ecrit a la place l'ancienne interpretation de DECA (longueur des chaines, flags des tableaux),
+pour verifier qu'adf_ecriture refuse une disposition sans chaine.
 
 xlsbook() fabrique une feuille de reglages au format XLSBook (type 0x0b73315d), tel que le lit
 deca.export_import_adf : Sheet{Cols, Rows, CellIndex[], Name}, Cell{Type, AttributeIndex, DataIndex},
@@ -71,6 +76,19 @@ class Blob:
 
     def __init__(self, root_size: int):
         self.b = bytearray(root_size)
+        self.ptrs = []                      # champs pointeurs a cible non nulle, pour la chaine
+
+    def pointer(self, pos: int, target: int, second: int = 0):
+        """Champ pointeur [u32 cible][u32 lien] ; le lien est ecrit par link() (ou second si pas de chaine)."""
+        self.put(pos, '<II', target, second)
+        if target:
+            self.ptrs.append(pos)
+
+    def link(self):
+        """Chaine de relocation : lien = distance au champ pointeur suivant, 0 au dernier."""
+        ptrs = sorted(self.ptrs)
+        for i, p in enumerate(ptrs):
+            self.put(p + 4, '<I', ptrs[i + 1] - p if i + 1 < len(ptrs) else 0)
 
     def alloc(self, data: bytes, align: int = 4) -> int:
         self.b += b'\0' * ((-len(self.b)) % align)
@@ -140,10 +158,10 @@ Cell = Union[str, float, bool]
 
 def xlsbook_types() -> Types:
     t = Types()
-    t.struct('XLSBook', XLSBOOK, 112, 8, [
+    t.struct('XLSBook', XLSBOOK, 128, 8, [
         ('Sheet', A_SHEET, 16, 0), ('Cell', A_CELL, 16, 16), ('StringData', A_STRING, 16, 32),
         ('ValueData', A_F32, 16, 48), ('BoolData', A_U8, 16, 64), ('Attribute', A_ATTR, 16, 80),
-        ('ColorData', A_U32, 16, 96)])
+        ('ColorData', A_U32, 16, 96), ('DateData', A_STRING, 16, 112)])
     t.struct('XLSSheet', T_SHEET, 32, 8, [
         ('Cols', typedef_u32, 4, 0), ('Rows', typedef_u32, 4, 4), ('CellIndex', A_U32, 16, 8), ('Name', STRING, 8, 24)])
     t.struct('XLSCell', T_CELL, 8, 4, [
@@ -156,11 +174,9 @@ def xlsbook_types() -> Types:
     return t
 
 
-def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second: Union[str, int] = 'longueur',
-                 flags: int = 1, second_empty: Union[None, int] = None) -> bytes:
-    """Donnees d'instance XLSBook. second : 'longueur' ou une constante (8 dans COTW) pour le second champ des
-    en-tetes de chaine ; second_empty : valeur differente pour les chaines vides ; flags : valeur du champ flags
-    des en-tetes de tableau."""
+def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], chain: bool = True) -> bytes:
+    """Donnees d'instance XLSBook, avec la chaine de relocation (chain=False : longueur des chaines et flags 1
+    a la place des liens, l'ancienne lecture de DECA)."""
     strings: List[bytes] = []
     values: List[float] = []
     bools: List[int] = []
@@ -186,12 +202,12 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second:
                 ci.append(idx(cells, c))
         sheet_cells.append((name, len(rows[0]) if rows else 0, len(rows), ci))
 
-    b = Blob(112)
+    b = Blob(128)
 
     def second_of(text: bytes) -> int:
-        if not text and second_empty is not None:
-            return second_empty
-        return len(text) if second == 'longueur' else int(second)
+        return 0 if chain else len(text)
+
+    flags = 0 if chain else 1
 
     text_pos = {}
 
@@ -202,38 +218,44 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second:
 
     def array(root_pos, data: bytes, count: int, align=4):
         off = b.alloc(data, align) if count else 0
-        b.put(root_pos, '<IIII', off, flags, count, 0)
+        b.pointer(root_pos, off, flags)
+        b.put(root_pos + 8, '<II', count, 0)
 
     sheet_pos = b.alloc(b'\0' * 32 * len(sheet_cells), 8)
-    b.put(0, '<IIII', sheet_pos, flags, len(sheet_cells), 0)
+    b.pointer(0, sheet_pos, flags)
+    b.put(8, '<II', len(sheet_cells), 0)
     for i, (name, cols, nrows, ci) in enumerate(sheet_cells):
         p = sheet_pos + 32 * i
         b.put(p, '<II', cols, nrows)
         array(p + 8, b''.join(struct.pack('<I', x) for x in ci), len(ci))
-        b.put(p + 24, '<II', text(name.encode()), second_of(name.encode()))
+        b.pointer(p + 24, text(name.encode()), second_of(name.encode()))
     array(16, b''.join(struct.pack('<BxHI', t, a, d) for t, d, a in cells), len(cells))
     headers_pos = b.alloc(b'\0' * 8 * len(strings), 8)
-    b.put(32, '<IIII', headers_pos, flags, len(strings), 0)
+    b.pointer(32, headers_pos, flags)
+    b.put(40, '<II', len(strings), 0)
     for i, s in enumerate(strings):
-        b.put(headers_pos + 8 * i, '<II', text(s), second_of(s))
+        b.pointer(headers_pos + 8 * i, text(s), second_of(s))
     array(48, b''.join(struct.pack('<f', v) for v in values), len(values))
     array(64, bytes(bools), len(bools), 1)
     array(80, struct.pack('<II', 1, 2) * 3, 3)
     array(96, struct.pack('<II', 0x000000, 0xFFFFFF), 2)
+    array(112, b'', 0)                      # tableau vide (cible 0), hors chaine, comme DateData dans le jeu
+    if chain:
+        b.link()
     return bytes(b.b)
 
 
-def xlsbook(sheets, second: Union[str, int] = 'longueur', flags: int = 1, order: str = 'tables_avant',
-            extra_instance: bool = False, prefix: bytes = b'', second_empty: Union[None, int] = None) -> bytes:
+def xlsbook(sheets, order: str = 'tables_avant', extra_instance: bool = False, prefix: bytes = b'',
+            chain: bool = True) -> bytes:
     """Fichier ADF XLSBook complet ; extra_instance ajoute une seconde instance (structure Meta) placee apres."""
     t = xlsbook_types()
-    instances = [('stats', XLSBOOK, xlsbook_data(sheets, second, flags, second_empty))]
+    instances = [('stats', XLSBOOK, xlsbook_data(sheets, chain))]
     if extra_instance:
         t.struct('Meta', T_META, 16, 8, [('Version', typedef_u32, 4, 0), ('Label', STRING, 8, 8)])
         m = Blob(16)
         lab = m.alloc(b'meta_label\0', 1)
         m.put(0, '<I', 7)
-        m.put(8, '<II', lab, 10)
+        m.pointer(8, lab, 0 if chain else 10)
         instances.append(('meta', T_META, bytes(m.b)))
     return build(t, instances, stringhashes=[(b'equipment_ammo', 0x1122334455667788)], order=order,
                  comment=b'cotw test', prefix=prefix)

@@ -13,8 +13,8 @@ Pour chaque fichier :
      repointe, sans element ajoute), du plus profond au plus haut ; le fichier obtenu est relu par DECA et doit
      donner exactement les memes valeurs, pour toutes les instances. C'est la meme operation que pour ajouter des
      elements, sans changer le contenu : un ecart designe un defaut de l'ecriture ;
-  3. chaines : pour chaque tableau de chaines (String), regle du second champ de l'en-tete (longueur, longueur
-     + 1, constante) ou, a defaut, repartition des valeurs observees ;
+  3. chaine de relocation (voir adf_ecriture.py) : elle doit visiter exactement les champs pointeurs a cible non
+     nulle ; sa tete et sa longueur sont relevees, et elle est reverifiee dans chaque fichier produit ;
   4. pour une feuille XLSBook : ajout d'une ligne copiee de la premiere ligne de donnees de la premiere feuille
      (nom de la copie : MODELE_cotwed_test), controle complet de xlsbook.verify.
 
@@ -138,6 +138,10 @@ def check_moves(decode, data: bytes, adf, max_arrays: int) -> Tuple[int, int]:
         new = decode(out)
         if new is None:
             raise AssertionError('instance {} : fichier obtenu illisible par DECA'.format(i))
+        try:
+            AE.verify_chain(new, out, i, ed.chain[0] if ed.chain else None)
+        except AE.EAdfEcriture as e:
+            raise AssertionError('instance {} : apres deplacement, {}'.format(i, e))
         diff = same_values(adf, new)
         if diff is not None:
             raise AssertionError('instance {} : apres deplacement de {} tableau(x), relecture differente '
@@ -147,39 +151,19 @@ def check_moves(decode, data: bytes, adf, max_arrays: int) -> Tuple[int, int]:
     return moved, added
 
 
-def string_arrays(adf, data: bytes, limit: int = 8) -> List[Tuple[str, str]]:
-    """[(chemin du tableau, regle du second champ ou repartition)] pour les tableaux de chaines."""
-    from deca.ff_adf import AdfValue
-    types = adf.extended_map_typedef
+def chains(adf, data: bytes) -> List[Tuple[str, str]]:
+    """[(instance, etat de la chaine de relocation)] : verifiee (N champs, tete), sans champ pointeur, ou refus."""
     out = []
     for i, ins in enumerate(adf.table_instance):
-        root = adf.table_instance_full_values[i]
-        if root is None or ins.size == 0:
+        name = ins.name.decode('utf-8', 'replace')
+        if adf.table_instance_full_values[i] is None or ins.size == 0:
             continue
-        ed = AE.InstanceEditor(adf, data, i)
-
-        def walk(v, path):
-            if len(out) >= limit or not isinstance(v, AdfValue):
-                return
-            td = types.get(v.type_id)
-            if td is not None and td.metatype == AE.META_ARRAY and td.element_type_hash == AE.STRING_TYPE:
-                if isinstance(v.value, list) and v.value:
-                    try:
-                        out.append((path, ed.string_rule(v)[1]))
-                    except AE.EAdfEcriture as e:
-                        out.append((path, str(e)))
-                return
-            val = v.value
-            if isinstance(val, AdfValue):
-                walk(val, path)
-            elif isinstance(val, dict):
-                for k, x in val.items():
-                    walk(x, '{}.{}'.format(path, k))
-            elif isinstance(val, list):
-                for k, x in enumerate(val[:4]):
-                    walk(x, '{}[{}]'.format(path, k))
-
-        walk(root, ins.name.decode('utf-8', 'replace'))
+        try:
+            chain = AE.verify_chain(adf, data, i, exact=True)
+            out.append((name, 'verifiee : {} champs, tete 0x{:x}'.format(len(chain), chain[0]) if chain
+                        else 'sans champ pointeur'))
+        except AE.EAdfEcriture as e:
+            out.append((name, str(e)))
     return out
 
 
@@ -196,8 +180,8 @@ def check_xls(decode, data: bytes, adf) -> Optional[str]:
                         new_name = c + '_cotwed_test'
                         out, plan = X.add_row(adf, data, c, new_name, instance=i)
                         X.verify(decode, data, out, plan, instance=i)
-                        return 'ligne "{}" (feuille "{}") copiee : ok, chaines : {}'.format(
-                            c, plan.match.sheet_name, plan.second_rule)
+                        return 'ligne "{}" (feuille "{}") copiee : ok, chaine de relocation : {}'.format(
+                            c, plan.match.sheet_name, plan.chain)
         return 'aucune ligne modele utilisable'
     return None
 
@@ -225,8 +209,8 @@ def main(argv=None):
     layouts = collections.Counter()
     totals = collections.Counter()
     unknowns = collections.Counter()
-    string_rules = collections.Counter()
-    string_examples = []
+    chain_states = collections.Counter()
+    chain_examples = []
     rows_out = []
     moved_total = 0
     t0 = last = time.time()
@@ -245,11 +229,13 @@ def main(argv=None):
                 moved, added = check_moves(decode, data, adf, args.tableaux)
                 moved_total += moved
                 detail = '{} tableau(x) deplace(s), +{} octets'.format(moved, added)
-                for path, rule in string_arrays(adf, data):
-                    key = rule if not rule.startswith('second champ') else 'sans regle'
-                    string_rules[key.split(' (')[0]] += 1
-                    if (key == 'sans regle' or '(' in rule) and len(string_examples) < MAX_EXAMPLES:
-                        string_examples.append((label, path, rule))
+                for name, state in chains(adf, data):
+                    key = state.split(' :')[0]
+                    chain_states[key] += 1
+                    if key not in ('verifiee', 'sans champ pointeur') and len(chain_examples) < MAX_EXAMPLES:
+                        chain_examples.append((label, name, state))
+                    if key == 'verifiee':
+                        chain_states['tete ' + state.rsplit('tete ', 1)[1]] += 1
                 xls = check_xls(decode, data, adf)
                 if xls:
                     detail += ' ; XLSBook : ' + xls
@@ -276,10 +262,10 @@ def main(argv=None):
     L += ['', '## Dispositions', '', '| Ordre dans le fichier | Fichiers |', '|---|---:|']
     L += ['| {} | {} |'.format(o, n) for o, n in layouts.most_common()]
     L += [''] + ['- {} : {}'.format(t, n) for t, n in totals.most_common()]
-    L += ['', '## Second champ des en-tetes de chaine', '', '| Regle | Tableaux de chaines |', '|---|---:|']
-    L += ['| {} | {} |'.format(r, n) for r, n in string_rules.most_common()]
-    if string_examples:
-        L += [''] + ['- `{}` {} : {}'.format(label, path, rule) for label, path, rule in string_examples]
+    L += ['', '## Chaine de relocation des instances', '', '| Etat | Instances |', '|---|---:|']
+    L += ['| {} | {} |'.format(r, n) for r, n in chain_states.most_common()]
+    if chain_examples:
+        L += [''] + ['- `{}` {} : {}'.format(label, name, state) for label, name, state in chain_examples]
     L += ['', '## 5 u32 inconnus de l\'en-tete (0x2c..0x40)', '', '| Valeurs | Fichiers |', '|---|---:|']
     L += ['| `{}` | {} |'.format(u, n) for u, n in unknowns.most_common(15)]
     if len(unknowns) > 15:

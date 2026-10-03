@@ -9,7 +9,8 @@ Pourquoi : la ligne d'equipment_stats_ui d'un objet donne ses stats affichees au
 tableaux d'un ADF sans deplacer les donnees existantes).
 
 Controle avant ecriture : DECA relit le fichier produit ; la lecture doit etre exactement l'originale plus les
-lignes ajoutees, chaque ligne ajoutee doit montrer les valeurs de son modele, au nom pres.
+lignes ajoutees, chaque ligne ajoutee doit montrer les valeurs de son modele, au nom pres ; la chaine de
+relocation doit couvrir tous les champs pointeurs.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\adf_ajouter_ligne.py D:\\dev\\work\\hp settings/hp_settings/equipment_stats_ui.bin ^
@@ -46,9 +47,9 @@ def add_rows(decode: Callable[[bytes], object], data: bytes, pairs: List[Tuple[s
         new_data, plan = X.add_row(adf, data, template, new_name, sheet)
         X.verify(decode, data, new_data, plan)
         report.append('  "{}" -> nouvelle ligne "{}" : feuille "{}", ligne {} copiee en ligne {} ; chaine n.{}, '
-                      'cellule n.{} ; second champ des chaines : {} ; {} -> {} octets'.format(
+                      'cellule n.{} ; chaine de relocation : {} ; {} -> {} octets'.format(
                           template, new_name, plan.match.sheet_name, plan.match.row, plan.new_row,
-                          plan.string_index, plan.cell_index, plan.second_rule, len(data), len(new_data)))
+                          plan.string_index, plan.cell_index, plan.chain, len(data), len(new_data)))
         data = new_data
     return data, report
 

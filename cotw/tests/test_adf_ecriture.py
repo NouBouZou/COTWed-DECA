@@ -4,8 +4,9 @@ Tests de cotw/adf_ecriture.py (agrandir des tableaux d'un ADF), cotw/xlsbook.py 
 cotw/adf_ajouter_ligne.py, de l'option --stats-de de cloner_munition.py et de adf_ecriture_controle.py.
 
 Les ADF viennent de adf_fabrique.py, dans les deux dispositions possibles (tables avant ou apres les donnees),
-avec ou sans seconde instance et petit en-tete de 5 octets. Chaque resultat est relu par le vrai lecteur ADF de
-DECA ; l'export xlsx de DECA (adf_export_xlsx_0x0b73315d) sert de second lecteur, independant de xlsbook.py.
+avec ou sans seconde instance et petit en-tete de 5 octets, avec la chaine de relocation du jeu. Chaque resultat
+est relu par le vrai lecteur ADF de DECA, et sa chaine de relocation est reverifiee ; l'export xlsx de DECA
+(adf_export_xlsx_0x0b73315d) sert de second lecteur, independant de xlsbook.py.
 
 Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\tests\\test_adf_ecriture.py
@@ -50,7 +51,7 @@ class TestInsert(unittest.TestCase):
     def test_moving_every_array_keeps_all_values(self):
         for order, prefix in LAYOUTS:
             with self.subTest(order=order, prefix=len(prefix)):
-                data = F.xlsbook(F.STATS_SHEETS, second=8, order=order, extra_instance=True, prefix=prefix)
+                data = F.xlsbook(F.STATS_SHEETS, order=order, extra_instance=True, prefix=prefix)
                 adf = decode(data)
                 moved, added = CTL.check_moves(decode, data, adf, 64)
                 self.assertGreaterEqual(moved, 8)      # Sheet, 2 CellIndex, Cell, StringData, ValueData, BoolData...
@@ -86,15 +87,56 @@ class TestInsert(unittest.TestCase):
                     self.assertEqual(out[first:table], data[first:table])
                     self.assertEqual(AE.Header(out, base).tables, h.tables)
 
-    def test_flags_and_fourth_field_kept(self):
-        data = F.xlsbook(F.STATS_SHEETS, flags=0x5A)
+    def test_chain_of_fixture_matches_game_shape(self):
+        data = F.xlsbook(F.STATS_SHEETS, extra_instance=True)
+        adf = decode(data)
+        chain = AE.verify_chain(adf, data, 0)
+        self.assertEqual(chain[0], 0)                                      # tete : premier champ pointeur
+        self.assertNotIn(112, chain)                                       # tableau vide (cible 0) hors chaine
+        self.assertEqual(AE.verify_chain(adf, data, 1), [8])               # Meta : un seul champ, lien 0
+
+    def test_moved_array_copies_are_linked(self):
+        data = F.xlsbook(F.STATS_SHEETS)
         adf = decode(data)
         ed = AE.InstanceEditor(adf, data, 0)
-        arr = adf.table_instance_full_values[0].value['StringData']
-        header = ed.rel(arr.info_offset)
-        ed.grow(arr, [])
-        self.assertEqual(struct.unpack_from('<I', ed.buf, header + 4)[0], 0x5A)
-        self.assertEqual(struct.unpack_from('<I', ed.buf, header + 12)[0], 0)
+        before = list(ed.chain)
+        sd = adf.table_instance_full_values[0].value['StringData']
+        header = ed.rel(sd.info_offset)
+        _old, count = ed.array_state(header)
+        ed.grow(sd, [])
+        ed.link()
+        new_offset, _n = ed.array_state(header)
+        copies = [new_offset + 8 * i for i in range(count)]
+        self.assertEqual(ed.final_chain, sorted(set(before) | set(copies)))
+        # partie d'origine : liens inchanges sauf le dernier (0 -> premiere copie)
+        for a, b in zip(before[:-1], before[1:]):
+            self.assertEqual(struct.unpack_from('<I', ed.buf, a + 4)[0], b - a)
+        self.assertEqual(struct.unpack_from('<I', ed.buf, before[-1] + 4)[0], copies[0] - before[-1])
+        self.assertEqual(struct.unpack_from('<I', ed.buf, copies[-1] + 4)[0], 0)
+        self.assertEqual(struct.unpack_from('<I', ed.buf, header + 12)[0], 0)   # 4e champ de l'en-tete garde
+
+    def test_refuses_without_chain_and_on_head_change(self):
+        legacy = F.xlsbook(F.STATS_SHEETS, chain=False)      # longueurs et flags a la place des liens
+        with self.assertRaisesRegex(AE.EAdfEcriture, 'chaine de relocation'):
+            AE.InstanceEditor(decode(legacy), legacy, 0)
+        with self.assertRaisesRegex(X.EXls, 'chaine de relocation'):
+            try:
+                X.add_row(decode(legacy), legacy, SP, NEW)
+            except AE.EAdfEcriture as e:
+                raise X.EXls(str(e))
+        # instance dont le premier champ pointeur est un tableau vide : le remplir changerait la tete
+        t = F.Types()
+        t.struct('Tiny', 0x5EE73001, 24, 8, [('A', F.A_U32, 16, 0), ('B', F.STRING, 8, 16)])
+        t.array('A[uint32]', F.A_U32, F.typedef_u32)
+        b = F.Blob(24)
+        b.pointer(16, b.alloc(b'tiny\0', 8))
+        b.link()
+        tiny = F.build(t, [('tiny', 0x5EE73001, bytes(b.b))])
+        adf = decode(tiny)
+        ed = AE.InstanceEditor(adf, tiny, 0)
+        ed.grow(adf.table_instance_full_values[0].value['A'], [struct.pack('<I', 5)])
+        with self.assertRaisesRegex(AE.EAdfEcriture, 'tete de la chaine'):
+            ed.result()
 
     def test_refusals(self):
         data = F.xlsbook(F.STATS_SHEETS, order='donnees_avant')
@@ -116,49 +158,55 @@ class TestInsert(unittest.TestCase):
         with self.assertRaises(AE.EAdfEcriture):
             AE.adf_base(b'RTPC' + b'\0' * 60)
 
-    def test_string_rule(self):
-        self.assertEqual(AE.string_rule_from([(3, 3), (5, 5)])[0](7), 7)
-        self.assertEqual(AE.string_rule_from([(3, 4), (5, 6)])[0](7), 8)
-        fn, label = AE.string_rule_from([(3, 8), (29, 8)])
-        self.assertEqual((fn(26), label), (8, 'constante 8'))
-        with self.assertRaisesRegex(AE.EAdfEcriture, r'8 x2 \(longueurs 5\.\.9\), 3 x1'):
-            AE.string_rule_from([(3, 3), (5, 8), (9, 8)])
-        with self.assertRaises(AE.EAdfEcriture):
-            AE.string_rule_from([])
-        # chaines vides a part : la regle des chaines non vides s'applique
-        fn, label = AE.string_rule_from([(0, 0), (5, 8), (29, 8)])
-        self.assertEqual(fn(26), 8)
-        self.assertIn('chaines non vides ; 1 chaine(s) vide(s) : 0', label)
+    def test_walk_chain_errors(self):
+        buf = bytearray(64)
+        struct.pack_into('<II', buf, 0, 40, 8)          # 0 -> 8
+        struct.pack_into('<II', buf, 8, 40, 100)        # 8 -> 108 : hors de l'instance
+        with self.assertRaisesRegex(AE.EAdfEcriture, 'hors de l'):
+            AE.walk_chain(bytes(buf), 0)
+        struct.pack_into('<II', buf, 8, 40, 6)          # lien non multiple de 4
+        with self.assertRaisesRegex(AE.EAdfEcriture, 'invalide'):
+            AE.walk_chain(bytes(buf), 0)
+        struct.pack_into('<II', buf, 8, 40, 0)
+        self.assertEqual(AE.walk_chain(bytes(buf), 0), [0, 8])
+        self.assertEqual(AE.read_chain(bytes(buf), [0, 8, 24]), ([0, 8], []))   # 24 : cible 0, hors chaine
+        struct.pack_into('<I', buf, 16, 40)                                      # 16 : cible non nulle, non rattache
+        with self.assertRaisesRegex(AE.EAdfEcriture, 'non rattache'):
+            AE.read_chain(bytes(buf), [0, 8, 16])
+        self.assertEqual(AE.read_chain(bytes(buf), [0]), ([0, 8], [8]))         # 8 : en trop (ancienne copie)
 
 
 class TestAddRow(unittest.TestCase):
     def test_add_row_all_layouts_and_rules(self):
         for order, prefix in LAYOUTS:
-            for second in ('longueur', 8):
-                with self.subTest(order=order, prefix=len(prefix), second=second):
-                    data = F.xlsbook(F.STATS_SHEETS, second=second, order=order, extra_instance=True, prefix=prefix)
-                    out, plan = X.add_row(decode(data), data, SP, NEW)
-                    added = X.verify(decode, data, out, plan)
-                    self.assertEqual(added, [NEW, '2-6', 0.25, 0.75, 'sp'])
-                    self.assertEqual(rows(out)[:-1], rows(data))                       # lignes existantes intactes
-                    self.assertEqual(rows(out, 1), rows(data, 1))                      # autre feuille intacte
-                    self.assertEqual(plan.new_row, 4)
-                    adf = decode(out)
-                    sd = adf.table_instance_full_values[0].value['StringData']
-                    ed = AE.InstanceEditor(adf, out, 0)
-                    _pos, header = ed.element(sd, plan.string_index)
-                    self.assertEqual(struct.unpack('<II', header)[1], len(NEW) if second == 'longueur' else 8)
+            with self.subTest(order=order, prefix=len(prefix)):
+                data = F.xlsbook(F.STATS_SHEETS, order=order, extra_instance=True, prefix=prefix)
+                out, plan = X.add_row(decode(data), data, SP, NEW)
+                added = X.verify(decode, data, out, plan)
+                self.assertEqual(added, [NEW, '2-6', 0.25, 0.75, 'sp'])
+                self.assertEqual(rows(out)[:-1], rows(data))                       # lignes existantes intactes
+                self.assertEqual(rows(out, 1), rows(data, 1))                      # autre feuille intacte
+                self.assertEqual(plan.new_row, 4)
+                adf = decode(out)
+                chain = AE.verify_chain(adf, out, 0, plan.chain_head)
+                sd = adf.table_instance_full_values[0].value['StringData']
+                ed = AE.InstanceEditor(adf, out, 0)      # un fichier produit se relit (anciennes copies en plus)
+                self.assertGreater(len(ed.dead), 0)
+                pos, header = ed.element(sd, plan.string_index)
+                self.assertIn(pos, chain)                                   # nouvel en-tete rattache
+                self.assertEqual(struct.unpack('<II', header)[1], 0)        # dernier de la chaine
+                self.assertEqual(chain[-1], pos)
+                self.assertEqual(AE.verify_chain(adf, out, 1, exact=True), [8])    # autre instance intacte
 
-    def test_empty_strings_with_other_second_field(self):
+    def test_empty_string_cell_is_copied(self):
         sheets = [('ammo', [['name', 'note'], [SP, ''], ['equipment_ammo_243_pt_01', 'pt']])]
-        data = F.xlsbook(sheets, second=8, second_empty=0)
+        data = F.xlsbook(sheets)
         out, plan = X.add_row(decode(data), data, SP, NEW)
         X.verify(decode, data, out, plan)
         self.assertEqual(rows(out)[-1], [NEW, ''])
-        self.assertIn('constante 8 (chaines non vides', plan.second_rule)
 
     def test_value_cells_are_shared_with_template(self):
-        data = F.xlsbook(F.STATS_SHEETS, second=8)
+        data = F.xlsbook(F.STATS_SHEETS)
         before = AE.plain_values(decode(data))
         out, plan = X.add_row(decode(data), data, SP, NEW)
         after = AE.plain_values(decode(out))
@@ -172,7 +220,7 @@ class TestAddRow(unittest.TestCase):
         self.assertEqual(added[0], plan.cell_index)
 
     def test_two_rows_in_sequence(self):
-        data = F.xlsbook(F.STATS_SHEETS, second=8, order='donnees_avant', extra_instance=True)
+        data = F.xlsbook(F.STATS_SHEETS, order='donnees_avant', extra_instance=True)
         out, lines = AL.add_rows(decode, data, [(SP, NEW), ('equipment_ammo_762x54r_fmj_01', 'equipment_ammo_243_test_04')])
         self.assertEqual(len(lines), 2)
         r = rows(out)
@@ -200,8 +248,19 @@ class TestAddRow(unittest.TestCase):
             meta = F.xlsbook(F.STATS_SHEETS, extra_instance=True)
             X.add_row(decode(meta), meta, SP, NEW, instance=1)
 
+    def test_verify_detects_unlinked_pointer(self):
+        data = F.xlsbook(F.STATS_SHEETS)
+        out, plan = X.add_row(decode(data), data, SP, NEW)
+        adf = decode(out)
+        chain = AE.verify_chain(adf, out, 0, plan.chain_head)
+        broken = bytearray(out)
+        base = AE.adf_base(out) + adf.table_instance[0].offset
+        struct.pack_into('<I', broken, base + chain[-2] + 4, 0)                 # chaine coupee avant le nouveau nom
+        with self.assertRaisesRegex(X.EXls, 'non rattache'):
+            X.verify(decode, data, bytes(broken), plan)
+
     def test_verify_detects_tampering(self):
-        data = F.xlsbook(F.STATS_SHEETS, second=8)
+        data = F.xlsbook(F.STATS_SHEETS)
         out, plan = X.add_row(decode(data), data, SP, NEW)
         tampered = bytearray(out)
         adf = decode(out)
@@ -213,7 +272,7 @@ class TestAddRow(unittest.TestCase):
     def test_deca_xlsx_export_sees_new_row(self):
         import openpyxl
         from deca.export_import_adf import adf_export_xlsx_0x0b73315d
-        data = F.xlsbook(F.STATS_SHEETS, second=8)
+        data = F.xlsbook(F.STATS_SHEETS)
         out, _plan = X.add_row(decode(data), data, SP, NEW)
 
         class Logger:
@@ -246,7 +305,7 @@ class TestTools(unittest.TestCase):
     def test_ajouter_ligne_cloner_and_controle(self):
         import test_entite as TE
         import test_separateurs as TS
-        stats = F.xlsbook(F.STATS_SHEETS, second=8, order='donnees_avant')
+        stats = F.xlsbook(F.STATS_SHEETS, order='donnees_avant')
         with tempfile.TemporaryDirectory(prefix='cotw_adfw_') as root:
             project = faux_projet.build_fake_project(root, [
                 (STATS, stats),
@@ -290,7 +349,8 @@ class TestTools(unittest.TestCase):
             self.assertIn('donnees < noms', text)
             self.assertIn('XLSBook : ligne', text)
             self.assertIn('| `0x0 0x0 0x0 0x0 0x0` | 1 |', text)
-            self.assertIn('| constante 8 | 1 |', text)
+            self.assertIn('| verifiee | 1 |', text)
+            self.assertIn('| tete 0x0 | 1 |', text)
 
 
 if __name__ == '__main__':

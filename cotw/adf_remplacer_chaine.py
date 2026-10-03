@@ -5,13 +5,14 @@ adf_remplacer_chaine.py -- remplace une chaine dans un fichier ADF, sur place, s
 Pourquoi : DECA ne sait pas reecrire un ADF. Pour un essai, on peut pourtant reaffecter une ligne existante
 d'une feuille (equipment_stats_ui.bin, XLSBook) a un autre objet en renommant la chaine qui la designe.
 Le nouveau texte doit etre au plus aussi long que l'ancien : il est ecrit a la meme place, complete par des
-octets nuls, et le champ longueur de chaque en-tete de chaine concerne est mis a jour. Aucun offset ne bouge.
+octets nuls. Aucun offset ne bouge, aucun en-tete n'est modifie.
 
 Une chaine ADF (type String) est un en-tete de 8 octets dans la structure : u32 offset (relatif au debut de
 l'instance), puis un u32 que DECA appelle "longueur" ; le texte, termine par un octet nul, est a cet offset.
-Dans les XLSBook de COTW ce second u32 vaut 8 quelle que soit la chaine (releve sur equipment_stats_ui.bin) :
-ce n'est pas une longueur. On ne le met a jour que s'il vaut la longueur de l'ancien texte (avec ou sans
-l'octet nul) ; sinon on le laisse tel quel. Controles avant ecriture :
+Dans COTW, ce second u32 est le LIEN de la chaine de relocation (distance au champ pointeur suivant, 0 a la fin ;
+constat du 2026-10-03, voir adf_ecriture.py) : il ne doit jamais etre modifie. Une version precedente le
+remplacait quand il valait la longueur du texte, ce qui aurait casse la chaine pour un texte de 8 ou 16 octets.
+Controles avant ecriture :
   - chaque en-tete pointe bien sur le texte attendu ;
   - aucune autre chaine ne partage ces octets (une chaine qui en serait le suffixe serait corrompue) ;
   - apres ecriture, DECA relit le fichier et seules les chaines remplacees ont change.
@@ -89,14 +90,8 @@ def plan_replacements(adf, data: bytes, base: int, pairs: List[Tuple[str, str]])
             rel, length = struct.unpack_from('<II', data, base + l.header)
             if not any(io + rel == l.offset for io in instance_offsets):
                 raise EPatch('{} : l\'en-tete (offset relatif 0x{:x}) ne pointe pas sur le texte'.format(l.path, rel))
-            # longueur : None si le second u32 n'est pas une longueur (il est alors laisse intact)
-            if length == len(old_b):
-                new_length = len(new_b)
-            elif length == len(old_b) + 1:
-                new_length = len(new_b) + 1
-            else:
-                new_length = None
-            plans.append((base + l.header, text_at, old_b, new_b, length, new_length))
+            # le second u32 est le lien de la chaine de relocation : jamais modifie (new_length = None)
+            plans.append((base + l.header, text_at, old_b, new_b, length, None))
     return plans
 
 
@@ -169,7 +164,7 @@ def main(argv=None):
         lines.append('  "{}" -> "{}" : texte @0x{:x}, en-tete @0x{:x}, {}'.format(
             old_b.decode(), new_b.decode(), text_at, header,
             'longueur {} -> {}'.format(length, new_length) if new_length is not None
-            else 'second champ de l\'en-tete laisse a {} (pas une longueur)'.format(length)))
+            else 'second champ de l\'en-tete (lien de la chaine de relocation) laisse a {}'.format(length)))
     lines += ['Verification : relu par DECA, {} valeur(s) changee(s), rien d\'autre ; taille identique ({} octets).'.format(
         changed, len(patched)), 'Ecrit : {}'.format(target)]
     print('\n'.join(lines))

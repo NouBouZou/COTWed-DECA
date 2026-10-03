@@ -122,7 +122,8 @@ def stats_ui() -> bytes:
     for name, *_ in AMMO:
         ammo_rows.append([name, '2-6', 0.25, 0.75, name.split('_')[3]])
     weapon_rows = [['name', 'zoom', 'enabled']] + [[w[0], 1.5, True] for w in WEAPONS]
-    return adf_fabrique.xlsbook([('ammo', ammo_rows), ('weapons', weapon_rows)], second=8)
+    # disposition et chaine de relocation du vrai fichier (donnees avant les tables, voir adf_ecriture.py)
+    return adf_fabrique.xlsbook([('ammo', ammo_rows), ('weapons', weapon_rows)], order='donnees_avant')
 
 
 def entity(name: str) -> bytes:

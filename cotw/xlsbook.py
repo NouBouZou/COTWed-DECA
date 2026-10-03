@@ -13,6 +13,8 @@ Ajouter une ligne copiee d'un modele, sous un nouveau nom :
   StringData += nouveau nom ; Cell += copie de la cellule du nom du modele, DataIndex = nouveau nom ;
   CellIndex de la feuille += les indices de la ligne modele, la case du nom remplacee ; Rows += 1.
 Les autres cases (stats) designent les memes cellules que le modele. La ligne est ajoutee en fin de feuille.
+Les nouveaux champs pointeurs (en-tetes de chaine recopies et ajoutes) sont rattaches a la chaine de relocation
+(voir adf_ecriture.py).
 Constat en jeu (test8) : le jeu retrouve une ligne par le texte du nom ; [hypothese] l'ordre des lignes est
 indifferent.
 """
@@ -92,8 +94,9 @@ class AddRowPlan:
     cell_index: int
     template_cell: int
     new_indices: List[int]
-    second_rule: str
+    chain: str              # longueur de la chaine de relocation, avant -> apres
     new_row: int            # index de la ligne ajoutee (derniere ligne de la feuille)
+    chain_head: Optional[int]
 
 
 def add_row(adf, data: bytes, template: str, new_name: str, sheet_name: Optional[str] = None,
@@ -125,10 +128,9 @@ def add_row(adf, data: bytes, template: str, new_name: str, sheet_name: Optional
     if any(row_indices[c] != template_cell for c in m.columns):
         raise EXls('le nom du modele occupe plusieurs cellules differentes dans sa ligne')
 
-    # 1. le nouveau nom : texte en fin d'instance, en-tete ajoute a StringData
-    rule, rule_label = ed.string_rule(full['StringData'])
-    second = rule(len(new_name.encode('utf-8')))
-    string_index = ed.grow(full['StringData'], [ed.new_string(new_name.encode('utf-8'), second)])
+    # 1. le nouveau nom : texte en fin d'instance, en-tete ajoute a StringData (rattache a la chaine de relocation
+    #    par ed.result())
+    string_index = ed.grow(full['StringData'], [ed.new_string(new_name.encode('utf-8'))])
 
     # 2. la cellule du nom : copie de celle du modele, DataIndex = nouveau nom
     _pos, cell_bytes = ed.element(full['Cell'], template_cell)
@@ -147,9 +149,11 @@ def add_row(adf, data: bytes, template: str, new_name: str, sheet_name: Optional
     rows_pos, rows_member = ed.member_pos(sheet_value, 'Rows')
     ed.write_uint(rows_pos, rows_member.size, ed.read_uint(rows_pos, rows_member.size) + 1)
 
+    out = ed.result()
     plan = AddRowPlan(m, new_name, string_index, cell_index, template_cell, new_indices,
-                      '{} ({})'.format(rule_label, second), int(sheet['Rows']))
-    return ed.result(), plan
+                      '{} -> {} champs'.format(len(ed.chain), len(ed.final_chain)), int(sheet['Rows']),
+                      ed.chain[0] if ed.chain else None)
+    return out, plan
 
 
 def expected_values(old_values, plan: AddRowPlan):
@@ -188,4 +192,9 @@ def verify(decode, old_data: bytes, new_data: bytes, plan: AddRowPlan, instance:
     for j in range(len(old.table_instance)):
         if j != instance and AE.normalize(AE.plain_values(old, j)) != AE.normalize(AE.plain_values(new, j)):
             raise EXls('verification : instance {} modifiee'.format(j))
+    # chaine de relocation du fichier produit : complete, croissante, meme tete
+    try:
+        AE.verify_chain(new, new_data, instance, plan.chain_head)
+    except AE.EAdfEcriture as e:
+        raise EXls('verification : {}'.format(e))
     return rows[-1]

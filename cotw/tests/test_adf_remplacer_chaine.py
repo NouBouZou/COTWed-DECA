@@ -68,7 +68,8 @@ class TestPatch(unittest.TestCase):
         self.assertEqual(after['sheet.Rows[1].Name'].value, b'equipment_ammo_308_pt_01')
         self.assertEqual(after['sheet.Rows[0].Value'].value, 7)
         header = after['sheet.Rows[0].Name'].header
-        self.assertEqual(struct.unpack_from('<I', patched, header + 4)[0], len(NEW))   # longueur mise a jour
+        # second champ (lien de la chaine de relocation dans COTW) jamais modifie, meme s'il vaut la longueur
+        self.assertEqual(struct.unpack_from('<I', patched, header + 4)[0], len(FMJ))
 
     def test_second_field_not_a_length_is_kept(self):
         # cas reel (equipment_stats_ui.bin de COTW) : le second u32 de l'en-tete vaut 8, quelle que soit la chaine
