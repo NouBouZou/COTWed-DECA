@@ -13,7 +13,9 @@ Pour chaque fichier :
      repointe, sans element ajoute), du plus profond au plus haut ; le fichier obtenu est relu par DECA et doit
      donner exactement les memes valeurs, pour toutes les instances. C'est la meme operation que pour ajouter des
      elements, sans changer le contenu : un ecart designe un defaut de l'ecriture ;
-  3. pour une feuille XLSBook : ajout d'une ligne copiee de la premiere ligne de donnees de la premiere feuille
+  3. chaines : pour chaque tableau de chaines (String), regle du second champ de l'en-tete (longueur, longueur
+     + 1, constante) ou, a defaut, repartition des valeurs observees ;
+  4. pour une feuille XLSBook : ajout d'une ligne copiee de la premiere ligne de donnees de la premiere feuille
      (nom de la copie : MODELE_cotwed_test), controle complet de xlsbook.verify.
 
 Resultats : ok, refus (adf_ecriture refuse une disposition qu'il ne connait pas, avec la raison), ecart (la
@@ -145,6 +147,42 @@ def check_moves(decode, data: bytes, adf, max_arrays: int) -> Tuple[int, int]:
     return moved, added
 
 
+def string_arrays(adf, data: bytes, limit: int = 8) -> List[Tuple[str, str]]:
+    """[(chemin du tableau, regle du second champ ou repartition)] pour les tableaux de chaines."""
+    from deca.ff_adf import AdfValue
+    types = adf.extended_map_typedef
+    out = []
+    for i, ins in enumerate(adf.table_instance):
+        root = adf.table_instance_full_values[i]
+        if root is None or ins.size == 0:
+            continue
+        ed = AE.InstanceEditor(adf, data, i)
+
+        def walk(v, path):
+            if len(out) >= limit or not isinstance(v, AdfValue):
+                return
+            td = types.get(v.type_id)
+            if td is not None and td.metatype == AE.META_ARRAY and td.element_type_hash == AE.STRING_TYPE:
+                if isinstance(v.value, list) and v.value:
+                    try:
+                        out.append((path, ed.string_rule(v)[1]))
+                    except AE.EAdfEcriture as e:
+                        out.append((path, str(e)))
+                return
+            val = v.value
+            if isinstance(val, AdfValue):
+                walk(val, path)
+            elif isinstance(val, dict):
+                for k, x in val.items():
+                    walk(x, '{}.{}'.format(path, k))
+            elif isinstance(val, list):
+                for k, x in enumerate(val[:4]):
+                    walk(x, '{}[{}]'.format(path, k))
+
+        walk(root, ins.name.decode('utf-8', 'replace'))
+    return out
+
+
 def check_xls(decode, data: bytes, adf) -> Optional[str]:
     for i, ins in enumerate(adf.table_instance):
         if ins.type_hash != X.XLSBOOK_TYPE:
@@ -187,6 +225,8 @@ def main(argv=None):
     layouts = collections.Counter()
     totals = collections.Counter()
     unknowns = collections.Counter()
+    string_rules = collections.Counter()
+    string_examples = []
     rows_out = []
     moved_total = 0
     t0 = last = time.time()
@@ -205,6 +245,11 @@ def main(argv=None):
                 moved, added = check_moves(decode, data, adf, args.tableaux)
                 moved_total += moved
                 detail = '{} tableau(x) deplace(s), +{} octets'.format(moved, added)
+                for path, rule in string_arrays(adf, data):
+                    key = rule if not rule.startswith('second champ') else 'sans regle'
+                    string_rules[key.split(' (')[0]] += 1
+                    if (key == 'sans regle' or '(' in rule) and len(string_examples) < MAX_EXAMPLES:
+                        string_examples.append((label, path, rule))
                 xls = check_xls(decode, data, adf)
                 if xls:
                     detail += ' ; XLSBook : ' + xls
@@ -231,6 +276,10 @@ def main(argv=None):
     L += ['', '## Dispositions', '', '| Ordre dans le fichier | Fichiers |', '|---|---:|']
     L += ['| {} | {} |'.format(o, n) for o, n in layouts.most_common()]
     L += [''] + ['- {} : {}'.format(t, n) for t, n in totals.most_common()]
+    L += ['', '## Second champ des en-tetes de chaine', '', '| Regle | Tableaux de chaines |', '|---|---:|']
+    L += ['| {} | {} |'.format(r, n) for r, n in string_rules.most_common()]
+    if string_examples:
+        L += [''] + ['- `{}` {} : {}'.format(label, path, rule) for label, path, rule in string_examples]
     L += ['', '## 5 u32 inconnus de l\'en-tete (0x2c..0x40)', '', '| Valeurs | Fichiers |', '|---|---:|']
     L += ['| `{}` | {} |'.format(u, n) for u, n in unknowns.most_common(15)]
     if len(unknowns) > 15:

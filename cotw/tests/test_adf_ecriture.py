@@ -121,10 +121,14 @@ class TestInsert(unittest.TestCase):
         self.assertEqual(AE.string_rule_from([(3, 4), (5, 6)])[0](7), 8)
         fn, label = AE.string_rule_from([(3, 8), (29, 8)])
         self.assertEqual((fn(26), label), (8, 'constante 8'))
-        with self.assertRaises(AE.EAdfEcriture):
-            AE.string_rule_from([(3, 3), (5, 8)])
+        with self.assertRaisesRegex(AE.EAdfEcriture, r'8 x2 \(longueurs 5\.\.9\), 3 x1'):
+            AE.string_rule_from([(3, 3), (5, 8), (9, 8)])
         with self.assertRaises(AE.EAdfEcriture):
             AE.string_rule_from([])
+        # chaines vides a part : la regle des chaines non vides s'applique
+        fn, label = AE.string_rule_from([(0, 0), (5, 8), (29, 8)])
+        self.assertEqual(fn(26), 8)
+        self.assertIn('chaines non vides ; 1 chaine(s) vide(s) : 0', label)
 
 
 class TestAddRow(unittest.TestCase):
@@ -144,6 +148,14 @@ class TestAddRow(unittest.TestCase):
                     ed = AE.InstanceEditor(adf, out, 0)
                     _pos, header = ed.element(sd, plan.string_index)
                     self.assertEqual(struct.unpack('<II', header)[1], len(NEW) if second == 'longueur' else 8)
+
+    def test_empty_strings_with_other_second_field(self):
+        sheets = [('ammo', [['name', 'note'], [SP, ''], ['equipment_ammo_243_pt_01', 'pt']])]
+        data = F.xlsbook(sheets, second=8, second_empty=0)
+        out, plan = X.add_row(decode(data), data, SP, NEW)
+        X.verify(decode, data, out, plan)
+        self.assertEqual(rows(out)[-1], [NEW, ''])
+        self.assertIn('constante 8 (chaines non vides', plan.second_rule)
 
     def test_value_cells_are_shared_with_template(self):
         data = F.xlsbook(F.STATS_SHEETS, second=8)
@@ -278,6 +290,7 @@ class TestTools(unittest.TestCase):
             self.assertIn('donnees < noms', text)
             self.assertIn('XLSBook : ligne', text)
             self.assertIn('| `0x0 0x0 0x0 0x0 0x0` | 1 |', text)
+            self.assertIn('| constante 8 | 1 |', text)
 
 
 if __name__ == '__main__':

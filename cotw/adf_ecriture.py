@@ -279,11 +279,7 @@ class InstanceEditor:
         return struct.pack('<II', pos, second)
 
 
-def string_rule_from(pairs: List[Tuple[int, int]]) -> Tuple[Callable[[int], int], str]:
-    """pairs : (longueur du texte, second champ) des chaines existantes. Si les chaines ont toutes la meme
-    longueur, longueur et constante sont indiscernables : la longueur l'emporte (lecture de DECA)."""
-    if not pairs:
-        raise EAdfEcriture('aucune chaine existante : regle du second champ inconnue')
+def _exact_rule(pairs: List[Tuple[int, int]]) -> Optional[Tuple[Callable[[int], int], str]]:
     if all(s == n for n, s in pairs):
         return (lambda n: n), 'longueur'
     if all(s == n + 1 for n, s in pairs):
@@ -291,7 +287,43 @@ def string_rule_from(pairs: List[Tuple[int, int]]) -> Tuple[Callable[[int], int]
     if len({s for _n, s in pairs}) == 1:
         c = pairs[0][1]
         return (lambda n: c), 'constante {}'.format(c)
-    raise EAdfEcriture('second champ des chaines sans regle (ni longueur, ni constante)')
+    return None
+
+
+def describe_seconds(pairs: List[Tuple[int, int]], top: int = 8) -> str:
+    """Repartition du second champ : valeur x nombre (longueurs min..max des textes)."""
+    by_value = {}
+    for n, s in pairs:
+        by_value.setdefault(s, []).append(n)
+    parts = []
+    for s, ns in sorted(by_value.items(), key=lambda kv: -len(kv[1]))[:top]:
+        parts.append('{} x{} (longueurs {}..{})'.format(s, len(ns), min(ns), max(ns)))
+    if len(by_value) > top:
+        parts.append('{} autres valeurs'.format(len(by_value) - top))
+    return ', '.join(parts)
+
+
+def string_rule_from(pairs: List[Tuple[int, int]]) -> Tuple[Callable[[int], int], str]:
+    """pairs : (longueur du texte, second champ) des chaines existantes. Regles essayees : longueur, longueur + 1,
+    constante, sur toutes les chaines, puis sur les seules chaines non vides (une chaine vide peut avoir un second
+    champ different ; le nouveau nom n'est jamais vide). Si les chaines ont toutes la meme longueur, longueur et
+    constante sont indiscernables : la longueur l'emporte (lecture de DECA). Sinon, refus avec la repartition
+    observee : ecrire une valeur au hasard pourrait donner un fichier que le jeu lit mal sans que DECA, qui ignore
+    ce champ, le voie."""
+    if not pairs:
+        raise EAdfEcriture('aucune chaine existante : regle du second champ inconnue')
+    rule = _exact_rule(pairs)
+    if rule:
+        return rule
+    nonempty = [(n, s) for n, s in pairs if n > 0]
+    if nonempty and len(nonempty) < len(pairs):
+        rule = _exact_rule(nonempty)
+        if rule:
+            empty = sorted({s for n, s in pairs if n == 0})
+            return rule[0], '{} (chaines non vides ; {} chaine(s) vide(s) : {})'.format(
+                rule[1], len(pairs) - len(nonempty), ', '.join(str(s) for s in empty))
+    raise EAdfEcriture('second champ des chaines sans regle (ni longueur, ni constante) sur {} chaines : {}'.format(
+        len(pairs), describe_seconds(pairs)))
 
 
 def normalize(v):

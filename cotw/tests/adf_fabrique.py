@@ -157,9 +157,10 @@ def xlsbook_types() -> Types:
 
 
 def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second: Union[str, int] = 'longueur',
-                 flags: int = 1) -> bytes:
+                 flags: int = 1, second_empty: Union[None, int] = None) -> bytes:
     """Donnees d'instance XLSBook. second : 'longueur' ou une constante (8 dans COTW) pour le second champ des
-    en-tetes de chaine ; flags : valeur du champ flags des en-tetes de tableau."""
+    en-tetes de chaine ; second_empty : valeur differente pour les chaines vides ; flags : valeur du champ flags
+    des en-tetes de tableau."""
     strings: List[bytes] = []
     values: List[float] = []
     bools: List[int] = []
@@ -188,6 +189,8 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second:
     b = Blob(112)
 
     def second_of(text: bytes) -> int:
+        if not text and second_empty is not None:
+            return second_empty
         return len(text) if second == 'longueur' else int(second)
 
     text_pos = {}
@@ -221,10 +224,10 @@ def xlsbook_data(sheets: Sequence[Tuple[str, Sequence[Sequence[Cell]]]], second:
 
 
 def xlsbook(sheets, second: Union[str, int] = 'longueur', flags: int = 1, order: str = 'tables_avant',
-            extra_instance: bool = False, prefix: bytes = b'') -> bytes:
+            extra_instance: bool = False, prefix: bytes = b'', second_empty: Union[None, int] = None) -> bytes:
     """Fichier ADF XLSBook complet ; extra_instance ajoute une seconde instance (structure Meta) placee apres."""
     t = xlsbook_types()
-    instances = [('stats', XLSBOOK, xlsbook_data(sheets, second, flags))]
+    instances = [('stats', XLSBOOK, xlsbook_data(sheets, second, flags, second_empty))]
     if extra_instance:
         t.struct('Meta', T_META, 16, 8, [('Version', typedef_u32, 4, 0), ('Label', STRING, 8, 8)])
         m = Blob(16)
