@@ -12,7 +12,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 ## État au 2026-10-03
 
-**Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`) et le logo de possession, se charge, se tire et consomme ses propres munitions. Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
+**Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`), son nom et sa description, ainsi que le logo de possession. Elle se charge, se tire et consomme ses propres munitions. Plusieurs copies d'une même munition coexistent avec elle sans bloquer le changement de munition (test14). Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
 
 | Fichier | Format | Rôle |
 |---|---|---|
@@ -21,7 +21,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 | `editor/entities/…/<nom>.ee` | SARC | entité propre (`.epe` avec `item_id`, `tuning_file`, `_object_id` nouveaux ; instance du `.ammotunec` renommée) |
 | `settings/hp_settings/equipment_stats_ui.bin` | ADF (XLSBook) | stats affichées et logo de possession |
 
-**Nom et description propres** (`--nom-affiche`, `--description` ; nom vérifié en jeu, test13) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
+**Nom et description propres** (`--nom-affiche`, `--description`, vérifiés en jeu) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
 
 Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
 
