@@ -356,6 +356,11 @@ def main(argv=None):
     ap.add_argument('--stats-de', metavar='OBJET',
                     help='ajouter a equipment_stats_ui.bin une ligne copiee de celle de OBJET (ex : la source), au nom '
                          'de la nouvelle munition : stats affichees et logo de possession au magasin')
+    ap.add_argument('--stat', action='append', default=[], metavar='COLONNE=VALEUR',
+                    help='avec --stats-de : valeur d\'une colonne de la ligne de stats (option repetable), ex : '
+                         '"Penetration=17", "Expansion=20", "Class=3;4;5;6"')
+    ap.add_argument('--stats-cellules-propres', action='store_true',
+                    help='avec --stats-de : chaque case de la ligne de stats a sa propre cellule')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -372,6 +377,8 @@ def main(argv=None):
 
     if not args.nom.isascii() or not args.nom.replace('_', '').isalnum():
         raise SystemExit('ERREUR : le nom ne doit contenir que des lettres ASCII, des chiffres et des _')
+    if (args.stat or args.stats_cellules_propres) and not args.stats_de:
+        raise SystemExit('ERREUR : --stat et --stats-cellules-propres demandent --stats-de')
     if sum(bool(x) for x in (args.entite, args.entite_propre, args.entite_copie)) > 1:
         raise SystemExit('ERREUR : --entite, --entite-copie et --entite-propre sont incompatibles')
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
@@ -441,7 +448,9 @@ def main(argv=None):
             import resoudre_hashes as RH
             st_bytes, st_src = load(vfs, base, AL.STATS_UI)
             try:
-                stats_out, lines = AL.add_rows(AL.decoder(RH.FileReader(vfs)), st_bytes, [(args.stats_de, args.nom)])
+                stats_out, lines = AL.add_rows(AL.decoder(RH.FileReader(vfs)), st_bytes, [(args.stats_de, args.nom)],
+                                               values=AL.parse_values(args.stat),
+                                               own_cells=args.stats_cellules_propres)
             except (AL.X.EXls, AL.AE.EAdfEcriture) as e:
                 raise EClone('equipment_stats_ui : {}'.format(e))
             report += ['Origine : ' + st_src, 'equipment_stats_ui : ligne ajoutee, relue par DECA (original plus '

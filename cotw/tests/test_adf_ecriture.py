@@ -223,6 +223,44 @@ class TestAddRow(unittest.TestCase):
                     target, _link, count = struct.unpack_from('<III', out, s.value['CellIndex'].info_offset)
                     self.assertEqual((start + target) % 8, 0)
 
+    def test_values_get_own_cells(self):
+        data = F.xlsbook(F.STATS_SHEETS, order='donnees_avant', trailer=b'\x04\0\0\0')
+        before = AE.plain_values(decode(data))
+        out, plan = X.add_row(decode(data), data, SP, NEW,
+                              values={'expansion': '20', 'Penetration': '0,5', 'class': '3-6', '4': 'neuf'})
+        X.verify(decode, data, out, plan)
+        self.assertEqual(rows(out)[-1], [NEW, '3-6', 0.5, 20.0, 'neuf'])
+        after = AE.plain_values(decode(out))
+        # 0.5 existe deja dans ValueData (reutilise), 20 non (ajoute) ; '3-6' et 'neuf' sont des chaines nouvelles
+        self.assertEqual(len(after['ValueData']), len(before['ValueData']) + 1)
+        self.assertEqual(after['StringData'][-3:], [NEW.encode(), b'3-6', b'neuf'])
+        self.assertEqual(len(after['Cell']), len(before['Cell']) + 5)        # nom + 4 cellules propres
+        self.assertEqual(len(set(plan.new_indices)), 5)
+        self.assertEqual(plan.changed[0], "class = '3-6'")
+        # le modele n'a pas bouge
+        self.assertEqual(rows(out)[1], ['equipment_ammo_243_sp_01', '2-6', 0.25, 0.75, 'sp'])
+
+    def test_own_cells_and_bool_value(self):
+        data = F.xlsbook(F.STATS_SHEETS)
+        out, plan = X.add_row(decode(data), data, 'equipment_weapon_ba_rifle_243_01', 'equipment_weapon_test_01',
+                              values={'enabled': 'false'}, own_cells=True)
+        X.verify(decode, data, out, plan)
+        self.assertEqual(rows(out, 1)[-1], ['equipment_weapon_test_01', 1.5, False])
+        self.assertEqual(plan.new_bools, [0])                 # False absent de BoolData : ajoute
+        template = [int(x) for x in AE.plain_values(decode(out))['Sheet'][1]['CellIndex'][3:6]]
+        self.assertTrue(set(plan.new_indices).isdisjoint(template))   # aucune cellule partagee avec le modele
+
+    def test_value_errors(self):
+        data = F.xlsbook(F.STATS_SHEETS)
+        with self.assertRaisesRegex(X.EXls, 'introuvable'):
+            X.add_row(decode(data), data, SP, NEW, values={'calibre': '1'})
+        with self.assertRaisesRegex(X.EXls, 'nombre attendu'):
+            X.add_row(decode(data), data, SP, NEW, values={'expansion': 'beaucoup'})
+        with self.assertRaisesRegex(X.EXls, 'colonne du nom'):
+            X.add_row(decode(data), data, SP, NEW, values={'name': 'x'})
+        with self.assertRaisesRegex(X.EXls, 'ambigue'):
+            X.add_row(decode(data), data, SP, NEW, values={'n': '1'})
+
     def test_empty_string_cell_is_copied(self):
         sheets = [('ammo', [['name', 'note'], [SP, ''], ['equipment_ammo_243_pt_01', 'pt']])]
         data = F.xlsbook(sheets)
@@ -247,7 +285,7 @@ class TestAddRow(unittest.TestCase):
     def test_two_rows_in_sequence(self):
         data = F.xlsbook(F.STATS_SHEETS, order='donnees_avant', extra_instance=True)
         out, lines = AL.add_rows(decode, data, [(SP, NEW), ('equipment_ammo_762x54r_fmj_01', 'equipment_ammo_243_test_04')])
-        self.assertEqual(len(lines), 2)
+        self.assertEqual(len([line for line in lines if 'nouvelle ligne' in line]), 2)
         r = rows(out)
         self.assertEqual(r[-2][0], NEW)
         self.assertEqual(r[-1], ['equipment_ammo_243_test_04', '3-7', 0.5, 0.5, 'fmj'])
@@ -351,13 +389,20 @@ class TestTools(unittest.TestCase):
                      '--sortie', str(out), '--ecraser'])
             r = rows((out / 'dropzone' / Path(STATS)).read_bytes())
             self.assertEqual([x[0] for x in r[-2:]], [NEW, 'equipment_ammo_243_test_04'])
+            AL.main([project, STATS, '--ajouter', '{}=equipment_ammo_243_test_06'.format(SP), '--valeur', 'Expansion=20',
+                     '--valeur', 'penetration=17', '--valeur', 'class=3;4;5;6', '--sortie', str(Path(root) / 'mod_v')])
+            r = rows((Path(root) / 'mod_v' / 'dropzone' / Path(STATS)).read_bytes())
+            self.assertEqual(r[-1], ['equipment_ammo_243_test_06', '3;4;5;6', 17.0, 20.0, 'sp'])
 
             # 2. cloner_munition --stats-de
             out2 = Path(root) / 'mod2'
             C.main([project, '--source', SP, '--nom', NEW, '--prix', '77', '--entite-propre', '--stats-de', SP,
-                    '--sortie', str(out2)])
+                    '--stat', 'Expansion=20', '--sortie', str(out2)])
             dz = out2 / 'dropzone'
-            self.assertEqual(rows((dz / Path(STATS)).read_bytes())[-1][0], NEW)
+            self.assertEqual(rows((dz / Path(STATS)).read_bytes())[-1], [NEW, '2-6', 0.25, 20.0, 'sp'])
+            with self.assertRaises(SystemExit):        # --stat sans --stats-de
+                C.main([project, '--source', SP, '--nom', 'equipment_ammo_243_test_07', '--stat', 'Expansion=1',
+                        '--sortie', str(Path(root) / 'mod4')])
             self.assertTrue((dz / 'settings' / 'hp_settings' / 'equipment_data.bin').is_file())
             report = (out2 / 'rapport_clonage.txt').read_text(encoding='utf-8')
             self.assertIn('equipment_stats_ui : ligne ajoutee', report)

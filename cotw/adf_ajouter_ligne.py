@@ -15,11 +15,12 @@ relocation doit couvrir tous les champs pointeurs.
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\adf_ajouter_ligne.py D:\\dev\\work\\hp settings/hp_settings/equipment_stats_ui.bin ^
         --ajouter equipment_ammo_243_sp_01=equipment_ammo_243_test_03 --sortie D:\\dev\\mods\\test9
+    ... --valeur "Expansion=20" --valeur "Penetration=17" --valeur "Class=3;4;5;6"
 """
 import argparse
 import sys
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402
@@ -37,21 +38,37 @@ def decoder(reader) -> Callable[[bytes], object]:
 
 
 def add_rows(decode: Callable[[bytes], object], data: bytes, pairs: List[Tuple[str, str]],
-             sheet: Optional[str] = None) -> Tuple[bytes, List[str]]:
-    """Ajoute une ligne par couple (modele, nouveau nom), l'une apres l'autre, chacune relue par DECA."""
+             sheet: Optional[str] = None, values: Optional[Dict[str, str]] = None,
+             own_cells: bool = False) -> Tuple[bytes, List[str]]:
+    """Ajoute une ligne par couple (modele, nouveau nom), l'une apres l'autre, chacune relue par DECA. values et
+    own_cells s'appliquent a chaque ligne ajoutee (voir xlsbook.add_row)."""
     report = []
     for template, new_name in pairs:
         adf = decode(data)
         if adf is None:
             raise X.EXls('ADF illisible par DECA (types manquants ?)')
-        new_data, plan = X.add_row(adf, data, template, new_name, sheet)
+        new_data, plan = X.add_row(adf, data, template, new_name, sheet, values=values, own_cells=own_cells)
         X.verify(decode, data, new_data, plan)
         report.append('  "{}" -> nouvelle ligne "{}" : feuille "{}", ligne {} copiee en ligne {} ; chaine n.{}, '
                       'cellule n.{} ; chaine de relocation : {} ; {} -> {} octets'.format(
                           template, new_name, plan.match.sheet_name, plan.match.row, plan.new_row,
                           plan.string_index, plan.cell_index, plan.chain, len(data), len(new_data)))
+        if plan.changed:
+            report.append('    valeurs donnees : ' + ' ; '.join(plan.changed))
+        report.append('    ligne ajoutee : {}'.format(plan.expected_row))
         data = new_data
     return data, report
+
+
+def parse_values(specs: List[str]) -> Dict[str, str]:
+    """COLONNE=VALEUR (option repetable) -> {colonne: valeur} ; la colonne s'arrete au premier '='."""
+    out = {}
+    for spec in specs:
+        col, sep, val = spec.partition('=')
+        if not sep or not col.strip():
+            raise SystemExit('ERREUR : attendu COLONNE=VALEUR, recu "{}"'.format(spec))
+        out[col.strip()] = val.strip()
+    return out
 
 
 def parse_pairs(specs: List[str]) -> List[Tuple[str, str]]:
@@ -73,6 +90,11 @@ def main(argv=None):
     ap.add_argument('--ajouter', action='append', required=True, metavar='MODELE=NOUVEAU',
                     help='ligne a copier et nom de la copie (option repetable)')
     ap.add_argument('--feuille', help='nom de la feuille, si le modele figure dans plusieurs feuilles')
+    ap.add_argument('--valeur', action='append', default=[], metavar='COLONNE=VALEUR',
+                    help='valeur d\'une colonne de la nouvelle ligne (option repetable) ; COLONNE : numero, en-tete, ou '
+                         'morceau unique d\'en-tete (ex : "Penetration=17", "Class=3;4;5;6")')
+    ap.add_argument('--cellules-propres', action='store_true',
+                    help='donner a chaque case de la nouvelle ligne sa propre cellule, meme sans valeur changee')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; le fichier est ecrit dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ce fichier')
     ap.add_argument('--ecraser', action='store_true', help='remplacer le fichier s\'il existe deja dans la sortie')
@@ -88,7 +110,8 @@ def main(argv=None):
     base = Path(args.base).expanduser().resolve() if args.base else None
     data, src = C.load(vfs, base, args.fichier)
     try:
-        out, lines = add_rows(decoder(RH.FileReader(vfs)), data, pairs, args.feuille)
+        out, lines = add_rows(decoder(RH.FileReader(vfs)), data, pairs, args.feuille,
+                              parse_values(args.valeur), args.cellules_propres)
     except (X.EXls, AE.EAdfEcriture) as e:
         raise SystemExit('ERREUR : {}'.format(e))
     target.parent.mkdir(parents=True, exist_ok=True)
