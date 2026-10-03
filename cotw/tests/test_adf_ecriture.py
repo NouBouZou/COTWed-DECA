@@ -223,6 +223,26 @@ class TestAddRow(unittest.TestCase):
                     target, _link, count = struct.unpack_from('<III', out, s.value['CellIndex'].info_offset)
                     self.assertEqual((start + target) % 8, 0)
 
+    def test_row_inserted_before_empty_rows(self):
+        data = F.xlsbook(F.STATS_SHEETS_VIDES, order='donnees_avant')
+        before = rows(data)
+        self.assertEqual(X.first_empty_row(AE.plain_values(decode(data)), 0), 4)
+        out, plan = X.add_row(decode(data), data, SP, NEW, values={'Penetration': '17'})
+        X.verify(decode, data, out, plan)
+        after = rows(out)
+        self.assertEqual(plan.new_row, 4)
+        self.assertEqual(after[4], [NEW, '2-6', 17.0, 0.75, 'sp'])
+        self.assertEqual(after[:4], before[:4])
+        self.assertEqual(after[5:], before[4:])                    # les deux lignes vides suivent
+        self.assertEqual(X.first_empty_row(AE.plain_values(decode(out)), 0), 5)
+        # deux lignes : la seconde va apres la premiere, toujours avant les lignes vides
+        out2, lines = AL.add_rows(decode, data, [(SP, NEW), ('equipment_ammo_243_pt_01', 'equipment_ammo_243_test_04')])
+        self.assertEqual([r[0] for r in rows(out2)[4:8]], [NEW, 'equipment_ammo_243_test_04', True, True])
+        # verification : une ligne placee apres les lignes vides est refusee
+        broken_plan = X.AddRowPlan(**{**plan.__dict__, 'new_row': 6})
+        with self.assertRaises(X.EXls):
+            X.verify(decode, data, out, broken_plan)
+
     def test_values_get_own_cells(self):
         data = F.xlsbook(F.STATS_SHEETS, order='donnees_avant', trailer=b'\x04\0\0\0')
         before = AE.plain_values(decode(data))
@@ -335,7 +355,7 @@ class TestAddRow(unittest.TestCase):
     def test_deca_xlsx_export_sees_new_row(self):
         import openpyxl
         from deca.export_import_adf import adf_export_xlsx_0x0b73315d
-        data = F.xlsbook(F.STATS_SHEETS)
+        data = F.xlsbook(F.STATS_SHEETS_VIDES)
         out, _plan = X.add_row(decode(data), data, SP, NEW)
 
         class Logger:
@@ -357,9 +377,10 @@ class TestAddRow(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='cotw_xlsx_') as tmp:
             fn = adf_export_xlsx_0x0b73315d(Vfs(), Db(), Node(), tmp + '/', True)
             ws = openpyxl.load_workbook(fn)['ammo']
-            last = [c.value for c in list(ws.iter_rows())[-1]]
-            self.assertEqual(last, [NEW, '2-6', 0.25, 0.75, 'sp'])
-            self.assertEqual(ws.max_row, 5)
+            xrows = [[c.value for c in r] for r in ws.iter_rows()]
+            self.assertEqual(xrows[4], [NEW, '2-6', 0.25, 0.75, 'sp'])   # avant les deux lignes vides
+            self.assertEqual(xrows[5:], [[True] * 5, [True] * 5])
+            self.assertEqual(ws.max_row, 7)
 
 
 class TestTools(unittest.TestCase):

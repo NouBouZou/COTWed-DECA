@@ -278,10 +278,11 @@ class InstanceEditor:
         pos = offset + i * size
         return pos, bytes(self.buf[pos:pos + size])
 
-    def grow(self, array_value, new_elements: List[bytes]) -> int:
-        """Recopie le tableau a la fin de l'instance, suivi de new_elements, et repointe son en-tete. Les champs
-        pointeurs des elements recopies et ajoutes sont notes pour la chaine. Renvoie l'index du premier nouvel
-        element. Avec new_elements vide : simple deplacement."""
+    def grow(self, array_value, new_elements: List[bytes], insert_at: Optional[int] = None) -> int:
+        """Recopie le tableau a la fin de l'instance avec new_elements, et repointe son en-tete. Les nouveaux
+        elements vont a la fin, ou avant l'element insert_at (les suivants sont decales). Les champs pointeurs des
+        elements recopies et ajoutes sont notes pour la chaine. Renvoie l'index du premier nouvel element. Avec
+        new_elements vide : simple deplacement."""
         header, elem_type, size, align = self.array(array_value)
         offset, count = self.array_state(header)
         for e in new_elements:
@@ -290,8 +291,12 @@ class InstanceEditor:
         old = bytes(self.buf[offset:offset + count * size]) if count else b''
         if len(old) != count * size:
             raise EAdfEcriture('tableau hors de l\'instance')
+        at = count if insert_at is None else insert_at
+        if not 0 <= at <= count:
+            raise EAdfEcriture('insertion en {} hors du tableau ({} elements)'.format(at, count))
         # donnees de tableau alignees sur 8 (au moins), comme tous les tableaux des fichiers du jeu
-        new_offset = self.append(old + b''.join(new_elements), max(align, ARRAY_DATA_ALIGN))
+        payload = old[:at * size] + b''.join(new_elements) + old[at * size:]
+        new_offset = self.append(payload, max(align, ARRAY_DATA_ALIGN))
         inner = type_pointer_fields(self.types, self._prims, elem_type)
         for i in range(count + len(new_elements)):
             self.new_fields += [new_offset + i * size + f for f in inner]
@@ -299,7 +304,7 @@ class InstanceEditor:
         struct.pack_into('<I', self.buf, header + 8, count + len(new_elements))
         if header not in self.fields:
             self.fields.append(header)
-        return count
+        return at
 
     # --- chaines ---
     def new_string(self, text: bytes) -> bytes:

@@ -276,3 +276,9 @@ STATS_SHEETS = [
         ['equipment_weapon_ba_rifle_243_01', 1.5, True],
     ]),
 ]
+
+# Comme la feuille ammo du jeu : deux lignes vides apres les objets (case vide = booleen True, Type 0)
+STATS_SHEETS_VIDES = [
+    ('ammo', STATS_SHEETS[0][1] + [[True] * 5, [True] * 5]),
+    STATS_SHEETS[1],
+]

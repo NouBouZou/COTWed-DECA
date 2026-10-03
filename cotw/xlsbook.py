@@ -14,7 +14,13 @@ Ajouter une ligne copiee d'un modele, sous un nouveau nom :
   CellIndex de la feuille += les indices de la ligne modele, la case du nom remplacee ; Rows += 1.
 Les autres cases (stats) designent les memes cellules que le modele, sauf celles dont on donne la valeur
 (values) : elles recoivent leur propre cellule (et leur valeur, ajoutee a ValueData, StringData ou BoolData si
-elle n'y est pas deja). La ligne est ajoutee en fin de feuille.
+elle n'y est pas deja).
+
+Position de la ligne : AVANT LA PREMIERE LIGNE VIDE de la feuille (premiere case qui n'est pas un texte), sinon
+en fin de feuille. Constat en jeu (test11 et test12, 2026-10-03) : la lecture des stats s'arrete a la premiere
+ligne vide. La feuille ammo d'equipment_stats_ui.bin finit par 2 lignes vides : une ligne ajoutee apres elles
+donne le logo de possession, mais pas de stats ; inseree avant elles, elle donne les deux. Une case vide est une
+cellule booleenne (Type 0, DataIndex 0, BoolData[0] = 1), que DECA affiche True.
 Les nouveaux champs pointeurs (en-tetes de chaine recopies et ajoutes) sont rattaches a la chaine de relocation
 (voir adf_ecriture.py).
 Constat en jeu (test8) : le jeu retrouve une ligne par le texte du nom ; [hypothese] l'ordre des lignes est
@@ -59,6 +65,16 @@ def cell_value(values, cell):
     return bytes(v).decode('utf-8', 'replace') if t == CELL_STRING else (bool(v) if t == CELL_BOOL else float(v))
 
 
+def first_empty_row(values, sheet_index: int) -> int:
+    """Index de la premiere ligne (apres l'en-tete) dont la premiere case n'est pas un texte non vide, ou nombre
+    de lignes s'il n'y en a pas : c'est la que le jeu cesse de lire les stats."""
+    rows = sheet_rows(values, sheet_index)
+    for r in range(1, len(rows)):
+        if not (isinstance(rows[r][0], str) and rows[r][0].strip()):
+            return r
+    return len(rows)
+
+
 def sheet_rows(values, sheet_index: int) -> List[List[object]]:
     s = values['Sheet'][sheet_index]
     cols, rows, ci = int(s['Cols']), int(s['Rows']), s['CellIndex']
@@ -99,7 +115,7 @@ class AddRowPlan:
     template_cell: int              # cellule du nom du modele
     new_indices: List[int]          # CellIndex de la ligne ajoutee
     chain: str                      # longueur de la chaine de relocation, avant -> apres
-    new_row: int                    # index de la ligne ajoutee (derniere ligne de la feuille)
+    new_row: int                    # index de la ligne ajoutee (avant la premiere ligne vide)
     chain_head: Optional[int]
     new_strings: List[bytes] = field(default_factory=list)            # ajoutes a StringData (le nom d'abord)
     new_values: List[float] = field(default_factory=list)             # ajoutes a ValueData (float32)
@@ -249,19 +265,21 @@ def add_row(adf, data: bytes, template: str, new_name: str, sheet_name: Optional
     cell_index = ed.grow(full['Cell'], [cell_with(tc, di) for tc, di in new_cells])
     own_index = {c: cell_index + 1 + k for k, (c, _t, _i) in enumerate(cell_specs)}
 
-    # 3. la ligne : indices du modele, cases du nom et des cellules propres remplacees ; puis Rows += 1
+    # 3. la ligne : indices du modele, cases du nom et des cellules propres remplacees, inseree avant la premiere
+    #    ligne vide (la lecture des stats s'y arrete) ; puis Rows += 1
     new_indices = [cell_index if c in m.columns else own_index.get(c, x) for c, x in enumerate(row_indices)]
+    new_row = first_empty_row(book, m.sheet)
     sheet_value = full['Sheet'].value[m.sheet]
     ci_value = sheet_value.value['CellIndex']
     _h, ci_type, ci_size, _a = ed.array(ci_value)
-    ed.grow(ci_value, [x.to_bytes(ci_size, 'little') for x in new_indices])
+    ed.grow(ci_value, [x.to_bytes(ci_size, 'little') for x in new_indices], insert_at=new_row * cols)
     rows_pos, rows_member = ed.member_pos(sheet_value, 'Rows')
     ed.write_uint(rows_pos, rows_member.size, ed.read_uint(rows_pos, rows_member.size) + 1)
 
     expected_row = [new_name if c in m.columns else wanted.get(c, template_row[c]) for c in range(cols)]
     out = ed.result()
     plan = AddRowPlan(m, new_name, string_index, cell_index, template_cell, new_indices,
-                      '{} -> {} champs'.format(len(ed.chain), len(ed.final_chain)), int(sheet['Rows']),
+                      '{} -> {} champs'.format(len(ed.chain), len(ed.final_chain)), new_row,
                       ed.chain[0] if ed.chain else None, new_strings, new_values, new_bools, new_cells,
                       expected_row, ['{} = {!r}'.format(header[c], wanted[c]) for c in sorted(wanted)])
     return out, plan
@@ -283,7 +301,8 @@ def expected_values(old_values, plan: AddRowPlan):
     s = exp['Sheet'][plan.match.sheet]
     old_ci = list(s['CellIndex'])                       # DECA rend une liste (scalaires numpy ou entiers)
     conv = type(old_ci[0]) if old_ci else int
-    s['CellIndex'] = old_ci + [conv(x) for x in plan.new_indices]
+    at = plan.new_row * int(s['Cols'])
+    s['CellIndex'] = old_ci[:at] + [conv(x) for x in plan.new_indices] + old_ci[at:]
     s['Rows'] = type(s['Rows'])(int(s['Rows']) + 1)
     return exp
 
@@ -299,10 +318,15 @@ def verify(decode, old_data: bytes, new_data: bytes, plan: AddRowPlan, instance:
     if AE.normalize(expected_values(ov, plan)) != AE.normalize(nv):
         raise EXls('verification : la relecture differe de l\'original plus la ligne ajoutee')
     rows = sheet_rows(nv, plan.match.sheet)
-    added = rows[-1]
+    added = rows[plan.new_row]
     for c, (want, got) in enumerate(zip(plan.expected_row, added)):
         if AE.normalize(want) != AE.normalize(got):
             raise EXls('verification : colonne {} de la ligne ajoutee : {!r} au lieu de {!r}'.format(c, got, want))
+    old_rows = sheet_rows(ov, plan.match.sheet)
+    if AE.normalize(rows[:plan.new_row] + rows[plan.new_row + 1:]) != AE.normalize(old_rows):
+        raise EXls('verification : les autres lignes de la feuille ont change')
+    if first_empty_row(nv, plan.match.sheet) <= plan.new_row:
+        raise EXls('verification : la ligne ajoutee est apres une ligne vide (le jeu ne lirait pas ses stats)')
     for j in range(len(old.table_instance)):
         if j != instance and AE.normalize(AE.plain_values(old, j)) != AE.normalize(AE.plain_values(new, j)):
             raise EXls('verification : instance {} modifiee'.format(j))
@@ -311,4 +335,4 @@ def verify(decode, old_data: bytes, new_data: bytes, plan: AddRowPlan, instance:
         AE.verify_chain(new, new_data, instance, plan.chain_head)
     except AE.EAdfEcriture as e:
         raise EXls('verification : {}'.format(e))
-    return rows[-1]
+    return added

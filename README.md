@@ -12,7 +12,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 ## État au 2026-10-01
 
-**Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses stats et le logo de possession, se charge, se tire et consomme ses propres munitions. Pour cela, quatre fichiers sont déposés dans `dropzone` :
+**Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`) et le logo de possession, se charge, se tire et consomme ses propres munitions. Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
 
 | Fichier | Format | Rôle |
 |---|---|---|
@@ -21,7 +21,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 | `editor/entities/…/<nom>.ee` | SARC | entité propre (`.epe` avec `item_id`, `tuning_file`, `_object_id` nouveaux) |
 | `settings/hp_settings/equipment_stats_ui.bin` | ADF (XLSBook) | stats affichées et logo de possession |
 
-Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammotunec` (balistique). La ligne de stats, jusqu'ici réaffectée depuis un autre objet, peut désormais être **ajoutée** (`--stats-de`) ; reste à le confirmer en jeu (essai test9).
+Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
 
 ## Contenu
 
