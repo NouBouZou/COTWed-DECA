@@ -294,10 +294,18 @@ class InstanceEditor:
         at = count if insert_at is None else insert_at
         if not 0 <= at <= count:
             raise EAdfEcriture('insertion en {} hors du tableau ({} elements)'.format(at, count))
+        inner = type_pointer_fields(self.types, self._prims, elem_type)
+        if at == count and count and offset + count * size == len(self.buf):
+            # le tableau finit exactement a la fin de l'instance (ex : le bloc Text de 24,7 Mo des .stringlookup) :
+            # on l'allonge sur place, sans le recopier
+            self.buf += b''.join(new_elements)
+            for i in range(count, count + len(new_elements)):
+                self.new_fields += [offset + i * size + f for f in inner]
+            struct.pack_into('<I', self.buf, header + 8, count + len(new_elements))
+            return count
         # donnees de tableau alignees sur 8 (au moins), comme tous les tableaux des fichiers du jeu
         payload = old[:at * size] + b''.join(new_elements) + old[at * size:]
         new_offset = self.append(payload, max(align, ARRAY_DATA_ALIGN))
-        inner = type_pointer_fields(self.types, self._prims, elem_type)
         for i in range(count + len(new_elements)):
             self.new_fields += [new_offset + i * size + f for f in inner]
         struct.pack_into('<I', self.buf, header, new_offset)
@@ -305,6 +313,29 @@ class InstanceEditor:
         if header not in self.fields:
             self.fields.append(header)
         return at
+
+    def replace(self, array_value, elements: List[bytes]) -> int:
+        """Ecrit a la fin de l'instance un tableau forme de elements (liste complete, dans l'ordre voulu) et y
+        repointe l'en-tete. Sert a inserer plusieurs elements a des positions differentes (ex : paires triees).
+        Les champs pointeurs des elements sont notes pour la chaine. Renvoie l'offset des nouvelles donnees."""
+        header, elem_type, size, align = self.array(array_value)
+        for e in elements:
+            if len(e) != size:
+                raise EAdfEcriture('element de {} octets pour un tableau d\'elements de {} octets'.format(len(e), size))
+        new_offset = self.append(b''.join(elements), max(align, ARRAY_DATA_ALIGN))
+        inner = type_pointer_fields(self.types, self._prims, elem_type)
+        for i in range(len(elements)):
+            self.new_fields += [new_offset + i * size + f for f in inner]
+        struct.pack_into('<I', self.buf, header, new_offset if elements else 0)
+        struct.pack_into('<I', self.buf, header + 8, len(elements))
+        if header not in self.fields:
+            self.fields.append(header)
+        return new_offset
+
+    def new_array(self, payload: bytes, align: int = ARRAY_DATA_ALIGN) -> int:
+        """Donnees d'un nouveau tableau, ecrites a la fin de l'instance ; renvoie leur offset (a mettre dans un
+        en-tete de tableau, dont le lien sera calcule par result())."""
+        return self.append(payload, max(align, ARRAY_DATA_ALIGN))
 
     # --- chaines ---
     def new_string(self, text: bytes) -> bytes:

@@ -56,6 +56,10 @@ class Types:
         self.name(name)
         self.specs.append((3, size, align, type_hash, name, element, None))
 
+    def stringhash(self, name, type_hash, size=4):
+        self.name(name)
+        self.specs.append((9, size, size, type_hash, name, 0x48c5294d, None))
+
     def blob(self) -> bytes:
         out = b''
         for metatype, size, align, type_hash, name, element, members in self.specs:
@@ -282,3 +286,91 @@ STATS_SHEETS_VIDES = [
     ('ammo', STATS_SHEETS[0][1] + [[True] * 5, [True] * 5]),
     STATS_SHEETS[1],
 ]
+
+
+# --- tables de traduction (.stringlookup), types et hash releves dans string_ids.stringlookup du jeu ---
+T_SL, T_LANG, T_PAIR, T_LINE, T_SUB, T_SH4 = 0xc7254276, 0xdd2b5629, 0xdee51fbe, 0x1912f7ff, 0xbb6ad12b, 0xc03f64bf
+A_LANG, A_PAIR, A_LINE, A_SUB, A_S8 = 0xdd5e6bf8, 0xaa4302de, 0xef187b6f, 0x56aaaf0d, 0x00a1294f
+
+
+def stringlookup_types() -> Types:
+    from deca.ff_adf import typedef_f32, typedef_s8
+    t = Types()
+    t.struct('StringLookup', T_SL, 32, 8, [('Languages', A_LANG, 16, 0), ('Text', A_S8, 16, 16)])
+    t.array('A[LanguageStringLookup]', A_LANG, T_LANG)
+    t.struct('LanguageStringLookup', T_LANG, 32, 8, [('SortedPairs', A_PAIR, 16, 0), ('SortedDialogueLines', A_LINE, 16, 16)])
+    t.array('A[HashPropertiesPair]', A_PAIR, T_PAIR)
+    t.struct('HashPropertiesPair', T_PAIR, 8, 4, [('Hash', typedef_u32, 4, 0), ('TextOffset', typedef_u32, 4, 4)])
+    t.array('A[DialogueLine]', A_LINE, T_LINE)
+    t.struct('DialogueLine', T_LINE, 40, 8, [
+        ('Hash', typedef_u32, 4, 0), ('NameOffset', typedef_u32, 4, 4), ('Subtitles', A_SUB, 16, 8),
+        ('FMODEvent', typedef_u32, 4, 24), ('IncomingCall', T_SH4, 4, 28), ('CharacterName', T_SH4, 4, 32),
+        ('Flags', typedef_u32, 4, 36)])
+    t.array('A[Subtitle]', A_SUB, T_SUB)
+    t.struct('Subtitle', T_SUB, 12, 4, [('LineHash', typedef_u32, 4, 0), ('Start', typedef_f32, 4, 4),
+                                        ('Duration', typedef_f32, 4, 8)])
+    t.stringhash('StringHash_48c5294d_4', T_SH4)
+    t.array('A[int8]', A_S8, typedef_s8)
+    return t
+
+
+def stringlookup(entries: Dict[str, Sequence[str]], trailer: bytes = b'\x04\0\0\0', text_last: bool = True) -> bytes:
+    """Table de traduction comme string_ids.stringlookup : entries = {cle: [texte par langue]} ; paires triees par
+    hash32 de la cle, une ligne de dialogue par cle (sous-titre propre), bloc Text a la fin de l'instance
+    (text_last=False : au debut des donnees, pour le cas ou il faut le recopier pour l'allonger)."""
+    n_lang = len(next(iter(entries.values())))
+    keys = sorted(entries, key=lambda k: int(hash32_func(k.encode())))
+    text = bytearray()
+    offs: Dict[str, int] = {}
+
+    def put(s: str) -> int:
+        if s not in offs:
+            offs[s] = len(text)
+            text.extend(s.encode('utf-8') + b'\0')
+        return offs[s]
+
+    for k in keys:
+        put(k)
+        for s in entries[k]:
+            put(s)
+    b = Blob(32)
+    text_pos = None if text_last else b.alloc(bytes(text), 8)
+    langs = b.alloc(b'\0' * 32 * n_lang, 8)
+    b.pointer(0, langs)
+    b.put(8, '<II', n_lang, 0)
+    for li in range(n_lang):
+        lp = langs + 32 * li
+        pairs = b.alloc(b''.join(struct.pack('<II', int(hash32_func(k.encode())), offs[entries[k][li]]) for k in keys), 8)
+        b.pointer(lp, pairs)
+        b.put(lp + 8, '<II', len(keys), 0)
+        lines = b.alloc(b'\0' * 40 * len(keys), 8)
+        b.pointer(lp + 16, lines)
+        b.put(lp + 24, '<II', len(keys), 0)
+        for i, k in enumerate(keys):
+            h = int(hash32_func(k.encode()))
+            sub = b.alloc(struct.pack('<Iff', h, 0.0, -1.0), 8)
+            p = lines + 40 * i
+            b.put(p, '<II', h, offs[k])
+            b.pointer(p + 8, sub)
+            b.put(p + 16, '<II', 1, 0)
+            b.put(p + 24, '<IIII', 1, 0, 0xdeadbeef, 1219670572)
+    if text_last:
+        text_pos = b.alloc(bytes(text), 8)           # le bloc Text finit l'instance, comme dans le jeu
+    b.pointer(16, text_pos)
+    b.put(24, '<II', len(text), 0)
+    b.link()
+    return build(stringlookup_types(), [('stringlookup', T_SL, bytes(b.b))], order='donnees_avant',
+                 comment=b'StringLookup.adf in THP ', trailer=trailer)
+
+
+LOOKUP_ENTRIES = {
+    'equipment_ammo_243_sp_name': ['.243 SOFT-POINT BULLET', 'BALLES À TÊTE MOLLE .243', 'TMG .243 WINCHESTER'],
+    'equipment_ammo_243_sp_description': ['Soft-point bullets.', 'Balles à tête molle.', 'Teilmantel.'],
+    'equipment_ammo_270_sp_name': ['.270 SOFT-POINT', 'BALLES À TÊTE MOLLE .270', 'TMG .270'],
+    'ui_menu_store': ['STORE', 'MAGASIN', 'LADEN'],
+}
+
+# les 10 langues du jeu (stringlookup.LANGUES), pour les outils qui attendent un texte par langue du jeu
+LANGUES_JEU = ['en', 'fr', 'de', 'es', 'ru', 'pl', 'ja', 'pt', 'cs', 'zh']
+LOOKUP_ENTRIES_10 = {k: [v[i] if i < len(v) else '{} ({})'.format(v[0], code) for i, code in enumerate(LANGUES_JEU)]
+                     for k, v in LOOKUP_ENTRIES.items()}

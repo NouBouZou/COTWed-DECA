@@ -22,12 +22,19 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
   --entite-propre  une entite .ee propre a la nouvelle munition (entite.py) : sans elle, l'arme charge les
                    munitions de la source ;
   --stats-de OBJET une ligne d'equipment_stats_ui.bin copiee de celle d'OBJET (adf_ajouter_ligne.py) : sans
-                   elle, ni stats affichees ni logo de possession au magasin.
+                   elle, ni stats affichees ni logo de possession au magasin ;
+  --nom-affiche, --description
+                   nom et description propres : cles de traduction <nom>_name et <nom>_description ajoutees a
+                   string_ids.stringlookup (stringlookup.py), dans les 10 langues, et designees par display_name
+                   et display_description de la nouvelle munition. Un texte sans prefixe vaut pour toutes les
+                   langues ; "en=TEXT" (option repetee) donne celui d'une langue.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
         --nom equipment_ammo_243_test_01 --libelle ".243 Test" --prix 10 ^
-        --entite-propre --stats-de equipment_ammo_243_sp_01 --sortie D:\\dev\\mods\\munition_test
+        --entite-propre --stats-de equipment_ammo_243_sp_01 ^
+        --nom-affiche "BALLES DE TEST .243" --nom-affiche "en=.243 TEST BULLET" ^
+        --description "Munition de test." --sortie D:\\dev\\mods\\munition_test
 
 Puis copier le CONTENU de D:\\dev\\mods\\munition_test\\dropzone dans le dossier dropzone du jeu.
 Pour annuler : supprimer ces fichiers du dropzone.
@@ -59,6 +66,8 @@ H_WEAPONS = W.name_hash('weapons')              # 0xc04b7961, categorie des arme
 H_SPAWN_NAME = 0xf71c2a21                       # nom de l'objet dans spawn_ammunition_defs
 H_TAGS = W.name_hash('tags')                    # 0x54697e8f
 H_ENTITY = W.name_hash('entity')                # 0x399ed0ed
+H_DISPLAY_NAME = W.name_hash('display_name')    # 0x94142e13, cle de traduction du nom affiche
+H_DISPLAY_DESC = W.name_hash('display_description')  # 0x041df969, cle de traduction de la description
 
 
 class EClone(Exception):
@@ -297,6 +306,27 @@ def clone_spawn(tree: Rtpc, source: str, new: str, entity: Optional[str] = None)
     return parent, item, report
 
 
+def display_keys(item: RtpcNode, new: str, name_specs: Sequence[str], desc_specs: Sequence[str]):
+    """--nom-affiche / --description : la nouvelle munition designe des cles de traduction propres, <new>_name et
+    <new>_description ; les cles de la source servent de modele aux lignes de dialogue de string_ids. Renvoie les
+    entrees a ajouter a string_ids.stringlookup et les lignes du rapport."""
+    import stringlookup as SL
+    entries, report = [], []
+    for specs, prop, suffix, what in ((name_specs, H_DISPLAY_NAME, '_name', 'display_name'),
+                                      (desc_specs, H_DISPLAY_DESC, '_description', 'display_description')):
+        if not specs:
+            continue
+        try:
+            texts = SL.textes_par_langue(specs)
+        except SL.EStringLookup as e:
+            raise EClone('{} : {}'.format(what, e))
+        key = new + suffix
+        old = set_str(item, prop, key, what)
+        entries.append(SL.Entree(key, texts, old))
+        report.append('  {} : "{}" -> "{}"'.format(what, old, key))
+    return entries, report
+
+
 def verify_addition(original_bytes: bytes, produced_bytes: bytes, new_hash: int) -> None:
     """
     Relit le fichier produit, retire le nouvel objet et exige un arbre identique a l'original :
@@ -361,6 +391,11 @@ def main(argv=None):
                          '"Penetration=17", "Expansion=20", "Class=3;4;5;6"')
     ap.add_argument('--stats-cellules-propres', action='store_true',
                     help='avec --stats-de : chaque case de la ligne de stats a sa propre cellule')
+    ap.add_argument('--nom-affiche', action='append', default=[], metavar='[LANGUE=]TEXTE',
+                    help='nom affiche en jeu : texte pour toutes les langues, puis au besoin "en=TEXT" pour une '
+                         'langue (option repetable ; langues : en, fr, de, es, ru, pl, ja, pt, cs, zh)')
+    ap.add_argument('--description', action='append', default=[], metavar='[LANGUE=]TEXTE',
+                    help='description affichee en jeu, meme forme que --nom-affiche')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -383,7 +418,10 @@ def main(argv=None):
         raise SystemExit('ERREUR : --entite, --entite-copie et --entite-propre sont incompatibles')
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     import adf_ajouter_ligne as AL
-    targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO) + ((AL.STATS_UI,) if args.stats_de else ())}
+    import stringlookup as SL
+    texts = bool(args.nom_affiche or args.description)
+    targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO) + ((AL.STATS_UI,) if args.stats_de else ())
+               + ((SL.STRING_IDS,) if texts else ())}
     existing = [str(p) for p in targets.values() if p.exists()]
     if existing and not args.ecraser:
         raise SystemExit('ERREUR : fichiers deja presents (option --ecraser pour les remplacer) : {}'.format(existing))
@@ -417,6 +455,8 @@ def main(argv=None):
             _, field, value = parse_field_spec(spec, with_item=False)
             old, new = set_field(eq_item, field, value, 'nouvelle munition')
             report.append('  champ {} : {} -> {}'.format(field, old, new))
+        text_entries, lines = display_keys(eq_item, args.nom, args.nom_affiche, args.description)
+        report += lines
         entity_out = None
         entity_path = args.entite
         if args.entite_propre or args.entite_copie:
@@ -455,6 +495,19 @@ def main(argv=None):
                 raise EClone('equipment_stats_ui : {}'.format(e))
             report += ['Origine : ' + st_src, 'equipment_stats_ui : ligne ajoutee, relue par DECA (original plus '
                        'cette ligne, rien d\'autre)'] + lines
+        strings_out = None
+        if text_entries:
+            si_bytes, si_src = load(vfs, base, SL.STRING_IDS)
+            try:
+                strings_out, plan = SL.add(SL.decode, si_bytes, text_entries)
+                SL.verify(SL.decode, si_bytes, strings_out, plan)
+            except (SL.EStringLookup, SL.AE.EAdfEcriture) as e:
+                raise EClone('string_ids : {}'.format(e))
+            report += ['Origine : ' + si_src, 'string_ids : cles ajoutees dans les {} langues, relues (textes '
+                       'd\'origine intacts, paires triees, chaine de relocation {})'.format(len(SL.LANGUES), plan.chain)]
+            for e in text_entries:
+                report.append('  {} (modele {}) :'.format(e.cle, e.modele))
+                report += ['    {} : {}'.format(code, t) for code, t in zip(SL.LANGUES, e.textes)]
     except EClone as e:
         raise SystemExit('ERREUR : {}'.format(e))
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.']
@@ -464,6 +517,8 @@ def main(argv=None):
         outputs.append((entity_path, entity_out))
     if stats_out is not None:
         outputs.append((AL.STATS_UI, stats_out))
+    if strings_out is not None:
+        outputs.append((SL.STRING_IDS, strings_out))
     for v_path, data in outputs:
         targets[v_path].parent.mkdir(parents=True, exist_ok=True)
         targets[v_path].write_bytes(data)

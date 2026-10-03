@@ -10,7 +10,7 @@ Projet personnel, privé pour l'instant.
 Ce projet part de [DECA](https://github.com/kk49/deca), de Krzysztof Kamieniecki (kk49), sous licence MIT : branche `develop`, commit `9231177` (2025-12-10).
 DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concentre sur COTW. Le README d'origine est conservé dans [`docs/README_DECA.md`](docs/README_DECA.md).
 
-## État au 2026-10-01
+## État au 2026-10-03
 
 **Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`) et le logo de possession, se charge, se tire et consomme ses propres munitions. Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
 
@@ -21,7 +21,9 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 | `editor/entities/…/<nom>.ee` | SARC | entité propre (`.epe` avec `item_id`, `tuning_file`, `_object_id` nouveaux) |
 | `settings/hp_settings/equipment_stats_ui.bin` | ADF (XLSBook) | stats affichées et logo de possession |
 
-Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
+**Nom et description propres** (`--nom-affiche`, `--description`, à confirmer en jeu) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
+
+Encore empruntés à la munition source : l'icône et le `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
 
 ## Contenu
 
@@ -49,10 +51,11 @@ Encore empruntés à la munition source : le nom affiché, l'icône et le `.ammo
 ### Outils COTW (`cotw/`)
 | Outil | Rôle |
 |---|---|
-| `cloner_munition.py` | ajoute une munition copiée d'une autre (equipment_data, spawn defs, entité propre, ligne de stats, témoin de prix) |
+| `cloner_munition.py` | ajoute une munition copiée d'une autre (equipment_data, spawn defs, entité propre, ligne de stats, nom et description, témoin de prix) |
 | `entite.py`, `sarc.py` | copie d'entité `.ee` ; lecture et écriture SARC v2/v3 |
 | `adf_ecriture.py`, `xlsbook.py` | agrandit des tableaux d'un ADF sans déplacer les données existantes ; ajoute une ligne à une feuille XLSBook |
 | `adf_ajouter_ligne.py` | ajoute une ligne à `equipment_stats_ui.bin` (ou une autre feuille XLSBook), copiée de celle d'un objet existant |
+| `stringlookup.py`, `traduction.py` | lit les textes affichés (noms, descriptions) dans les 10 langues ; ajoute des clés de traduction sans rien écraser |
 | `adf_remplacer_chaine.py` | remplace une chaîne d'un ADF sur place |
 | `rtpc_dump.py`, `adf_dump.py`, `sarc_dump.py` | affichage lisible des formats, noms résolus |
 | `comparer_objets.py`, `separateurs.py`, `liste_objets.py` | comparaison d'objets d'`equipment_data` |
