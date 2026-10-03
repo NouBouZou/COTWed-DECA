@@ -21,7 +21,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 | `editor/entities/…/<nom>.ee` | SARC | entité propre (`.epe` avec `item_id`, `tuning_file`, `_object_id` nouveaux) |
 | `settings/hp_settings/equipment_stats_ui.bin` | ADF (XLSBook) | stats affichées et logo de possession |
 
-**Nom et description propres** (`--nom-affiche`, `--description`, à confirmer en jeu) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
+**Nom et description propres** (`--nom-affiche`, `--description` ; nom vérifié en jeu, test13) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
 
 Encore empruntés à la munition source : l'icône et le `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
 
