@@ -11,8 +11,9 @@ Disposition lue par deca.ff_adf.Adf.deserialize (voir aussi adf_minimal.py) :
   StringHash: chaine terminee par 0, u64 hash ;
   instances : u32 hash du nom, u32 type, u32 offset, u32 taille, u64 index du nom.
 
-Deux dispositions : "tables_avant" (tables puis donnees, comme adf_minimal) et "donnees_avant" (donnees puis
-tables, comme equipment_stats_ui.bin du jeu) : adf_ecriture doit accepter les deux.
+Trois dispositions : "tables_avant" (tables puis donnees, comme adf_minimal), "donnees_avant" (donnees puis
+tables, comme equipment_stats_ui.bin du jeu) : adf_ecriture doit accepter les deux ; "noms_a_la_fin" (donnees,
+instances, types, StringHash, noms : la disposition des .ammotunec du jeu, dont on renomme l'instance).
 
 Chaine de relocation (comme dans le jeu) : dans chaque champ pointeur (en-tete de chaine ou de tableau), le u32 qui
 suit la cible est la distance au champ pointeur suivant, 0 a la fin ; un tableau vide (cible 0) n'en fait pas
@@ -149,6 +150,17 @@ def build(types: Types, instances: Sequence[Tuple[str, int, bytes]], stringhashe
         datas()
         _align(out, 16)
         tables()
+    elif order == 'noms_a_la_fin':
+        datas()
+        _align(out, 8)
+        pos['instances'] = len(out)
+        out.extend(b'\0' * (24 * len(instances)))
+        pos['types'] = len(out)
+        out.extend(typedefs)
+        pos['sh'] = len(out)
+        out.extend(sh)
+        pos['noms'] = len(out)
+        out.extend(name_table)
     else:
         raise ValueError(order)
     for i, (name, type_hash, d) in enumerate(instances):
@@ -374,3 +386,25 @@ LOOKUP_ENTRIES = {
 LANGUES_JEU = ['en', 'fr', 'de', 'es', 'ru', 'pl', 'ja', 'pt', 'cs', 'zh']
 LOOKUP_ENTRIES_10 = {k: [v[i] if i < len(v) else '{} ({})'.format(v[0], code) for i, code in enumerate(LANGUES_JEU)]
                      for k, v in LOOKUP_ENTRIES.items()}
+
+
+# --- reglage balistique (.ammotunec), disposition du jeu : donnees, instances, types, StringHash, noms ---
+T_TUNE, T_CLASS, A_CLASS = 0x5bb59511, 0x5EE73001, 0x5EE73002
+
+
+def ammotune(instance_name: str, levels=(2, 3, 4, 5, 6), mass: float = 0.00616) -> bytes:
+    """AmmunitionTuning reduit : ammunition_class (tableau), max_range, mass ; instance nommee comme dans le jeu
+    (nom du fichier source tronque a 31 caracteres) ; une chaine StringHash comme dans les fichiers du jeu."""
+    t = Types()
+    t.struct('AmmunitionTuning', T_TUNE, 32, 8, [('ammunition_class', A_CLASS, 16, 0), ('max_range', typedef_f32, 4, 16),
+                                                 ('mass', typedef_f32, 4, 20)])
+    t.array('A[AmmunitionClass]', A_CLASS, T_CLASS)
+    t.struct('AmmunitionClass', T_CLASS, 1, 1, [('level', typedef_u8, 1, 0)])
+    b = Blob(32)
+    arr = b.alloc(bytes(levels), 8)
+    b.pointer(0, arr)
+    b.put(8, '<II', len(levels), 0)
+    b.put(16, '<ff', 1000.0, mass)
+    b.link()
+    return build(t, [(instance_name, T_TUNE, bytes(b.b))], stringhashes=[(b'', 0xdeadbeef)], order='noms_a_la_fin',
+                 comment=b'AmmunitionTuning.adf in THP')

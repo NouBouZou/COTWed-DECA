@@ -166,6 +166,75 @@ def insert(data: bytes, index: int, new_instance: bytes) -> bytes:
     return bytes(out)
 
 
+def name_table(data: bytes, base: int, header: Header) -> Tuple[List[bytes], int, int]:
+    """(noms, debut, fin) de la table des noms : nombre x u8 longueur, puis chaque nom suivi d'un octet nul.
+    debut et fin sont des positions dans le fichier."""
+    count, offset = header.tables['noms']
+    start = base + offset
+    if start + count > len(data):
+        raise EAdfEcriture('table des noms hors du fichier')
+    lengths = data[start:start + count]
+    pos = start + count
+    names = []
+    for n in lengths:
+        if pos + n >= len(data) or data[pos + n] != 0:
+            raise EAdfEcriture('table des noms illisible (nom {} sans octet nul final)'.format(len(names)))
+        names.append(bytes(data[pos:pos + n]))
+        pos += n + 1
+    return names, start, pos
+
+
+def instance_names(data: bytes) -> List[str]:
+    """Nom de chaque instance, lu dans la table des noms (index u64 de l'entree d'instance)."""
+    base = adf_base(data)
+    header = Header(data, base)
+    names, _s, _e = name_table(data, base, header)
+    out = []
+    for pos, _o, _sz in instance_entries(data, base, header):
+        k = struct.unpack_from('<Q', data, pos + 16)[0]
+        if k >= len(names):
+            raise EAdfEcriture('instance : index de nom {} hors de la table ({} noms)'.format(k, len(names)))
+        out.append(names[k].decode('utf-8', 'replace'))
+    return out
+
+
+def rename_instance(data: bytes, index: int, new_name: str, reserved: Optional[List[str]] = None) -> bytes:
+    """Renomme l'instance index : son entree de la table des noms est remplacee par new_name, et le hash32 du
+    nom, dans la table des instances, recalcule. Disposition exigee : la table des noms finit le fichier (comme
+    dans les .ammotunec du jeu) ; on la reecrit, la taille totale suit. reserved : noms de types et de membres
+    (lus par DECA) ; si l'ancien nom en fait partie, son entree est partagee et on refuse."""
+    from deca.hashes import hash32_func
+    base = adf_base(data)
+    header = Header(data, base)
+    if header.total != len(data) - base:
+        raise EAdfEcriture('taille totale de l\'en-tete ({}) differente de la taille de l\'ADF ({}) : refus'.format(
+            header.total, len(data) - base))
+    names, start, end = name_table(data, base, header)
+    if end != len(data):
+        raise EAdfEcriture('la table des noms ne finit pas le fichier : disposition non prise en charge, refus')
+    entries = instance_entries(data, base, header)
+    if not 0 <= index < len(entries):
+        raise EAdfEcriture('instance {} absente ({} instances)'.format(index, len(entries)))
+    pos = entries[index][0]
+    k = struct.unpack_from('<Q', data, pos + 16)[0]
+    if k >= len(names):
+        raise EAdfEcriture('instance {} : index de nom {} hors de la table'.format(index, k))
+    others = [struct.unpack_from('<Q', data, p + 16)[0] for j, (p, _o, _s) in enumerate(entries) if j != index]
+    if k in others or (reserved and names[k].decode('utf-8', 'replace') in reserved):
+        raise EAdfEcriture('le nom "{}" sert aussi a autre chose dans le fichier : refus'.format(
+            names[k].decode('utf-8', 'replace')))
+    new = new_name.encode('utf-8')
+    if not new or b'\0' in new or len(new) > 255:
+        raise EAdfEcriture('nom d\'instance vide, avec un octet nul, ou de plus de 255 octets')
+    if new in names:
+        raise EAdfEcriture('le nom "{}" existe deja dans la table des noms'.format(new_name))
+    names = names[:k] + [new] + names[k + 1:]
+    out = bytearray(data[:start]) + bytes(len(n) for n in names) + b''.join(n + b'\0' for n in names)
+    struct.pack_into('<I', out, pos, int(hash32_func(new)))
+    struct.pack_into('<I', out, base + Header.TOTAL_POSITION, len(out) - base)
+    return bytes(out)
+
+
 DEFERRED_TYPE = 0xdefe88ed
 META_POINTER = 2
 CHAIN_LINK = 4                             # position du lien dans un champ pointeur

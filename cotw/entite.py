@@ -18,10 +18,13 @@ La copie :
       un u32 egal au hash32 de l'un de ces textes -> le hash32 du nouveau texte ;
       chaque _object_id (objid) -> un identifiant nouveau, deterministe, qui garde les 16 bits de poids fort :
       deux entites chargees en meme temps ne doivent pas declarer les memes objets ;
-  - recopie a l'identique les autres entrees incluses (ADF compris) ;
-  - signale ce qui, dans le nouveau .ee, cite ENCORE la source (texte, hash32 du nom ou d'un ancien chemin) :
-    DECA ne sait pas reecrire un ADF, donc le .ammotunec garde ses citations ; le rapport les montre au lieu
-    de les taire.
+  - dans chaque ADF inclus et renomme (le .ammotunec), renomme l'instance dont le nom vient de la source :
+    dans le jeu, ce nom est celui du fichier source tronque a 31 caracteres ("equipment_ammo_243_sp_01.ammotu").
+    Garde tel quel, les reglages de la source et de toutes ses copies portent le meme nom d'instance ; constat
+    en jeu du 2026-10-03 avec trois copies de la .243 SP : changement de munition bloque. Seuls le nom (table
+    des noms, en fin de fichier) et son hash32 changent ; les valeurs sont relues par DECA et comparees ;
+  - recopie a l'identique les autres entrees incluses ;
+  - signale ce qui, dans le nouveau .ee, cite ENCORE la source (texte, hash32 du nom ou d'un ancien chemin).
 """
 import struct
 import sys
@@ -29,12 +32,16 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import adf_ecriture as AE  # noqa: E402
 import sarc as S  # noqa: E402
 
 import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import k_type_str, k_type_u32, k_type_array_u32, k_type_objid  # noqa: E402
 
 H_OBJECT_ID = 0xcfff8405  # _object_id
+# Nom d'instance des .ammotunec du jeu = nom du fichier source (".ammotune") tronque a 31 caracteres : 28 sur 29
+# fichiers releves le 2026-10-03 ; l'exception (equipment_ammo_22_hp_01, 29 caracteres) contient le nom de l'objet.
+INSTANCE_NAME_MAX = 31
 
 
 class EEntite(Exception):
@@ -108,6 +115,66 @@ def patch_rtpc(data: bytes, mapping: Dict[bytes, bytes], new_name: str = None) -
     return out, changes
 
 
+def is_adf(payload: bytes) -> bool:
+    return payload[:4] == b' FDA' or payload[5:9] == b' FDA'
+
+
+def source_stem(path: str) -> str:
+    """Nom du fichier source : "a/b/x.ammotunec" -> "x.ammotune" (fichier compile : extension sans le c final)."""
+    name = path.replace('\\', '/').rsplit('/', 1)[-1]
+    stem, dot, ext = name.rpartition('.')
+    if dot and len(ext) > 1 and ext.endswith('c'):
+        return stem + '.' + ext[:-1]
+    return name
+
+
+def new_instance_name(old_name: str, old_path: str, new_path: str, source: str, new: str):
+    """Nom d'instance de la copie, ou None si l'ancien nom ne vient pas de la source (instance gardee)."""
+    if old_name == source_stem(old_path)[:INSTANCE_NAME_MAX]:
+        cand = source_stem(new_path)[:INSTANCE_NAME_MAX]
+    elif source in old_name:
+        cand = old_name.replace(source, new)[:INSTANCE_NAME_MAX]
+    else:
+        return None
+    if cand == old_name:
+        raise EEntite('instance "{}" : tronque a {} caracteres, le nouveau nom donne le meme nom d\'instance que la '
+                      'source ; choisir un nom qui differe plus tot'.format(old_name, INSTANCE_NAME_MAX))
+    return cand
+
+
+def adf_reserved_names(payload: bytes) -> List[str]:
+    """Noms de types et de membres d'un ADF (lus par DECA) : un nom d'instance ne doit pas en faire partie."""
+    import io
+    from deca.ff_adf import Adf
+    from deca.file import ArchiveFile
+    adf = Adf()
+    adf.deserialize(ArchiveFile(io.BytesIO(payload[AE.adf_base(payload):])), process_instances=False)
+    out = []
+    for t in adf.table_typedef:
+        out.append(t.name.decode('utf-8', 'replace') if isinstance(t.name, bytes) else str(t.name))
+        out += [m.name_utf8 for m in (t.members or [])]
+    return out
+
+
+def patch_adf(payload: bytes, old_path: str, new_path: str, source: str, new: str) -> Tuple[bytes, List[str]]:
+    """Renomme les instances dont le nom vient de la source ; le reste du fichier est garde."""
+    try:
+        names = AE.instance_names(payload)
+        reserved = None
+        out, changes = payload, []
+        for i, old_name in enumerate(names):
+            cand = new_instance_name(old_name, old_path, new_path, source, new)
+            if cand is None:
+                continue
+            if reserved is None:
+                reserved = adf_reserved_names(payload)
+            out = AE.rename_instance(out, i, cand, reserved)
+            changes.append('instance ADF {} : "{}" -> "{}"'.format(i, old_name, cand))
+    except AE.EAdfEcriture as e:
+        raise EEntite('{} : {}'.format(new_path, e))
+    return out, changes
+
+
 def residual_citations(payload: bytes, source: str, renames: Dict[str, str]) -> List[str]:
     """Citations de la source qui restent dans une entree : le nom en texte (sous-chaine), le hash32 du nom
     et le hash32 de chaque ancien chemin, en u32 little-endian a n'importe quel offset. Pour une entree de
@@ -149,20 +216,64 @@ def clone_entity(data: bytes, source: str, new: str) -> Tuple[bytes, Dict[str, s
         if payload[:4] == W.RTPC_MAGIC:
             payload, changes = patch_rtpc(payload, mapping, new)
             report += ['  {} :'.format(path)] + ['    ' + c for c in changes] if changes else ['  {} : RTPC sans changement'.format(path)]
+        elif path != e.path and is_adf(payload):
+            payload, changes = patch_adf(payload, e.path, path, source, new)
+            report += ['  {} : {}'.format(path, c) for c in changes]
         if path != e.path:
             report.append('  entree renommee : {} -> {}'.format(e.path, path))
         left = residual_citations(payload, source, renames)
         if left:
-            report.append('  ATTENTION : {} cite encore la source ({}) : {}'.format(
-                path, 'RTPC' if payload[:4] == W.RTPC_MAGIC else 'non modifiable par DECA', ', '.join(left)))
+            kind = 'RTPC' if payload[:4] == W.RTPC_MAGIC else ('ADF' if is_adf(payload) else 'format non modifiable')
+            report.append('  ATTENTION : {} cite encore la source ({}) : {}'.format(path, kind, ', '.join(left)))
         entries.append(S.Entry(path, payload, len(payload)))
     out, _offsets = S.build(S.Sarc(s.version, entries))
     verify(data, out, renames)
     return out, renames, report
 
 
+def verify_adf_rename(old: bytes, new: bytes, path: str):
+    """Un ADF dont seules des instances ont ete renommees : octets identiques jusqu'a la table des noms, sauf le
+    hash32 du nom des instances et la taille totale ; memes noms hors instances ; valeurs relues par DECA
+    identiques."""
+    import io
+    from deca.ff_adf import Adf
+    from deca.file import ArchiveFile
+    try:
+        bo, bn = AE.adf_base(old), AE.adf_base(new)
+        ho, hn = AE.Header(old, bo), AE.Header(new, bn)
+        no, so, _eo = AE.name_table(old, bo, ho)
+        nn, sn, en = AE.name_table(new, bn, hn)
+    except AE.EAdfEcriture as e:
+        raise EEntite('verification : {} : {}'.format(path, e))
+    if bo != bn or so != sn or en != len(new) or hn.total != len(new) - bn or len(no) != len(nn):
+        raise EEntite('verification : {} : disposition changee'.format(path))
+    allowed = {bo + AE.Header.TOTAL_POSITION + k for k in range(4)}
+    renamed = set()
+    for pos, _o, _s in AE.instance_entries(old, bo, ho):
+        allowed |= {pos + k for k in range(4)}
+        renamed.add(struct.unpack_from('<Q', old, pos + 16)[0])
+    if any(a != b and i not in allowed for i, (a, b) in enumerate(zip(old[:so], new[:sn]))):
+        raise EEntite('verification : {} : octets modifies ailleurs que sur le nom des instances'.format(path))
+    if any(a != b for k, (a, b) in enumerate(zip(no, nn)) if k not in renamed):
+        raise EEntite('verification : {} : un nom autre qu\'un nom d\'instance a change'.format(path))
+
+    def values(data):
+        adf = Adf()
+        adf.deserialize(ArchiveFile(io.BytesIO(data[AE.adf_base(data):])))
+        return [AE.normalize(AE.plain_values(adf, i)) for i in range(len(adf.table_instance))], adf
+    vo, _ao = values(old)
+    vn, an = values(new)
+    if vo != vn:
+        raise EEntite('verification : {} : valeurs relues par DECA differentes'.format(path))
+    from deca.hashes import hash32_func
+    for ins in an.table_instance:
+        if int(hash32_func(ins.name)) != ins.name_hash:
+            raise EEntite('verification : {} : hash du nom d\'instance incorrect'.format(path))
+
+
 def verify(original: bytes, produced: bytes, renames: Dict[str, str]):
-    """Relit le nouveau .ee : memes entrees dans le meme ordre, liens identiques, entrees non RTPC recopiees."""
+    """Relit le nouveau .ee : memes entrees dans le meme ordre, liens identiques, entrees non RTPC recopiees (un
+    ADF renomme ne differe que par le nom de ses instances)."""
     a, b = S.parse(original), S.parse(produced)
     if len(a.entries) != len(b.entries) or a.version != b.version:
         raise EEntite('verification : nombre d\'entrees ou version differents')
@@ -171,5 +282,9 @@ def verify(original: bytes, produced: bytes, renames: Dict[str, str]):
             raise EEntite('verification : entree {} devenue {}'.format(x.path, y.path))
         if x.is_link and x.length != y.length:
             raise EEntite('verification : taille du lien {} modifiee'.format(x.path))
-        if not x.is_link and x.data[:4] != W.RTPC_MAGIC and x.data != y.data:
+        if x.is_link or x.data[:4] == W.RTPC_MAGIC or x.data == y.data:
+            continue
+        if is_adf(x.data) and x.path != y.path:
+            verify_adf_rename(x.data, y.data, y.path)
+        else:
             raise EEntite('verification : contenu de {} modifie'.format(x.path))

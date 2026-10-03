@@ -15,6 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402,F401
+import adf_ecriture as AE  # noqa: E402
+import adf_fabrique as F  # noqa: E402
 import adf_minimal as AM  # noqa: E402
 import cloner_munition as C  # noqa: E402
 import entite as E  # noqa: E402
@@ -46,12 +48,29 @@ def epe(name: str) -> bytes:
     return TS.S.rtpc_bytes(W.make_node(0, [], [obj]))
 
 
-def entity(name: str, version: int = 2) -> bytes:
+def tuning_name(name: str) -> str:
+    """Nom d'instance d'un .ammotunec du jeu : nom du fichier source tronque a 31 caracteres."""
+    return (name + '.ammotune')[:31]
+
+
+def entity(name: str, version: int = 2, tuning: str = 'minimal') -> bytes:
+    """tuning='minimal' : ADF d'adf_minimal (instance "sheet", le nom de l'objet dans un champ) ; 'jeu' : reglage
+    a la disposition du jeu, instance nommee d'apres le fichier source."""
+    tune = AM.build([(name, 1, 2)], [3]) if tuning == 'minimal' else F.ammotune(tuning_name(name))
     data, _ = S.build(S.Sarc(version, [
         S.Entry(DIR + name + '.epe', epe(name), 0),
-        S.Entry(DIR + name + '.ammotunec', AM.build([(name, 1, 2)], [3]), 0),   # ADF valide : le scan le lit
+        S.Entry(DIR + name + '.ammotunec', tune, 0),   # ADF valide : le scan le lit
         S.Entry(LINK, None, 1234)]))
     return data
+
+
+def decode(data: bytes):
+    import io
+    from deca.ff_adf import Adf
+    from deca.file import ArchiveFile
+    a = Adf()
+    a.deserialize(ArchiveFile(io.BytesIO(data[AE.adf_base(data):])))
+    return a
 
 
 class TestSarc(unittest.TestCase):
@@ -122,6 +141,69 @@ class TestEntity(unittest.TestCase):
         self.assertEqual(len(E.residual_citations(payload, SRC, {path: path.replace(SRC, NEW)})), 1)
         self.assertEqual(E.residual_citations(b'rien', SRC, {path: 'x'}), [])
 
+    def test_tuning_instance_renamed(self):
+        src = S.parse(entity(SRC, tuning='jeu')).entries[1].data
+        self.assertEqual(AE.instance_names(src), [tuning_name(SRC)])          # "equipment_ammo_243_sp_01.ammotu"
+        out, _renames, report = E.clone_entity(entity(SRC, tuning='jeu'), SRC, NEW)
+        tune = S.parse(out).entries[1].data
+        self.assertEqual(AE.instance_names(tune), [tuning_name(NEW)])         # "equipment_ammo_243_test_01.ammo"
+        self.assertEqual(len(tuning_name(NEW)), 31)
+        a, b = decode(src), decode(tune)
+        self.assertEqual(AE.normalize(AE.plain_values(a)), AE.normalize(AE.plain_values(b)))   # valeurs gardees
+        self.assertEqual(b.table_instance[0].name_hash, W.name_hash(tuning_name(NEW)))
+        AE.verify_chain(b, tune, 0, exact=True)
+        self.assertEqual(len(tune), len(src))       # meme longueur de nom : meme taille
+        self.assertIn('"{}" -> "{}"'.format(tuning_name(SRC), tuning_name(NEW)), '\n'.join(report))
+        self.assertEqual([line for line in report if 'ATTENTION' in line], [])   # plus aucune citation de la source
+        # deux copies : trois reglages de noms distincts
+        out2, _r, _rep = E.clone_entity(entity(SRC, tuning='jeu'), SRC, 'equipment_ammo_243_test_02')
+        names = {tuning_name(SRC), AE.instance_names(tune)[0], AE.instance_names(S.parse(out2).entries[1].data)[0]}
+        self.assertEqual(len(names), 3)
+
+    def test_tuning_instance_rules(self):
+        # nom court : non tronque, taille du fichier changee, controle de la disposition
+        short = F.ammotune('equipment_ammo_45c_01.ammotune')
+        out, changes = E.patch_adf(short, DIR + 'equipment_ammo_45c_01.ammotunec',
+                                   DIR + 'equipment_ammo_45c_test_01.ammotunec', 'equipment_ammo_45c_01', 'equipment_ammo_45c_test_01')
+        self.assertEqual(AE.instance_names(out), ['equipment_ammo_45c_test_01.ammo'])
+        self.assertEqual(len(out), len(short) + 1)        # 30 -> 31 caracteres
+        E.verify_adf_rename(short, out, 'x')
+        # exception du jeu (equipment_ammo_22_hp_01 : ".ammot") : le nom de l'objet y est remplace
+        odd = F.ammotune('equipment_ammo_22_hp_01.ammot')
+        out, _c = E.patch_adf(odd, DIR + 'equipment_ammo_22_hp_01.ammotunec', DIR + 'equipment_ammo_22_hp_02.ammotunec',
+                              'equipment_ammo_22_hp_01', 'equipment_ammo_22_hp_02')
+        self.assertEqual(AE.instance_names(out), ['equipment_ammo_22_hp_02.ammot'])
+        # nom d'instance sans rapport avec la source : garde
+        other = F.ammotune('reglage_commun')
+        self.assertEqual(E.patch_adf(other, DIR + SRC + '.ammotunec', DIR + NEW + '.ammotunec', SRC, NEW), (other, []))
+        # nom long : tronque a 31 caracteres, il redonnerait le nom de la source : refus explicite
+        bow = 'equipment_ammo_bh_bow_arrow_420gr_01'
+        with self.assertRaisesRegex(E.EEntite, '31'):
+            E.patch_adf(F.ammotune(tuning_name(bow)), DIR + bow + '.ammotunec', DIR + bow[:-2] + '02.ammotunec', bow,
+                        bow[:-2] + '02')
+
+    def test_rename_instance_refusals(self):
+        tune = F.ammotune(tuning_name(SRC))
+        with self.assertRaises(AE.EAdfEcriture):          # table des noms au debut du fichier (adf_minimal)
+            AE.rename_instance(AM.build([('a', 1, 2)], [3]), 0, 'autre')
+        with self.assertRaises(AE.EAdfEcriture):          # nom deja present (nom de type)
+            AE.rename_instance(tune, 0, 'AmmunitionTuning')
+        with self.assertRaises(AE.EAdfEcriture):          # ancien nom partage avec un type
+            AE.rename_instance(F.ammotune('mass'), 0, 'nouveau', reserved=['mass'])
+        with self.assertRaises(AE.EAdfEcriture):
+            AE.rename_instance(tune, 1, 'nouveau')
+        with self.assertRaises(AE.EAdfEcriture):
+            AE.rename_instance(tune, 0, 'a\0b')
+
+    def test_verify_detects_tuning_tampering(self):
+        out, _renames, _report = E.clone_entity(entity(SRC, tuning='jeu'), SRC, NEW)
+        original = S.parse(entity(SRC, tuning='jeu')).entries[1].data
+        tune = bytearray(S.parse(out).entries[1].data)
+        start = AE.instance_entries(bytes(tune), 0, AE.Header(bytes(tune), 0))[0][1]
+        tune[start + 16] ^= 0x40                         # max_range modifie
+        with self.assertRaises(E.EEntite):
+            E.verify_adf_rename(original, bytes(tune), 'x')
+
     def test_entity_without_named_entry_refused(self):
         data, _ = S.build(S.Sarc(2, [S.Entry('a/other.epe', epe('x_01'), 0)]))
         with self.assertRaises(E.EEntite):
@@ -149,6 +231,20 @@ class TestClonerOwnEntity(unittest.TestCase):
             self.assertEqual(W.node_get_prop(entry, C.H_ENTITY).data, (DIR + new + '.ee').replace('/', '\\').encode())
             report = (out / 'rapport_clonage.txt').read_text(encoding='utf-8')
             self.assertIn('entree renommee', report)
+            # reglage a la disposition du jeu : instance renommee par le cloneur
+            src2, new2 = TS.SOLD[0], 'equipment_ammo_308_test_01'      # equipment_ammo_308_pt_01
+            out3 = Path(root) / 'mod3'
+            with tempfile.TemporaryDirectory(prefix='cotw_entite_jeu_') as root2:
+                project2 = faux_projet.build_fake_project(root2, [
+                    ('settings/hp_settings/equipment_data.bin', TS.equipment_data()),
+                    ('settings/spawn_ammunition_defs.bin', TS.spawn_defs()),
+                    (DIR + src2 + '.ee', entity(src2, tuning='jeu'))])
+                C.main([project2, '--source', src2, '--nom', new2, '--entite-propre', '--sortie', str(out3)])
+            tune = S.parse((out3 / 'dropzone' / Path(DIR + new2 + '.ee')).read_bytes()).entries[1].data
+            self.assertEqual(AE.instance_names(tune), [tuning_name(new2)])
+            report = (out3 / 'rapport_clonage.txt').read_text(encoding='utf-8')
+            self.assertIn('instance ADF 0', report)
+            self.assertNotIn('ATTENTION', report)
             # variante de diagnostic : copie a l'identique sous un nouveau chemin
             out2 = Path(root) / 'mod2'
             C.main([project, '--source', src, '--nom', new, '--entite-copie', '--sortie', str(out2)])
