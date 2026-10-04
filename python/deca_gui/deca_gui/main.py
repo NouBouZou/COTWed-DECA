@@ -26,7 +26,7 @@ from .project_task import ProjectTask, start_task, project_scan_state, KIND_NEW,
 from PySide6.QtCore import Slot, QUrl, Signal, QEvent, Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabBar, QMessageBox, QFileDialog, QStyle, QDockWidget, \
     QPlainTextEdit, QProgressBar, QLabel
-from PySide6.QtGui import QDesktopServices, QKeyEvent, QFont, QCloseEvent
+from PySide6.QtGui import QDesktopServices, QKeyEvent, QFont, QCloseEvent, QAction
 
 LOG_MAX_LINES = 5000
 
@@ -93,6 +93,14 @@ class MainWindow(QMainWindow):
         self.ui.action_exit.triggered.connect(self.exit_app)
         self.ui.action_make_web_map.triggered.connect(self.tool_make_web_map)
         self.ui.action_make_web_map.setEnabled(False)
+
+        # COTW: Ammo Workshop (ammo_workshop.py), one window bound to the project open when it was opened
+        self.ammo_workshop = None
+        self.action_ammo_workshop = QAction('Ammo &Workshop...', self)
+        self.action_ammo_workshop.setToolTip('Add new ammunition without overwriting anything (mod file, dropzone)')
+        self.action_ammo_workshop.triggered.connect(self.ammo_workshop_open)
+        self.action_ammo_workshop.setEnabled(False)
+        self.ui.menu_Tools.addAction(self.action_ammo_workshop)
 
         # filter
         self.ui.filter_edit.textChanged.connect(self.filter_text_changed)
@@ -259,7 +267,40 @@ class MainWindow(QMainWindow):
             return
         self.task_start(KIND_OPEN, path)
 
+    def ammo_workshop_open(self, checked=False):
+        """Show the Ammo Workshop of the current project (the window of another project is closed first)."""
+        if self.vfs is None:
+            return
+        project_dir = self.vfs.working_dir
+        if self.ammo_workshop is not None and \
+                os.path.normpath(self.ammo_workshop.project_dir) != os.path.normpath(project_dir):
+            if not self.ammo_workshop_close():
+                return
+        if self.ammo_workshop is None:
+            from .ammo_workshop import AmmoWorkshop   # imported on demand: DECA starts without the COTW tools
+            try:
+                self.ammo_workshop = AmmoWorkshop(project_dir, self)
+            except RuntimeError as exc:
+                self.error_dialog(str(exc))
+                return
+        self.ammo_workshop.show()
+        self.ammo_workshop.raise_()
+        self.ammo_workshop.activateWindow()
+
+    def ammo_workshop_close(self) -> bool:
+        """Close the Ammo Workshop; False if it refused (task running, unsaved mod kept)."""
+        if self.ammo_workshop is None:
+            return True
+        if self.ammo_workshop.isVisible() and not self.ammo_workshop.close():
+            return False
+        self.ammo_workshop.deleteLater()
+        self.ammo_workshop = None
+        return True
+
     def closeEvent(self, event: QCloseEvent):
+        if not self.ammo_workshop_close():
+            event.ignore()
+            return
         if not self.task_running():
             event.accept()
             return
@@ -436,11 +477,13 @@ class MainWindow(QMainWindow):
             self.ui.bt_mod_build.setEnabled(False)
             self.ui.action_external_add.setEnabled(False)
             self.ui.action_make_web_map.setEnabled(False)
+            self.action_ammo_workshop.setEnabled(False)
         else:
             self.ui.bt_mod_build_folder_show.setEnabled(True)
             self.ui.bt_mod_build.setEnabled(True)
             self.ui.action_external_add.setEnabled(True)
             self.ui.action_make_web_map.setEnabled(True)
+            self.action_ammo_workshop.setEnabled(True)
         self.filter_text_changed()
 
     def update_select_state(self, vfs_view):
@@ -744,6 +787,10 @@ class MainWindow(QMainWindow):
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if answer != QMessageBox.Yes:
             return False
+        if self.ammo_workshop is not None and \
+                UniPath.normpath(self.ammo_workshop.project_dir) == UniPath.normpath(working_dir):
+            if not self.ammo_workshop_close():   # it may be reading this project's database
+                return False
         if self.vfs is not None and UniPath.normpath(self.vfs.working_dir) == UniPath.normpath(working_dir):
             # the project shown is the one being deleted: release its database first
             self.project_close()

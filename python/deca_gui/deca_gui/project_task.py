@@ -91,7 +91,42 @@ class ProjectTask(QObject):
             self.done.emit()
 
 
-def start_task(task: ProjectTask, parent: QObject) -> QThread:
+class CallTask(QObject):
+    """
+    Worker object: ``func(progress)`` in a background thread, for the COTW tools (catalogue, mod build).
+
+    ``progress`` is a callable taking a short text, forwarded as ``message``. Emits exactly one of ``succeeded``
+    (with the return value) or ``failed``. The COTW tools are command-line scripts that report refusals with
+    SystemExit("ERREUR : ..."): it is caught like any exception and turned into ``failed`` with its message only,
+    since it is an expected refusal and not a bug (no traceback).
+    """
+    message = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+    done = Signal()
+
+    def __init__(self, func, expected_errors=()):
+        super().__init__()
+        self.func = func
+        self.expected_errors = tuple(expected_errors)   # exception types reported by their message only
+
+    @Slot()
+    def run(self):
+        try:
+            result = self.func(self.message.emit)
+        except SystemExit as e:
+            self.failed.emit(str(e.code if e.code is not None else 'interrupted'))
+        except self.expected_errors as e:
+            self.failed.emit(str(e))
+        except Exception:
+            self.failed.emit(traceback.format_exc())
+        else:
+            self.succeeded.emit(result)
+        finally:
+            self.done.emit()
+
+
+def start_task(task: QObject, parent: QObject) -> QThread:
     """Run ``task`` in a new QThread owned by ``parent``; the thread and the task are deleted when it is done."""
     thread = QThread(parent)
     task.moveToThread(thread)

@@ -76,6 +76,25 @@ def add_extra_paths(project_dir: Path):
     db.close()
 
 
+SARC_243_SP = 'editor/entities/hp_weapons/ammunition/rifles/equipment_ammo_243_sp_01.ee'
+SARC_ENTRIES = 3   # .fmod_guids, .ammotunec, .epe (comme l'entite reelle de la .243 SP)
+
+
+def node_uid(db_file: Path, v_path: str) -> int:
+    """Numero du noeud d'un chemin dans le projet demo (les numeros changent quand le demo change)."""
+    db = sqlite3.connect(str(db_file))
+    try:
+        rows = db.execute('SELECT node_id FROM core_nodes WHERE CAST(v_path AS TEXT) = ?', (v_path,)).fetchall()
+    finally:
+        db.close()
+    assert len(rows) == 1, (v_path, rows)
+    return rows[0][0]
+
+
+def sarc_uid() -> int:
+    return node_uid(DemoProject.get().parent / 'db' / 'core.db', SARC_243_SP)
+
+
 def reference_view(db_file: Path, mask: str, parent_id=None):
     """Semantique de VfsView avant optimisation : tout lire, puis re.match du masque en Python."""
     db = sqlite3.connect(str(db_file))
@@ -194,8 +213,9 @@ class TestViewEquivalence(unittest.TestCase):
         self.assertIn('settings/50%_off.bin', got)
 
     def test_child_view(self):
-        self.check('^.*$', parent_id=8)      # contenu d'un SARC
-        self.check('^.*\\.epe$', parent_id=8)
+        got = self.check('^.*$', parent_id=sarc_uid())      # contenu d'un SARC
+        self.assertEqual(len(got), SARC_ENTRIES)
+        self.check('^.*\\.epe$', parent_id=sarc_uid())
 
     def test_mask_change_keeps_uid_sets(self):
         from deca.db_view import VfsView
@@ -217,7 +237,7 @@ class TestViewEquivalence(unittest.TestCase):
         names = {r[1] for r in self.vfs.db_query_all("PRAGMA index_list('core_nodes')")}
         self.assertIn('index_core_nodes_parent_id', names)
         plan = ' '.join(str(r) for r in self.vfs.db_query_all(
-            'EXPLAIN QUERY PLAN SELECT node_id FROM core_nodes WHERE parent_id == 8'))
+            'EXPLAIN QUERY PLAN SELECT node_id FROM core_nodes WHERE parent_id == {}'.format(sarc_uid())))
         self.assertIn('index_core_nodes_parent_id', plan)
 
 
@@ -288,8 +308,8 @@ class TestWindow(GuiTestCase):
     def test_info_tab_for_sarc_and_orphan(self):
         self.open_demo()
         dv = self.window.ui.data_view
-        self.window.vnode_2click_selected([8])      # .ee (SARC) de la .243 SP
-        self.assertIn('Children: 2', dv.tab_info.text_box.toPlainText())
+        self.window.vnode_2click_selected([sarc_uid()])      # .ee (SARC) de la .243 SP
+        self.assertIn('Children: {}'.format(SARC_ENTRIES), dv.tab_info.text_box.toPlainText())
         db_file = DemoProject.get().parent / 'db' / 'core.db'
         db = sqlite3.connect(str(db_file))
         orphan = db.execute('SELECT node_id FROM core_nodes WHERE v_path IS NULL AND p_path IS NULL').fetchone()[0]
@@ -349,7 +369,7 @@ class TestWindow(GuiTestCase):
         self.assertEqual(tabs.count(), 4)
         tabs.setCurrentIndex(3)
         archive_view = tabs.widget(3).vfs_view_get()
-        self.assertEqual(len(archive_view.nodes_visible_map_get()), 2)   # .epe et .fmod_guids
+        self.assertEqual(len(archive_view.nodes_visible_map_get()), SARC_ENTRIES)
         self.window.slot_nodes_tab_close(3)
         APP.processEvents()
         self.assertEqual(tabs.count(), 3)
@@ -361,7 +381,7 @@ class TestWindow(GuiTestCase):
         """Le panneau de droite oublie le noeud de l'ancien projet : Open Archive ne doit rien ouvrir."""
         self.open_demo()
         dv = self.window.ui.data_view
-        self.window.vnode_2click_selected([8])      # .ee (SARC)
+        self.window.vnode_2click_selected([sarc_uid()])      # .ee (SARC)
         self.assertIsNotNone(dv.tab_sarc.vnode)
         self.open_demo()
         self.assertIsNone(dv.tab_sarc.vnode)

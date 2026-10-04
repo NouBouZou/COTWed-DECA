@@ -25,6 +25,8 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
 
+**Tout cela se fait aussi dans l'interface** (**Tools → Ammo Workshop…**, depuis le 2026-10-04). On y édite un **fichier de mod** (`.cotwmod.json`) qui liste les munitions à ajouter. **Build** reconstruit le dropzone du mod depuis les originaux du jeu, en une passe, avec exactement les mêmes octets que la ligne de commande. Exemple : [`cotw/mods/test14.cotwmod.json`](cotw/mods/test14.cotwmod.json).
+
 ## Contenu
 
 ### Modifications du cœur DECA (`python/deca`)
@@ -46,12 +48,20 @@ Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec
   - repeinture : plus aucune requête SQL par cellule.
 - **Onglet Info** rempli : chemins, hash, type, magic, flags décodés, archives parentes, nombre d'enfants, autres copies du même fichier.
 - **Tri** des listes Raw et Non-Mapped par colonne.
-- **Projet de démonstration** (`cotw/demo_projet.py`, `cotw/lancer_demo.bat`) : un faux COTW scanné par DECA, pour travailler sur l'interface sans le jeu.
+- **Projet de démonstration** (`cotw/demo_projet.py`, `cotw/lancer_demo.bat`) : un faux COTW scanné par DECA, pour travailler sur l'interface sans le jeu. Il contient tout ce que demande l'atelier : entités avec `.ammotunec`, `string_ids` en 10 langues, feuille de stats terminée par deux lignes vides.
+- **Ammo Workshop** (**Tools → Ammo Workshop…**, `deca_gui/ammo_workshop.py`) :
+  - à gauche, les munitions du jeu (nom affiché dans la langue choisie, prix, disponibilité, ligne de stats, armes) ;
+  - au centre, le mod : munitions ajoutées, prix témoins, changements d'objets existants ;
+  - à droite, la munition sélectionnée : nom, source, prix, entité, armes compatibles, ligne de stats (valeurs copiées et nouvelles), nom et description par langue ;
+  - les problèmes connus avant construction sont signalés en rouge (nom déjà pris, instance du `.ammotunec` identique à celle de la source…) ;
+  - **Build** tourne en arrière-plan et affiche le rapport ; **Copy command line** donne la commande `construire_mod` équivalente.
 
 ### Outils COTW (`cotw/`)
 | Outil | Rôle |
 |---|---|
-| `cloner_munition.py` | ajoute une munition copiée d'une autre (equipment_data, spawn defs, entité propre, ligne de stats, nom et description, témoin de prix) |
+| `cloner_munition.py` | ajoute une munition copiée d'une autre (equipment_data, spawn defs, entité propre, ligne de stats, nom et description, témoin de prix) ; sa fonction `construire` sert aussi à `construire_mod` et à l'interface |
+| `construire_mod.py` | reconstruit le dropzone d'un fichier de mod (`.cotwmod.json`, plusieurs munitions) depuis les originaux, en une passe ; manifeste des fichiers écrits ; `--comparer` avec un dropzone déployé |
+| `catalogue.py` | munitions et armes du jeu telles que l'atelier les montre (noms affichés, disponibilité, ligne de stats, entité) |
 | `entite.py`, `sarc.py` | copie d'entité `.ee` ; lecture et écriture SARC v2/v3 |
 | `adf_ecriture.py`, `xlsbook.py` | agrandit des tableaux d'un ADF sans déplacer les données existantes ; ajoute une ligne à une feuille XLSBook |
 | `adf_ajouter_ligne.py` | ajoute une ligne à `equipment_stats_ui.bin` (ou une autre feuille XLSBook), copiée de celle d'un objet existant |
@@ -79,6 +89,8 @@ pip install -e python\deca -e python\deca_gui
 - **Scan du jeu** : `cotw\lancer_deca.bat`, puis **File → New Project…** et `theHunterCotW_F.exe`. Le projet est créé dans `..\work\hp`.
 - **Ouvrir un projet au lancement** : `python python\deca_gui\deca_gui\entry_point.py <project.json ou son dossier>`.
 - **Sans le jeu** (portable) : `cotw\lancer_demo.bat` crée au besoin le projet de démonstration dans `..\work_demo` et l'ouvre. Le vrai projet `..\work\hp` n'est jamais touché.
+- **Atelier** : DECA ouvert sur le projet, **Tools → Ammo Workshop…**. **Open mod…** charge un `.cotwmod.json` ; **Build** écrit `<sortie>\dropzone`, à copier dans le `dropzone` du jeu. La sortie par défaut est `..\mods\<nom du mod>`.
+- **Mod en ligne de commande** : `python cotw\construire_mod.py ..\work\hp cotw\mods\test14.cotwmod.json --sortie ..\mods\test14`.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam

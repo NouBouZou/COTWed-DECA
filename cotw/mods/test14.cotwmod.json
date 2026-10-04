@@ -1,0 +1,38 @@
+{
+  "format": "cotwed-mod",
+  "version": 1,
+  "name": "test14",
+  "notes": "Reconstitution de l'essai test14 (2026-10-03) : deux copies de la .243 SP, a 77 et 88, chacune avec entite propre, stats 17 / 20 / 3-6 et nom propre ; temoin : .270 SP a 5432. Les descriptions de l'essai ne sont pas notees dans le journal : textes de remplacement.",
+  "witness_prices": {
+    "equipment_ammo_270_sp_01": 5432
+  },
+  "changes": [],
+  "ammo": [
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_03",
+      "price": 88,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {"Penetration": "17", "Expansion": "20", "Class": "3;4;5;6"},
+      "display_name": {"all": "BALLES DE TEST 88 .243"},
+      "description": {"all": "Munition de test : copie de la .243 SP, a 88."},
+      "fields": {}
+    },
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_02",
+      "price": 77,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {"Penetration": "17", "Expansion": "20", "Class": "3;4;5;6"},
+      "display_name": {"all": "BALLES DE TEST 77 .243"},
+      "description": {"all": "Munition de test : copie de la .243 SP, a 77."},
+      "fields": {}
+    }
+  ]
+}

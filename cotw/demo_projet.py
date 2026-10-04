@@ -4,10 +4,14 @@ Projet de demonstration : un faux theHunter COTW, scanne par DECA, pour travaill
 
 Le faux jeu reprend la structure reelle relevee dans le journal de recherche :
   settings/hp_settings/equipment_data.bin    RTPC v2 : categories ammo, weapons, sights ; objets avec
-                                             cash_price, locked, secondary_ids et compatibilities/compatibility_N
+                                             cash_price, locked, secondary_ids, compatibilities/compatibility_N,
+                                             display_name et display_description (cles de traduction)
   settings/spawn_ammunition_defs.bin         RTPC v2 : spawn_system/resource_definitions (desc, tags, entity)
-  settings/hp_settings/equipment_stats_ui.bin ADF XLSBook (feuilles ammo et weapons)
-  editor/entities/.../<munition>.ee          SARC v2 : .epe (RTPC CAmmunitionItem) et .fmod_guids
+  settings/hp_settings/equipment_stats_ui.bin ADF XLSBook, disposition et chaine de relocation du jeu ; feuille
+                                             ammo terminee par 2 lignes vides, comme dans le jeu (test12 H)
+  settings/hp_settings/string_ids.stringlookup ADF StringLookup, 10 langues : noms et descriptions affiches
+  editor/entities/.../<munition>.ee          SARC v2 : .fmod_guids, .ammotunec (ADF AmmunitionTuning, instance
+                                             nommee comme dans le jeu) et .epe (RTPC CAmmunitionItem)
   textures/ui/items/ammo/<munition>.dds      image DDS non compressee (onglet Image)
   settings/demo_notes.txt                    texte (onglet Text)
   + 3 fichiers dont le nom est efface        hashes orphelins (onglet Non-Mapped List)
@@ -18,6 +22,10 @@ Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\demo_projet.py --dossier D  autre emplacement (par defaut <depot>\\..\\work_demo)
 
 Le projet est cree a cote du vrai (work_demo, pas work) : il ne touche jamais work\\hp.
+
+Avec ces fichiers, toute la chaine de cloner_munition / construire_mod (entite propre, ligne de stats, nom et
+description) fonctionne sur le portable, sans le jeu. Les valeurs sont inventees, sauf les noms de la .243 SP
+dans les 10 langues et les stats des .243 SP et PT (journal de recherche, 2026-10-03).
 """
 import argparse
 import contextlib
@@ -37,7 +45,7 @@ import faux_projet  # noqa: E402
 import adf_fabrique  # noqa: E402
 import sarc as S  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import Rtpc, k_type_str, k_type_u32, k_type_f32  # noqa: E402
+from deca.ff_rtpc import Rtpc, k_type_str, k_type_u32, k_type_f32, k_type_objid  # noqa: E402
 from deca.hashes import hash32_func  # noqa: E402
 from deca.util import deca_root  # noqa: E402
 
@@ -58,12 +66,56 @@ WEAPONS = [
     ('equipment_weapon_ba_rifle_762x54r_01', 1680, 3, '1095272277'),
 ]
 SIGHTS = [('equipment_sight_scope_4x32_01', 300, 0, '-1')]
+LANGUAGES = ['en', 'fr', 'de', 'es', 'ru', 'pl', 'ja', 'pt', 'cs', 'zh']   # ordre de string_ids (stringlookup.LANGUES)
+# Noms affiches (anglais, francais). Les 8 autres langues reprennent l'anglais, sauf la .243 SP (noms du jeu).
+DISPLAY = {
+    'equipment_ammo_243_sp_01': ('.243 SOFT-POINT BULLET', 'BALLES À TÊTE MOLLE .243'),
+    'equipment_ammo_243_pt_01': ('.243 POLYMER-TIP BULLET', 'BALLES À POINTE POLYMÈRE .243'),
+    'equipment_ammo_270_sp_01': ('.270 SOFT-POINT BULLET', 'BALLES À TÊTE MOLLE .270'),
+    'equipment_ammo_762x54r_sp_01': ('7.62X54R SOFT-POINT BULLET', 'BALLES À TÊTE MOLLE 7.62X54R'),
+    'equipment_ammo_762x54r_fmj_01': ('7.62X54R FULL METAL JACKET', 'BALLES BLINDÉES 7.62X54R'),
+    'equipment_weapon_ba_rifle_243_01': ('.243 BOLT-ACTION RIFLE', 'CARABINE À VERROU .243'),
+    'equipment_weapon_pistol_ss_243_01': ('.243 SINGLE-SHOT PISTOL', 'PISTOLET À UN COUP .243'),
+    'equipment_weapon_ba_rifle_270_01': ('.270 BOLT-ACTION RIFLE', 'CARABINE À VERROU .270'),
+    'equipment_weapon_ba_rifle_762x54r_01': ('7.62X54R BOLT-ACTION RIFLE', 'CARABINE À VERROU 7.62X54R'),
+    'equipment_sight_scope_4x32_01': ('4X32 SCOPE', 'LUNETTE 4X32'),
+}
+NAMES_243_SP = ['.243 SOFT-POINT BULLET', 'BALLES À TÊTE MOLLE .243', 'TMG .243 WINCHESTER', 'BALA .243 DE PUNTA BLANDA',
+                'ПОЛУОБОЛОЧЕЧНАЯ ПУЛЯ .243', 'POCISK STOŻKOWY .243', '.243ソフトポイント弾',
+                'PROJÉTIL .243 DE PONTA MACIA', 'NÁBOJ .243 S MĚKKÝM HROTEM', '.243软尖弹']
+# Feuille ammo d'equipment_stats_ui : (portee ?, penetration, expansion, ?, classes, derniere colonne). Valeurs du jeu
+# pour les .243 SP et PT ; en-tetes inventes, sauf les morceaux "Penetration", "Expansion" et "Class" (--stat des
+# essais test12 a test14). La derniere colonne vaut 'x' pour quelques munitions du jeu, True pour les autres.
+STATS = {
+    'equipment_ammo_243_sp_01': (150.0, 15.0, 17.0, -1.0, '2;3;4;5;6', 'x'),
+    'equipment_ammo_243_pt_01': (150.0, 30.0, 4.0, -1.0, '2;3;4;5;6', 'x'),
+    'equipment_ammo_270_sp_01': (175.0, 18.0, 19.0, -1.0, '3;4;5;6;7', 'x'),
+    'equipment_ammo_762x54r_sp_01': (160.0, 20.0, 18.0, -1.0, '3;4;5;6;7', True),
+    'equipment_ammo_762x54r_fmj_01': (150.0, 30.0, 4.0, -1.0, '3;4;5;6;7', True),
+}
+STATS_HEADER = ['Name', 'Stat Range', 'Stat Bullet Penetration', 'Stat Bullet Expansion', 'Stat Unknown', 'Class', True]
+STATS_EMPTY_ROWS = 2   # lignes vides en fin de feuille ammo, comme dans le jeu : le jeu y arrete la lecture des stats
 # Noms effaces apres le scan : ils deviennent des hashes orphelins
 ORPHANS = ['hidden/demo_orphan_01.bin', 'hidden/demo_orphan_02.rtpc', 'hidden/demo_orphan_03.bin']
 
 
 def entity_path(name: str, sep: str = '/') -> str:
     return sep.join(['editor', 'entities', 'hp_weapons', 'ammunition', 'rifles', name + '.ee'])
+
+
+def display_key(name: str, suffix: str) -> str:
+    """Cle de traduction d'un objet du jeu : nom sans le _01 final, puis _name ou _description."""
+    return name[:-3] + suffix
+
+
+def texts_of(name: str) -> dict:
+    """{cle: [texte par langue]} du nom et de la description d'un objet."""
+    en, fr = DISPLAY[name]
+    names = NAMES_243_SP if name == 'equipment_ammo_243_sp_01' else [en, fr] + [en] * (len(LANGUAGES) - 2)
+    desc_en = 'Demo item: {}. Synthetic data, not from the game.'.format(en.lower())
+    desc_fr = 'Objet de démonstration : {}. Données inventées.'.format(fr.lower())
+    return {display_key(name, '_name'): names,
+            display_key(name, '_description'): [desc_en, desc_fr] + [desc_en] * (len(LANGUAGES) - 2)}
 
 
 def rtpc_bytes(root, version: int = 2) -> bytes:
@@ -77,7 +129,8 @@ def item(name: str, price: int, locked: int, dlc: str, children=()):
     return W.make_node(name, [
         W.make_prop('name', k_type_str, name.encode()),
         W.make_prop('note', k_type_str, name.replace('equipment_', '').replace('_', ' ').encode()),
-        W.make_prop('display_name', k_type_str, (name[:-3] + '_name').encode()),
+        W.make_prop('display_name', k_type_str, display_key(name, '_name').encode()),
+        W.make_prop('display_description', k_type_str, display_key(name, '_description').encode()),
         W.make_prop('cash_price', k_type_u32, price),
         W.make_prop('locked', k_type_u32, locked),
         W.make_prop('capacity_cost', k_type_f32, 0.02),
@@ -118,24 +171,38 @@ def spawn_defs() -> bytes:
 
 
 def stats_ui() -> bytes:
-    ammo_rows = [['name', 'class', 'penetration', 'expansion', 'note']]
+    ammo_rows = [list(STATS_HEADER)]
     for name, *_ in AMMO:
-        ammo_rows.append([name, '2-6', 0.25, 0.75, name.split('_')[3]])
+        ammo_rows.append([name] + list(STATS[name]))
+    ammo_rows += [[True] * len(STATS_HEADER) for _ in range(STATS_EMPTY_ROWS)]
     weapon_rows = [['name', 'zoom', 'enabled']] + [[w[0], 1.5, True] for w in WEAPONS]
     # disposition et chaine de relocation du vrai fichier (donnees avant les tables, voir adf_ecriture.py)
     return adf_fabrique.xlsbook([('ammo', ammo_rows), ('weapons', weapon_rows)], order='donnees_avant')
 
 
+def string_ids() -> bytes:
+    entries = {}
+    for name in DISPLAY:
+        entries.update(texts_of(name))
+    return adf_fabrique.stringlookup(entries)
+
+
 def entity(name: str) -> bytes:
-    """Entite .ee d'une munition, comme celle de la .243 SP : un SARC v2 avec .epe (RTPC) et .fmod_guids."""
+    """Entite .ee d'une munition, comme celle de la .243 SP : un SARC v2 avec .fmod_guids, .ammotunec (ADF, instance
+    nommee d'apres le fichier source tronque a 31 caracteres) et .epe (RTPC : item_id, tuning_file sans le c final,
+    _object_id)."""
     base = 'editor/entities/hp_weapons/ammunition/rifles/' + name
     epe = rtpc_bytes(W.make_node(0, [], [W.make_node('CAmmunitionItem', [
         W.make_prop('_class', k_type_str, b'CAmmunitionItem'),
         W.make_prop('item_id', k_type_str, name.encode()),
         W.make_prop('item_category', k_type_u32, 0),
-        W.make_prop('tuning_file', k_type_str, (base + '.ammotune').encode())])]), version=1)
-    data, _ = S.build(S.Sarc(2, [S.Entry(base + '.epe', epe, len(epe)),
-                                  S.Entry(base + '.fmod_guids', b'\x01\x02\x03\x04\x05\x06\x07\x08', 8)]))
+        W.make_prop('tuning_file', k_type_str, (base + '.ammotune').encode()),
+        W.make_prop('_object_id', k_type_objid, 0xffff000000000000 | int(hash32_func(name.encode())))])]), version=1)
+    classes = [int(c) for c in STATS[name][4].split(';')]
+    tune = adf_fabrique.ammotune((name + '.ammotune')[:31], levels=classes)
+    data, _ = S.build(S.Sarc(2, [S.Entry(base + '.fmod_guids', b'\x01\x02\x03\x04\x05\x06\x07\x08', 8),
+                                  S.Entry(base + '.ammotunec', tune, len(tune)),
+                                  S.Entry(base + '.epe', epe, len(epe))]))
     return data
 
 
@@ -161,9 +228,10 @@ def files():
         ('settings/hp_settings/equipment_data.bin', equipment_data()),
         ('settings/spawn_ammunition_defs.bin', spawn_defs()),
         ('settings/hp_settings/equipment_stats_ui.bin', stats_ui()),
+        ('settings/hp_settings/string_ids.stringlookup', string_ids()),
         ('settings/demo_notes.txt', 'COTWed DECA demo project.\nNo game data here: every file is synthetic.\n'.encode()),
     ]
-    for name, *_ in AMMO[:3]:
+    for name, *_ in AMMO:
         out.append((entity_path(name), entity(name)))
     out.append(('textures/ui/items/ammo/equipment_ammo_243_sp_01_alpha.dds', dds_rgba()))
     out += [(ORPHANS[0], b'\x13\x37\x00\x00' + b'\0' * 60),

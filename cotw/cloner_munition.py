@@ -44,8 +44,9 @@ contient deja un equipment_data.bin modifie par un autre mod) plutot que des ori
 """
 import argparse
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402  (installe aussi le substitut de zugbruecke hors Windows)
@@ -331,26 +332,27 @@ def display_keys(item: RtpcNode, new: str, name_specs: Sequence[str], desc_specs
     return entries, report
 
 
-def verify_addition(original_bytes: bytes, produced_bytes: bytes, new_hash: int) -> None:
+def verify_addition(original_bytes: bytes, produced_bytes: bytes, new_hash: Union[int, Iterable[int]]) -> None:
     """
-    Relit le fichier produit, retire le nouvel objet et exige un arbre identique a l'original :
-    prouve que l'operation n'a rien modifie d'autre.
+    Relit le fichier produit, retire le ou les nouveaux objets (un hash, ou plusieurs pour un mod) et exige un arbre
+    identique a l'original : prouve que l'operation n'a rien modifie d'autre.
     """
     produced = W.rtpc_from_bytes(produced_bytes)
     original = W.rtpc_from_bytes(original_bytes)
-    hits = []
+    for h in ([new_hash] if isinstance(new_hash, int) else list(new_hash)):
+        hits = []
 
-    def walk(node):
-        for c in node.child_table:
-            if c.name_hash == new_hash:
-                hits.append((node, c))
-            walk(c)
+        def walk(node):
+            for c in node.child_table:
+                if c.name_hash == h:
+                    hits.append((node, c))
+                walk(c)
 
-    walk(produced.root_node)
-    if len(hits) != 1:
-        raise EClone('verification : {} objet(s) de hash 0x{:08x} dans le fichier produit, 1 attendu'.format(
-            len(hits), new_hash))
-    remove_child(*hits[0])
+        walk(produced.root_node)
+        if len(hits) != 1:
+            raise EClone('verification : {} objet(s) de hash 0x{:08x} dans le fichier produit, 1 attendu'.format(
+                len(hits), h))
+        remove_child(*hits[0])
     diff = W.rtpc_diff(original, produced)
     if diff:
         raise EClone('verification : le fichier produit differe de l\'original ailleurs que sur l\'ajout : ' + diff)
@@ -359,8 +361,60 @@ def verify_addition(original_bytes: bytes, produced_bytes: bytes, new_hash: int)
 
 
 # ---------------------------------------------------------------------------
-# Programme principal
+# Construction : une munition (ligne de commande) ou plusieurs (mod, construire_mod.py, interface)
 # ---------------------------------------------------------------------------
+
+ENTITE_SOURCE = 'source'   # entite de la source (defaut de la ligne de commande ; l'arme charge alors la source)
+ENTITE_PROPRE = 'propre'   # copie de l'entite de la source, item_id, tuning_file, _object_id et instance renommes
+ENTITE_COPIE = 'copie'     # diagnostic : copie a l'octet pres de l'entite de la source, sous un nouveau chemin
+ENTITES = (ENTITE_SOURCE, ENTITE_PROPRE, ENTITE_COPIE)
+
+
+@dataclass
+class Munition:
+    """Une munition a ajouter. Les champs reprennent les options de la ligne de commande."""
+    source: str
+    nom: str
+    libelle: Optional[str] = None
+    prix: Optional[int] = None
+    armes: Optional[List[str]] = None            # None : celles de la source
+    entite: str = ENTITE_SOURCE
+    entite_chemin: Optional[str] = None          # avec ENTITE_SOURCE : autre chemin d'entite (--entite)
+    stats_de: Optional[str] = None               # ligne d'equipment_stats_ui copiee (None : pas de ligne)
+    stats: Dict[str, str] = field(default_factory=dict)   # colonne -> valeur (--stat)
+    stats_cellules_propres: bool = False
+    nom_affiche: List[str] = field(default_factory=list)  # [LANGUE=]TEXTE (--nom-affiche)
+    description: List[str] = field(default_factory=list)
+    champs: List[str] = field(default_factory=list)       # CHAMP=VALEUR (--champ)
+    forcer: bool = False                          # armes absentes de la categorie weapons acceptees
+
+    def valider(self):
+        if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
+            raise EClone('le nom ne doit contenir que des lettres ASCII, des chiffres et des _ : "{}"'.format(self.nom))
+        if (self.stats or self.stats_cellules_propres) and not self.stats_de:
+            raise EClone('{} : --stat et --stats-cellules-propres demandent --stats-de'.format(self.nom))
+        if self.entite not in ENTITES:
+            raise EClone('{} : entite "{}" inconnue ({})'.format(self.nom, self.entite, ', '.join(ENTITES)))
+        if self.entite_chemin and self.entite != ENTITE_SOURCE:
+            raise EClone('{} : --entite, --entite-copie et --entite-propre sont incompatibles'.format(self.nom))
+
+
+@dataclass
+class Mod:
+    """Munitions ajoutees dans l'ordre, et changements d'objets existants (faits une fois, avant les ajouts)."""
+    munitions: List[Munition]
+    controle_prix: List[str] = field(default_factory=list)   # NOM=PRIX (--controle-prix)
+    modifier: List[str] = field(default_factory=list)        # OBJET:CHAMP=VALEUR (--modifier)
+
+
+@dataclass
+class Resultat:
+    fichiers: List[Tuple[str, bytes]]   # (chemin virtuel, contenu), dans l'ordre d'ecriture
+    rapport: List[str]
+
+    def chemins(self) -> List[str]:
+        return [v for v, _ in self.fichiers]
+
 
 def load(vfs, base: Optional[Path], v_path: str) -> Tuple[bytes, str]:
     if base is not None:
@@ -369,6 +423,200 @@ def load(vfs, base: Optional[Path], v_path: str) -> Tuple[bytes, str]:
             return local.read_bytes(), str(local)
     return _projet.read_by_path(vfs, v_path), 'jeu : ' + v_path
 
+
+def fichiers_vises(munitions: Sequence[Munition]) -> List[str]:
+    """Chemins virtuels fixes que la construction ecrira (sans les entites, connues seulement en cours de route)."""
+    import adf_ajouter_ligne as AL
+    import stringlookup as SL
+    out = [EQUIPMENT_DATA, SPAWN_AMMO]
+    if any(m.stats_de for m in munitions):
+        out.append(AL.STATS_UI)
+    if any(m.nom_affiche or m.description for m in munitions):
+        out.append(SL.STRING_IDS)
+    return out
+
+
+def _chain_models(entries):
+    """Une cle dont le modele est lui-meme ajoute par la meme passe (munition copiee d'une munition du mod) prend
+    le modele de celle-ci : la ligne de dialogue copiee doit exister dans le fichier d'origine."""
+    import stringlookup as SL
+    by_key = {e.cle: e for e in entries}
+    out = []
+    for e in entries:
+        model, seen = e.modele, set()
+        while model in by_key and model not in seen:
+            seen.add(model)
+            model = by_key[model].modele
+        out.append(e if model == e.modele else SL.Entree(e.cle, e.textes, model))
+    return out
+
+
+def construire(vfs, mod: Mod, base: Optional[Path] = None,
+               etape: Optional[Callable[[str], None]] = None) -> Resultat:
+    """
+    Produit en memoire les fichiers du dropzone pour toutes les munitions du mod.
+
+    Les fichiers partent de ``base`` (format dropzone) s'il les contient, sinon des originaux du jeu. Les munitions
+    sont ajoutees l'une apres l'autre dans les memes arbres ; une munition peut donc copier une munition ajoutee
+    plus haut dans la liste (son entite et sa ligne de stats sont lues dans les fichiers en cours). Tout est relu et
+    verifie avant d'etre renvoye : retirer les munitions ajoutees redonne les fichiers de depart (aux changements
+    d'objets existants pres). ``etape`` recoit un court message avant chaque etape longue (interface).
+    Leve EClone avec un message explicite en cas de refus.
+    """
+    import adf_ajouter_ligne as AL
+    import stringlookup as SL
+    if not mod.munitions:
+        raise EClone('aucune munition a ajouter')
+    for m in mod.munitions:
+        m.valider()
+    names = [m.nom for m in mod.munitions]
+    doubles = sorted({n for n in names if names.count(n) > 1})
+    if doubles:
+        raise EClone('nom present plusieurs fois dans le mod : {}'.format(', '.join(doubles)))
+    single = len(mod.munitions) == 1
+    produced: Dict[str, bytes] = {}
+
+    def read(v_path: str) -> Tuple[bytes, str]:
+        if v_path in produced:
+            return produced[v_path], 'mod : ' + v_path
+        return load(vfs, base, v_path)
+
+    def step(text: str):
+        if etape is not None:
+            etape(text)
+
+    m0 = mod.munitions[0]
+    if single:
+        report = ['# Nouvelle munition "{}" copiee de "{}"'.format(m0.nom, m0.source), '']
+    else:
+        report = ['# Mod : {} munitions ajoutees : {}'.format(len(names), ', '.join(names)), '']
+    step('equipment_data, spawn_ammunition_defs')
+    eq_bytes, eq_src = read(EQUIPMENT_DATA)
+    sp_bytes, sp_src = read(SPAWN_AMMO)
+    report += ['Origine : ' + eq_src, 'Origine : ' + sp_src, '']
+    eq_tree, sp_tree = W.rtpc_from_bytes(eq_bytes), W.rtpc_from_bytes(sp_bytes)
+    for m in mod.munitions:
+        for tree, prop, src in ((eq_tree, H_NAME, eq_src), (sp_tree, H_SPAWN_NAME, sp_src)):
+            if item_matches(tree.root_node, m.nom, prop):
+                raise EClone('"{}" existe deja dans {} : nom deja utilise (commande deja lancee sur cette base ?)'.format(
+                    m.nom, src))
+    for spec in mod.controle_prix:
+        name, _, value = spec.partition('=')
+        if not value.isdigit():
+            raise EClone('--controle-prix attend NOM=PRIX, recu "{}"'.format(spec))
+        _, node = find_item(eq_tree.root_node, name.strip(), H_NAME)
+        old = set_u32(node, H_PRICE, int(value), 'prix de controle')
+        report.append('Controle : prix de {} : {} -> {}'.format(name.strip(), old, value))
+    for spec in mod.modifier:
+        item, fld, value = parse_field_spec(spec, with_item=True)
+        _, node = find_item(eq_tree.root_node, item, H_NAME)
+        old, new = set_field(node, fld, value, 'modification de ' + item)
+        report.append('Modification : {} : {} : {} -> {}'.format(item, fld, old, new))
+    # reference de la verification : le depart avec les seuls changements volontaires d'objets existants
+    eq_reference = W.rtpc_to_binary(eq_tree) if (mod.controle_prix or mod.modifier) else eq_bytes
+
+    text_entries, eq_hashes, sp_hashes, entities = [], [], [], []
+    for m in mod.munitions:
+        if not single:
+            report += ['', '## {} (copie de {})'.format(m.nom, m.source)]
+        step('{} : equipment_data, entite'.format(m.nom))
+        _, eq_item, lines = clone_equipment(eq_tree, m.source, m.nom, m.libelle, m.prix, m.armes, m.forcer)
+        report += lines
+        for spec in m.champs:
+            _, fld, value = parse_field_spec(spec, with_item=False)
+            old, new = set_field(eq_item, fld, value, 'nouvelle munition')
+            report.append('  champ {} : {} -> {}'.format(fld, old, new))
+        entries, lines = display_keys(eq_item, m.nom, m.nom_affiche, m.description)
+        text_entries += entries
+        report += lines
+        entity_path = m.entite_chemin
+        if m.entite in (ENTITE_PROPRE, ENTITE_COPIE):
+            import entite as E
+            _, src_spawn = find_item(sp_tree.root_node, m.source, H_SPAWN_NAME)
+            src_entity = bytes(W.node_get_prop(src_spawn, H_ENTITY).data).decode('utf-8').replace('\\', '/')
+            if m.source not in src_entity:
+                raise EClone('le chemin de l\'entite source ne contient pas son nom : {}'.format(src_entity))
+            entity_path = src_entity.replace(m.source, m.nom)
+            ee_bytes, ee_src = read(src_entity)
+            if m.entite == ENTITE_COPIE:
+                entity_out, lines = ee_bytes, ['entite : copie a l\'identique ({} octets) sous {}'.format(
+                    len(ee_bytes), entity_path)]
+            else:
+                try:
+                    entity_out, _renames, lines = E.clone_entity(ee_bytes, m.source, m.nom)
+                except (E.EEntite, E.S.ESarc) as e:
+                    raise EClone('entite : {}'.format(e))
+            report += ['Origine : ' + ee_src] + lines
+            produced[entity_path] = entity_out
+            entities.append(entity_path)
+        _, sp_item, lines = clone_spawn(sp_tree, m.source, m.nom, entity_path)
+        report += lines
+        eq_hashes.append(eq_item.name_hash)
+        sp_hashes.append(sp_item.name_hash)
+
+    step('verification equipment_data, spawn_ammunition_defs')
+    eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
+    verify_addition(eq_reference, eq_out, eq_hashes)
+    verify_addition(sp_bytes, sp_out, sp_hashes)
+    produced[EQUIPMENT_DATA], produced[SPAWN_AMMO] = eq_out, sp_out
+    if not single:
+        report.append('')
+
+    stats_rows = [m for m in mod.munitions if m.stats_de]
+    if stats_rows:
+        import resoudre_hashes as RH
+        step('equipment_stats_ui ({} ligne(s))'.format(len(stats_rows)))
+        st_bytes, st_src = read(AL.STATS_UI)
+        decode = AL.decoder(RH.FileReader(vfs))
+        report += ['Origine : ' + st_src]
+        report.append('equipment_stats_ui : ligne ajoutee, relue par DECA (original plus cette ligne, rien d\'autre)'
+                      if single else 'equipment_stats_ui : lignes ajoutees une a une, chacune relue par DECA '
+                                     '(fichier precedent plus cette ligne, rien d\'autre)')
+        for m in stats_rows:
+            try:
+                st_bytes, lines = AL.add_rows(decode, st_bytes, [(m.stats_de, m.nom)], values=dict(m.stats),
+                                              own_cells=m.stats_cellules_propres)
+            except (AL.X.EXls, AL.AE.EAdfEcriture) as e:
+                raise EClone('equipment_stats_ui : {}{}'.format('' if single else m.nom + ' : ', e))
+            report += lines
+        produced[AL.STATS_UI] = st_bytes
+
+    if text_entries:
+        step('string_ids ({} cle(s), le fichier du jeu prend environ 40 s)'.format(len(text_entries)))
+        si_bytes, si_src = read(SL.STRING_IDS)
+        chained = _chain_models(text_entries)
+        try:
+            strings_out, plan = SL.add(SL.decode, si_bytes, chained)
+            SL.verify(SL.decode, si_bytes, strings_out, plan)
+        except (SL.EStringLookup, SL.AE.EAdfEcriture) as e:
+            raise EClone('string_ids : {}'.format(e))
+        report += ['Origine : ' + si_src, 'string_ids : cles ajoutees dans les {} langues, relues (textes '
+                   'd\'origine intacts, paires triees, chaine de relocation {})'.format(len(SL.LANGUES), plan.chain)]
+        for e in chained:
+            report.append('  {} (modele {}) :'.format(e.cle, e.modele))
+            report += ['    {} : {}'.format(code, t) for code, t in zip(SL.LANGUES, e.textes)]
+        produced[SL.STRING_IDS] = strings_out
+
+    report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.' if single
+               else 'Verification : relus, et identiques aux fichiers de depart une fois les nouvelles munitions retirees.']
+    order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + [AL.STATS_UI, SL.STRING_IDS]
+    return Resultat([(v, produced[v]) for v in order if v in produced], report)
+
+
+def ecrire_fichiers(fichiers: Sequence[Tuple[str, bytes]], racine: Path) -> List[str]:
+    """Ecrit les fichiers sous ``racine`` (un dossier au format dropzone) ; renvoie les lignes du rapport."""
+    lines = []
+    for v_path, data in fichiers:
+        target = racine / Path(v_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+        lines.append('Ecrit : {} ({} octets)'.format(target, len(data)))
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# Programme principal
+# ---------------------------------------------------------------------------
 
 def main(argv=None):
     if hasattr(sys.stdout, 'reconfigure'):
@@ -420,118 +668,31 @@ def main(argv=None):
         raise SystemExit('ERREUR : --stat et --stats-cellules-propres demandent --stats-de')
     if sum(bool(x) for x in (args.entite, args.entite_propre, args.entite_copie)) > 1:
         raise SystemExit('ERREUR : --entite, --entite-copie et --entite-propre sont incompatibles')
-    out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     import adf_ajouter_ligne as AL
-    import stringlookup as SL
-    texts = bool(args.nom_affiche or args.description)
-    targets = {v: out_root / Path(v) for v in (EQUIPMENT_DATA, SPAWN_AMMO) + ((AL.STATS_UI,) if args.stats_de else ())
-               + ((SL.STRING_IDS,) if texts else ())}
-    existing = [str(p) for p in targets.values() if p.exists()]
+    munition = Munition(
+        source=args.source, nom=args.nom, libelle=args.libelle, prix=args.prix,
+        armes=[w.strip() for w in args.armes.split(',') if w.strip()] if args.armes else None,
+        entite=ENTITE_PROPRE if args.entite_propre else (ENTITE_COPIE if args.entite_copie else ENTITE_SOURCE),
+        entite_chemin=args.entite, stats_de=args.stats_de, stats=AL.parse_values(args.stat),
+        stats_cellules_propres=args.stats_cellules_propres, nom_affiche=list(args.nom_affiche),
+        description=list(args.description), champs=list(args.champ), forcer=args.forcer)
+    mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
+    out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
+    existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]
     if existing and not args.ecraser:
         raise SystemExit('ERREUR : fichiers deja presents (option --ecraser pour les remplacer) : {}'.format(existing))
 
     vfs = _projet.open_project(args.projet)
     base = _projet.base_dir(args.base)
-    weapons = [w.strip() for w in args.armes.split(',') if w.strip()] if args.armes else None
-    report = ['# Nouvelle munition "{}" copiee de "{}"'.format(args.nom, args.source), '']
     try:
-        eq_bytes, eq_src = load(vfs, base, EQUIPMENT_DATA)
-        sp_bytes, sp_src = load(vfs, base, SPAWN_AMMO)
-        report += ['Origine : ' + eq_src, 'Origine : ' + sp_src, '']
-        eq_tree, sp_tree = W.rtpc_from_bytes(eq_bytes), W.rtpc_from_bytes(sp_bytes)
-        for tree, prop, src in ((eq_tree, H_NAME, eq_src), (sp_tree, H_SPAWN_NAME, sp_src)):
-            if not item_matches(tree.root_node, args.nom, prop):
-                continue
-            raise EClone('"{}" existe deja dans {} : nom deja utilise (commande deja lancee sur cette base ?)'.format(
-                args.nom, src))
-        for spec in args.controle_prix:
-            name, _, value = spec.partition('=')
-            if not value.isdigit():
-                raise EClone('--controle-prix attend NOM=PRIX, recu "{}"'.format(spec))
-            _, node = find_item(eq_tree.root_node, name.strip(), H_NAME)
-            old = set_u32(node, H_PRICE, int(value), 'prix de controle')
-            report.append('Controle : prix de {} : {} -> {}'.format(name.strip(), old, value))
-        for spec in args.modifier:
-            item, field, value = parse_field_spec(spec, with_item=True)
-            _, node = find_item(eq_tree.root_node, item, H_NAME)
-            old, new = set_field(node, field, value, 'modification de ' + item)
-            report.append('Modification : {} : {} : {} -> {}'.format(item, field, old, new))
-        # reference de la verification : l'original avec les seuls changements volontaires d'objets existants
-        eq_reference = W.rtpc_to_binary(eq_tree) if (args.controle_prix or args.modifier) else eq_bytes
-        _, eq_item, lines = clone_equipment(eq_tree, args.source, args.nom, args.libelle, args.prix, weapons, args.forcer)
-        report += lines
-        for spec in args.champ:
-            _, field, value = parse_field_spec(spec, with_item=False)
-            old, new = set_field(eq_item, field, value, 'nouvelle munition')
-            report.append('  champ {} : {} -> {}'.format(field, old, new))
-        text_entries, lines = display_keys(eq_item, args.nom, args.nom_affiche, args.description)
-        report += lines
-        entity_out = None
-        entity_path = args.entite
-        if args.entite_propre or args.entite_copie:
-            import entite as E
-            _, src_spawn = find_item(sp_tree.root_node, args.source, H_SPAWN_NAME)
-            src_entity = bytes(W.node_get_prop(src_spawn, H_ENTITY).data).decode('utf-8').replace('\\', '/')
-            if args.source not in src_entity:
-                raise EClone('le chemin de l\'entite source ne contient pas son nom : {}'.format(src_entity))
-            entity_path = src_entity.replace(args.source, args.nom)
-            ee_bytes, ee_src = load(vfs, base, src_entity)
-            if args.entite_copie:
-                entity_out, lines = ee_bytes, ['entite : copie a l\'identique ({} octets) sous {}'.format(len(ee_bytes), entity_path)]
-            else:
-                try:
-                    entity_out, _renames, lines = E.clone_entity(ee_bytes, args.source, args.nom)
-                except (E.EEntite, E.S.ESarc) as e:
-                    raise EClone('entite : {}'.format(e))
-            report += ['Origine : ' + ee_src] + lines
-            targets[entity_path] = out_root / Path(entity_path)
-            if targets[entity_path].exists() and not args.ecraser:
-                raise EClone('fichier deja present (option --ecraser) : {}'.format(targets[entity_path]))
-        _, sp_item, lines = clone_spawn(sp_tree, args.source, args.nom, entity_path)
-        report += lines
-        eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
-        verify_addition(eq_reference, eq_out, eq_item.name_hash)
-        verify_addition(sp_bytes, sp_out, sp_item.name_hash)
-        stats_out = None
-        if args.stats_de:
-            import resoudre_hashes as RH
-            st_bytes, st_src = load(vfs, base, AL.STATS_UI)
-            try:
-                stats_out, lines = AL.add_rows(AL.decoder(RH.FileReader(vfs)), st_bytes, [(args.stats_de, args.nom)],
-                                               values=AL.parse_values(args.stat),
-                                               own_cells=args.stats_cellules_propres)
-            except (AL.X.EXls, AL.AE.EAdfEcriture) as e:
-                raise EClone('equipment_stats_ui : {}'.format(e))
-            report += ['Origine : ' + st_src, 'equipment_stats_ui : ligne ajoutee, relue par DECA (original plus '
-                       'cette ligne, rien d\'autre)'] + lines
-        strings_out = None
-        if text_entries:
-            si_bytes, si_src = load(vfs, base, SL.STRING_IDS)
-            try:
-                strings_out, plan = SL.add(SL.decode, si_bytes, text_entries)
-                SL.verify(SL.decode, si_bytes, strings_out, plan)
-            except (SL.EStringLookup, SL.AE.EAdfEcriture) as e:
-                raise EClone('string_ids : {}'.format(e))
-            report += ['Origine : ' + si_src, 'string_ids : cles ajoutees dans les {} langues, relues (textes '
-                       'd\'origine intacts, paires triees, chaine de relocation {})'.format(len(SL.LANGUES), plan.chain)]
-            for e in text_entries:
-                report.append('  {} (modele {}) :'.format(e.cle, e.modele))
-                report += ['    {} : {}'.format(code, t) for code, t in zip(SL.LANGUES, e.textes)]
+        result = construire(vfs, mod, base)
+        for v_path in result.chemins():
+            if not args.ecraser and (out_root / Path(v_path)).exists():
+                raise EClone('fichier deja present (option --ecraser) : {}'.format(out_root / Path(v_path)))
     except EClone as e:
         raise SystemExit('ERREUR : {}'.format(e))
-    report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.']
 
-    outputs = [(EQUIPMENT_DATA, eq_out), (SPAWN_AMMO, sp_out)]
-    if entity_out is not None:
-        outputs.append((entity_path, entity_out))
-    if stats_out is not None:
-        outputs.append((AL.STATS_UI, stats_out))
-    if strings_out is not None:
-        outputs.append((SL.STRING_IDS, strings_out))
-    for v_path, data in outputs:
-        targets[v_path].parent.mkdir(parents=True, exist_ok=True)
-        targets[v_path].write_bytes(data)
-        report.append('Ecrit : {} ({} octets)'.format(targets[v_path], len(data)))
+    report = result.rapport + ecrire_fichiers(result.fichiers, out_root)
     text = '\n'.join(report) + '\n'
     (out_root.parent / 'rapport_clonage.txt').write_text(text, encoding='utf-8')
     sys.stdout.write(text)
