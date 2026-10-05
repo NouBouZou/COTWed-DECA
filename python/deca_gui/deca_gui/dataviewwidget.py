@@ -18,6 +18,18 @@ from .deca_interfaces import IVfsViewSrc
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget, QVBoxLayout, QTabWidget
 
+# DECA file type -> tab showing the content (the routing of vnode_2click_selected). cotw/deca_audit.py keeps a
+# copy (LECTEURS, no Qt dependency) to measure what the fork can read; test_audit_couverture.py checks both agree.
+TEXT_TYPES = {FTYPE_TXT}
+SARC_TYPES = {FTYPE_SARC}
+IMAGE_TYPES = {FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC, FTYPE_DDS, FTYPE_BMP}
+RTPC_TYPES = {FTYPE_RTPC}
+OBC_TYPES = {FTYPE_OBC}
+VIEWER_TABS = dict([(t, 'Text') for t in TEXT_TYPES] + [(t, 'SARC') for t in SARC_TYPES] +
+                   [(t, 'Image') for t in IMAGE_TYPES] + [(t, 'RTPC') for t in RTPC_TYPES] +
+                   [(t, 'OBC') for t in OBC_TYPES] +
+                   [(t, 'ADF/GDC' if t == FTYPE_ADF_BARE else 'ADF') for t in ftype_adf_family])
+
 
 class DataViewWidget(QWidget):
     """
@@ -142,13 +154,13 @@ class DataViewWidget(QWidget):
         self._process(self.tab_raw_index, self.tab_raw, vfs, vnode)
 
         target = self.tab_raw_index
-        if vnode.file_type in {FTYPE_TXT}:
+        if vnode.file_type in TEXT_TYPES:
             self._enable(self.tab_text_index, self.tab_text, vfs, vnode, True)
             target = self.tab_text_index
-        elif vnode.file_type in {FTYPE_SARC}:
+        elif vnode.file_type in SARC_TYPES:
             self._enable(self.tab_sarc_index, self.tab_sarc, vfs, vnode, True)
             target = self.tab_sarc_index
-        elif vnode.file_type in {FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC, FTYPE_DDS, FTYPE_BMP}:
+        elif vnode.file_type in IMAGE_TYPES:
             self._enable(self.tab_image_index, self.tab_image, vfs, vnode, True)
             target = self.tab_image_index
         elif vnode.file_type in ftype_adf_family:
@@ -176,10 +188,10 @@ class DataViewWidget(QWidget):
                     target = self.tab_adf_gdc_index
                 self._enable(self.tab_adf_gdc_index, self.tab_adf_gdc, vfs, vnodes_adfb[0],
                              target == self.tab_adf_gdc_index)
-        elif vnode.file_type in {FTYPE_RTPC}:
+        elif vnode.file_type in RTPC_TYPES:
             self._enable(self.tab_rtpc_index, self.tab_rtpc, vfs, vnode, True)
             target = self.tab_rtpc_index
-        elif vnode.file_type in {FTYPE_OBC}:
+        elif vnode.file_type in OBC_TYPES:
             self._enable(self.tab_obc_index, self.tab_obc, vfs, vnode, True)
             target = self.tab_obc_index
 

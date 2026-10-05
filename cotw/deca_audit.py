@@ -6,6 +6,8 @@ Mesure les deux lacunes principales de DECA sur COTW :
   1. les fichiers sans nom  (noeuds avec un hash mais sans chemin : v_path IS NULL)
   2. les formats non lus    (noeuds sans type reconnu, types reconnus mais jamais
                              explores, types ADF dont la definition manque)
+et, par extension, ce que COTWed DECA sait afficher (visionneuses de l'interface), pour choisir les
+formats a etudier ensuite.
 
 Le script n'utilise que la bibliotheque standard de Python (aucune dependance DECA)
 et ouvre la base en mode lecture seule : il ne peut pas modifier le projet.
@@ -25,6 +27,8 @@ dossier du projet, pour survivre a sa suppression quand on le recree) :
     types_inconnus_ext.csv     fichiers nommes mais sans type, regroupes par extension
     types_non_explores.csv     types reconnus que DECA ne parcourt jamais
     adf_types_manquants.csv    types ADF references mais non definis
+    couverture_extensions.csv  par extension : fichiers lisibles par une visionneuse de COTWed DECA, verdict
+    extraire_echantillons.bat  commandes extraire.py : quelques fichiers des familles non lues (phase C)
     log_resume.txt             erreurs trouvees dans le journal DECA (si present)
 
 Toutes les constantes ci-dessous sont recopiees du code de DECA (branche develop,
@@ -70,6 +74,31 @@ TYPES_EXPLORES = {
     'exe', 'arc', 'tab', 'gt0c', 'garc', 'sarc', 'gdc',
     'adf', 'adfb', 'adf0', 'adf5', 'rtpc', 'gfx', 'txt', 'symlink',
 }
+
+# python/deca/deca/db_types.py, ajoute par COTWed DECA (2026-10-05) : noeud dont le traitement a leve une
+# exception pendant le scan (ecritures annulees, une ligne "loop_over_uid_wrapper: failed for" au journal).
+FLAG_PROCESSING_FAILED = 1 << 25
+
+# Visionneuses de COTWed DECA (python/deca_gui/deca_gui/dataviewwidget.py, VIEWER_TABS) : type DECA -> onglet qui
+# montre le contenu structure. Hors de cette table, l'interface n'offre que Info et Raw/Hex (les octets).
+# test_audit_couverture.py verifie que cette table et celle de l'interface concordent.
+LECTEURS = {
+    'txt': 'Text',
+    'sarc': 'SARC',
+    'avtx': 'Image', 'atx': 'Image', 'hmddsc': 'Image', 'dds': 'Image', 'bmp': 'Image',
+    'adf': 'ADF', 'adf0': 'ADF', 'adf5': 'ADF',       # + Strings / Sheet selon le type d'instance
+    'adfb': 'ADF/GDC',
+    'rtpc': 'RTPC',
+    'obc': 'OBC',
+}
+# Conteneurs explores par DECA : leur contenu devient des noeuds de l'arbre (pas de visionneuse propre).
+CONTENEURS = {'gt0c', 'garc', 'gdc'}
+
+# Statut d'un fichier pour la couverture de lecture, du meilleur au pire : un fichier present en plusieurs
+# copies (archives) prend le meilleur statut de ses copies.
+STATUTS = ('lisible', 'conteneur', 'adf_sans_type', 'echec_scan', 'type_sans_visionneuse', 'type_inconnu', 'lien')
+STATUTS_LUS = ('lisible', 'conteneur')
+SEUIL_LU = 99.0        # % de fichiers lisibles au-dessus duquel une famille est "lue"
 
 # db_processor.py : PRAGMA user_version = 2 est ecrit a la toute fin du traitement.
 SCAN_TERMINE_VERSION = 2
@@ -126,6 +155,14 @@ def magic_label(magic):
     hx = ' '.join('{:02X}'.format(x) for x in b)
     asc = ''.join(chr(x) if 0x20 <= x < 0x7F else '.' for x in b)
     return hx, asc
+
+
+def magic_short(magic):
+    """Magic court pour un tableau : le texte s'il est lisible (RTPC, ' FDA', DDS ), l'hexadecimal sinon."""
+    hx, asc = magic_label(magic)
+    if asc and sum(1 for c in asc if c.isalnum()) >= 3 and not set(asc) & set('|`'):
+        return asc.strip()
+    return hx
 
 
 def to_text(value):
@@ -368,6 +405,7 @@ class Audit:
         totals['non_explores_fichiers'] = sum(u['fichiers'] for u in unexplored.values())
         totals['copies_deja_explorees'] = skipped
 
+        self.explored = explored
         self.per_archive = per_archive
         self.by_type = by_type
         self.unknown_magic = unknown_magic
@@ -419,6 +457,7 @@ class Audit:
         """
         tables = {r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         self.adf_missing = []
+        self.adf_missing_nodes = set()
         if 'core_adf_types' not in tables:
             self.m['adf_types_manquants'] = 0
             self.m['adf_noeuds_affectes'] = 0
@@ -453,8 +492,128 @@ class Audit:
                 'exemples': examples,
             })
         self.adf_missing.sort(key=lambda d: -d['noeuds'])
+        self.adf_missing_nodes = {n for v in grouped.values() for n in v}
         self.m['adf_types_manquants'] = len(self.adf_missing)
-        self.m['adf_noeuds_affectes'] = len({n for v in grouped.values() for n in v})
+        self.m['adf_noeuds_affectes'] = len(self.adf_missing_nodes)
+
+    # -- couverture de lecture par extension (COTWed DECA) ------------------
+
+    def node_status(self, node_id, flags, file_type):
+        if flags & FLAG_PROCESSING_FAILED:
+            return 'echec_scan'
+        if file_type in ('adf', 'adf0', 'adf5', 'adfb') and node_id in self.adf_missing_nodes:
+            return 'adf_sans_type'
+        if file_type == 'symlink':
+            return 'lien'
+        if file_type in LECTEURS:
+            return 'lisible'
+        if file_type in CONTENEURS:
+            return 'conteneur'
+        if file_type is None or file_type == FTYPE_NOT_HANDLED:
+            return 'type_inconnu'
+        return 'type_sans_visionneuse'
+
+    def scan_coverage(self):
+        """
+        Couverture de lecture par famille de fichiers : l'extension pour un fichier nomme, "(sans nom) <type>"
+        sinon (sans nom, l'extension est inconnue). Un fichier = un v_hash (ses copies dans plusieurs archives
+        comptent une fois, avec le meilleur statut de ses copies) ; sans v_hash, un noeud.
+
+        Lisible = une visionneuse de COTWed DECA montre son contenu structure (LECTEURS), ou c'est un conteneur
+        dont DECA a range le contenu dans l'arbre. Les liens (entrees sans contenu propre) ne comptent pas.
+        A lancer apres scan_nodes (fichiers explores) et scan_adf_missing (ADF sans definition).
+        """
+        rank = {st: i for i, st in enumerate(STATUTS)}
+        fams = {}
+        q = ('SELECT node_id, flags, parent_id, v_hash, v_path, file_type, magic, size_u FROM core_nodes')
+        for node_id, flags, parent_id, v_hash, v_path, file_type, magic, size_u in self.conn.execute(q):
+            flags = flags or 0
+            if flags & FLAG_TEMPORARY_FILE or parent_id is None or file_type in (FTYPE_ARC, FTYPE_TAB):
+                continue
+            path_txt = to_text(v_path)
+            if path_txt:
+                key = extension_of(path_txt)
+            else:
+                key = '(sans nom) {}'.format(file_type if file_type not in (None, FTYPE_NOT_HANDLED)
+                                             else 'type inconnu')
+            f = fams.get(key)
+            if f is None:
+                f = fams[key] = {'noeuds': 0, 'fichiers': {}, 'types': collections.Counter(),
+                                 'magics': collections.Counter(), 'exemples': [], 'noeuds_exemples': []}
+            f['noeuds'] += 1
+            status = self.node_status(node_id, flags, file_type)
+            fid = v_hash if v_hash is not None else ('noeud', node_id)
+            explored = file_type in TYPES_EXPLORES and v_hash is not None and (file_type, v_hash) in self.explored
+            old = f['fichiers'].get(fid)
+            if old is None:
+                f['fichiers'][fid] = [status, size_u or 0, explored, file_type]
+                f['types'][file_type or '(aucun)'] += 1
+                f['magics'][magic_short(magic)] += 1
+                if status not in STATUTS_LUS and status != 'lien':
+                    if path_txt and len(f['exemples']) < self.sample_size:
+                        f['exemples'].append(path_txt)
+                    if not path_txt and len(f['noeuds_exemples']) < self.sample_size:
+                        f['noeuds_exemples'].append(node_id)
+            else:
+                if rank[status] < rank[old[0]]:
+                    old[0], old[3] = status, file_type
+                old[1] = max(old[1], size_u or 0)
+                old[2] = old[2] or explored
+
+        rows = []
+        for key, f in fams.items():
+            statuses = collections.Counter(v[0] for v in f['fichiers'].values())
+            n = len(f['fichiers'])
+            liens = statuses.get('lien', 0)
+            utiles = n - liens
+            lus = sum(statuses.get(st, 0) for st in STATUTS_LUS)
+            pct_lu = pct(lus, utiles)
+            if utiles == 0:
+                verdict = 'liens seulement'
+            elif pct_lu >= SEUIL_LU:
+                verdict = 'lu'
+            elif lus == 0:
+                verdict = 'non lu'
+            else:
+                verdict = 'partiel'
+            lecteurs = collections.Counter(LECTEURS.get(v[3], 'conteneur' if v[3] in CONTENEURS else 'octets')
+                                           for v in f['fichiers'].values() if v[0] != 'lien')
+            explorables = [v for v in f['fichiers'].values() if v[3] in TYPES_EXPLORES]
+            rows.append({
+                'famille': key,
+                'fichiers': n,
+                'noeuds': f['noeuds'],
+                'octets': sum(v[1] for v in f['fichiers'].values()),
+                'lisibles': lus,
+                'pct_lisibles': pct_lu,
+                'verdict': verdict,
+                'non_lus': utiles - lus,
+                'statuts': statuses,
+                'lecteurs': lecteurs,
+                'types': f['types'],
+                'magics': f['magics'],
+                'explores': sum(1 for v in explorables if v[2]),
+                'explorables': len(explorables),
+                'exemples': f['exemples'],
+                'noeuds_exemples': f['noeuds_exemples'],
+            })
+        rows.sort(key=lambda r: (-r['fichiers'], r['famille']))
+        self.coverage = rows
+        utiles = sum(r['fichiers'] - r['statuts'].get('lien', 0) for r in rows)
+        lus = sum(r['lisibles'] for r in rows)
+        self.m['couverture_fichiers'] = utiles
+        self.m['couverture_lisibles'] = lus
+        self.m['couverture_pct'] = round(pct(lus, utiles), 2)
+        self.m['familles'] = len(rows)
+        self.m['familles_non_lues'] = sum(1 for r in rows if r['verdict'] == 'non lu')
+        self.m['familles_partielles'] = sum(1 for r in rows if r['verdict'] == 'partiel')
+        self.m['echecs_scan'] = sum(r['statuts'].get('echec_scan', 0) for r in rows)
+
+    def priorities(self, limit=15):
+        """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord."""
+        rows = [r for r in self.coverage if r['verdict'] in ('non lu', 'partiel') and r['non_lus'] > 0]
+        rows.sort(key=lambda r: (-r['non_lus'], -r['octets'], r['famille']))
+        return rows[:limit]
 
     # -- meta -----------------------------------------------------------------
 
@@ -511,7 +670,56 @@ def write_csv(path, header, rows, sep):
         w.writerows(rows)
 
 
-def build_outputs(a, out_dir, sep, log_counts, log_samples, log_paths, db_path, compare):
+def fmt_counter(counter, n=3):
+    return ', '.join('{} ({})'.format(k, v) for k, v in counter.most_common(n))
+
+
+def sample_dir_name(famille):
+    """Nom de dossier d'une famille : '.nl.mdic' -> 'nl.mdic', '(sans nom) rtpc' -> 'sans_nom_rtpc'."""
+    name = famille.strip('.').replace('(', '').replace(')', '').replace(' ', '_')
+    return ''.join(c for c in name if c.isalnum() or c in '._-') or 'famille'
+
+
+def sample_command(row, project_dir, out_dir, n):
+    """Commande extraire.py qui copie quelques fichiers de la famille (phase C : etude du format)."""
+    target = out_dir / 'echantillons' / sample_dir_name(row['famille'])
+    base = 'python {} "{}"'.format(Path('cotw') / 'extraire.py', project_dir)
+    if row['famille'].startswith('(sans nom)'):
+        if not row['noeuds_exemples']:
+            return None
+        sel = '--noeuds {}'.format(' '.join(str(i) for i in row['noeuds_exemples']))
+    elif row['famille'] == '(sans extension)':
+        if not row['exemples']:
+            return None
+        sel = ' '.join('"{}"'.format(x) for x in row['exemples'])
+    else:
+        sel = '--extension {} --echantillons {}'.format(row['famille'], n)
+    return '{} {} --sortie "{}"'.format(base, sel, target)
+
+
+def write_sample_script(path, rows, project_dir, out_dir, n):
+    repo = Path(__file__).resolve().parent.parent
+    lines = ['@echo off',
+             'rem Echantillons des familles de fichiers que COTWed DECA ne sait pas encore lire (deca_audit.py,',
+             'rem {}). A lancer dans l\'invite ou l\'environnement virtuel est active, DECA ferme.'.format(
+                 datetime.now().isoformat(timespec='seconds')),
+             'cd /d "{}"'.format(repo)]
+    count = 0
+    for r in rows:
+        cmd = sample_command(r, project_dir, out_dir, n)
+        if cmd is None:
+            continue
+        lines.append('rem {} : {} fichiers non lisibles sur {} ({})'.format(
+            r['famille'], r['non_lus'], r['fichiers'], r['verdict']))
+        lines.append(cmd)
+        count += 1
+    with open(path, 'w', encoding='utf-8', newline='\r\n') as f:
+        f.write('\n'.join(lines) + '\n')
+    return count
+
+
+def build_outputs(a, out_dir, sep, log_counts, log_samples, log_paths, db_path, compare, project_dir=None,
+                  n_samples=5):
     out_dir.mkdir(parents=True, exist_ok=True)
     m = a.m
 
@@ -563,6 +771,22 @@ def build_outputs(a, out_dir, sep, log_counts, log_samples, log_paths, db_path, 
               [(d['type_hash'], d['nom_type'], d['noeuds'], ' | '.join(d['exemples']))
                for d in a.adf_missing], sep)
 
+    cov_rows = [(r['famille'], r['verdict'], r['fichiers'], r['lisibles'], '{:.1f}'.format(r['pct_lisibles']),
+                 r['non_lus'], r['octets'], r['noeuds'], fmt_counter(r['lecteurs'], 4), fmt_counter(r['types'], 4),
+                 fmt_counter(r['magics'], 3), '{}/{}'.format(r['explores'], r['explorables']),
+                 r['statuts'].get('echec_scan', 0), r['statuts'].get('adf_sans_type', 0),
+                 r['statuts'].get('lien', 0), ' | '.join(r['exemples']),
+                 ' '.join(str(i) for i in r['noeuds_exemples']))
+                for r in a.coverage]
+    write_csv(out_dir / 'couverture_extensions.csv',
+              ['famille', 'verdict', 'fichiers_uniques', 'lisibles', 'pct_lisibles', 'non_lisibles', 'octets',
+               'noeuds', 'visionneuses', 'types_detectes', 'magics', 'explores_par_deca', 'echecs_scan',
+               'adf_sans_type', 'liens', 'exemples_non_lisibles', 'noeuds_exemples'],
+              cov_rows, sep)
+    prio = a.priorities()
+    n_cmds = write_sample_script(out_dir / 'extraire_echantillons.bat', prio, project_dir or db_path.parent.parent,
+                                 out_dir, n_samples)
+
     if log_paths:
         with open(out_dir / 'log_resume.txt', 'w', encoding='utf-8') as f:
             f.write('Journaux lus : {}\n\n'.format(', '.join(str(p) for p in log_paths)))
@@ -578,12 +802,14 @@ def build_outputs(a, out_dir, sep, log_counts, log_samples, log_paths, db_path, 
     metrics['par_archive_orphelins'] = {r[0]: r[7] for r in arch_rows}
     metrics['par_magic_noeuds'] = {'{} {}'.format(r[0], r[1]).strip(): r[2] for r in magic_rows}
     metrics['journal'] = dict(log_counts)
+    metrics['par_famille_pct_lisibles'] = {r['famille']: round(r['pct_lisibles'], 1) for r in a.coverage}
+    metrics['commandes_echantillons'] = n_cmds
     with open(out_dir / 'metrics.json', 'w', encoding='utf-8') as f:
         json.dump(metrics, f, indent=2, ensure_ascii=False)
 
     comparison = compare_metrics(compare, metrics) if compare else None
     write_report(out_dir / 'rapport.md', a, arch_rows, magic_rows, unexp_rows,
-                 log_counts, log_samples, log_paths, db_path, comparison)
+                 log_counts, log_samples, log_paths, db_path, comparison, prio, n_cmds)
     return metrics, comparison
 
 
@@ -595,6 +821,9 @@ SCALAIRES_COMPARES = [
     ('non_explores_fichiers', 'Fichiers de type reconnu jamais explores', True),
     ('adf_types_manquants', 'Types ADF manquants', True),
     ('adf_noeuds_affectes', 'Fichiers ADF affectes', True),
+    ('couverture_lisibles', 'Fichiers lisibles par une visionneuse', False),
+    ('familles_non_lues', 'Familles (extensions) non lues', True),
+    ('echecs_scan', 'Fichiers en echec au scan', True),
     ('chaines_connues', 'Chaines connues (dictionnaire)', False),
     ('virtuels', 'Fichiers virtuels total', False),
 ]
@@ -613,7 +842,7 @@ def compare_metrics(old_path, new):
 
 
 def write_report(path, a, arch_rows, magic_rows, unexp_rows, log_counts, log_samples, log_paths, db_path,
-                 comparison):
+                 comparison, prio=(), n_cmds=0):
     m = a.m
     L = []
     L.append('# Audit DECA -- theHunter: Call of the Wild')
@@ -699,7 +928,46 @@ def write_report(path, a, arch_rows, magic_rows, unexp_rows, log_counts, log_sam
                 d['type_hash'], d['nom_type'] or '-', d['noeuds'], d['exemples'][0] if d['exemples'] else '-'))
         L.append('')
 
-    L.append('## 3. Journal DECA')
+    L.append('## 3. Couverture de lecture par extension (COTWed DECA)')
+    L.append('')
+    L.append('Fichiers uniques lisibles par une visionneuse de l\'interface (RTPC, ADF, Strings, Sheet, SARC, '
+             'Image, Text, OBC) ou ranges par DECA dans l\'arbre (conteneurs) : **{} / {} ({:.1f} %)**. '
+             'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}.'.format(
+                 m.get('couverture_lisibles', 0), m.get('couverture_fichiers', 0), m.get('couverture_pct', 0.0),
+                 m.get('familles', 0), m.get('familles_non_lues', 0), m.get('familles_partielles', 0),
+                 m.get('echecs_scan', 0)))
+    L.append('')
+    L.append('Famille = extension pour un fichier nomme (a partir du premier point : `.nl.mdic`), '
+             '`(sans nom) <type>` sinon. Verdict : *lu* a partir de {:.0f} % de fichiers lisibles. Detail de '
+             'toutes les familles : `couverture_extensions.csv`.'.format(SEUIL_LU))
+    L.append('')
+    L.append('| Famille | Fichiers | Lisibles | Verdict | Visionneuse | Types detectes | Magic |')
+    L.append('|---|---:|---:|---|---|---|---|')
+    for r in a.coverage[:30]:
+        L.append('| `{}` | {} | {:.1f} % | {} | {} | {} | {} |'.format(
+            r['famille'], r['fichiers'], r['pct_lisibles'], r['verdict'], fmt_counter(r['lecteurs'], 2) or '-',
+            fmt_counter(r['types'], 2) or '-', fmt_counter(r['magics'], 2) or '-'))
+    L.append('')
+    L.append('### Priorites (phase C : etude des formats)')
+    L.append('')
+    if prio:
+        L.append('Familles avec le plus de fichiers non lisibles. `extraire_echantillons.bat` ({} commandes) en '
+                 'copie quelques-uns par famille, repartis par taille, dans `echantillons\\` : ce sont les '
+                 'fichiers a apporter sur le portable pour l\'etude.'.format(n_cmds))
+        L.append('')
+        L.append('| Famille | Non lisibles | Volume | Types detectes | Magic | Exemple |')
+        L.append('|---|---:|---:|---|---|---|')
+        for r in prio:
+            ex = r['exemples'][0] if r['exemples'] else (
+                'noeud {}'.format(r['noeuds_exemples'][0]) if r['noeuds_exemples'] else '-')
+            L.append('| `{}` | {} | {} | {} | {} | `{}` |'.format(
+                r['famille'], r['non_lus'], human_bytes(r['octets']), fmt_counter(r['types'], 2) or '-',
+                fmt_counter(r['magics'], 2) or '-', ex))
+    else:
+        L.append('Aucune famille non lue.')
+    L.append('')
+
+    L.append('## 4. Journal DECA')
     L.append('')
     if log_paths:
         L.append('Lu : ' + ', '.join('`{}`'.format(p) for p in log_paths))
@@ -741,6 +1009,11 @@ def print_summary(m, out_dir, comparison, log_samples):
         m.get('non_explores_fichiers', 0), m.get('non_explores', 0)))
     p('Types ADF manquants          : {}  ({} fichiers affectes)'.format(
         m.get('adf_types_manquants', 0), m.get('adf_noeuds_affectes', 0)))
+    p('Fichiers lisibles (COTWed)   : {} / {}  ({:.1f} %) ; familles non lues : {}, partielles : {}'.format(
+        m.get('couverture_lisibles', 0), m.get('couverture_fichiers', 0), m.get('couverture_pct', 0.0),
+        m.get('familles_non_lues', 0), m.get('familles_partielles', 0)))
+    if m.get('echecs_scan', 0):
+        p('Fichiers en echec au scan    : {}  (journal : loop_over_uid_wrapper: failed for)'.format(m['echecs_scan']))
     if comparison:
         p('')
         p('--- Evolution depuis {} ---'.format(comparison['date_reference']))
@@ -761,6 +1034,8 @@ def main(argv=None):
     ap.add_argument('--compare', help='metrics.json d\'un audit precedent, pour afficher l\'evolution')
     ap.add_argument('--sep', default=';', help='separateur CSV (defaut ";" pour Excel en francais)')
     ap.add_argument('--exemples', type=int, default=5, help='nombre d\'exemples par ligne (defaut 5)')
+    ap.add_argument('--echantillons', type=int, default=5,
+                    help='fichiers par famille dans extraire_echantillons.bat (defaut 5)')
     args = ap.parse_args(argv)
 
     db_path, project_dir = resolve_paths(args.projet)
@@ -782,6 +1057,8 @@ def main(argv=None):
         audit.scan_nodes()
         audit.scan_adf_missing()
         audit.scan_meta()
+        print('Couverture de lecture par extension...')
+        audit.scan_coverage()
         conn.close()
     except sqlite3.OperationalError as e:
         raise SystemExit('ERREUR SQLite : {}. Fermez DECA avant de lancer l\'audit.'.format(e))
@@ -789,7 +1066,7 @@ def main(argv=None):
     log_paths = find_logs(project_dir)
     log_counts, log_samples = scan_logs(log_paths)
     metrics, comparison = build_outputs(audit, out_dir, args.sep, log_counts, log_samples,
-                                        log_paths, db_path, args.compare)
+                                        log_paths, db_path, args.compare, project_dir, args.echantillons)
     print_summary(metrics, out_dir, comparison, log_samples)
     return 0
 
