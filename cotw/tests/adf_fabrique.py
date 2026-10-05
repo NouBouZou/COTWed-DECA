@@ -51,21 +51,27 @@ class Types:
         self.name(name)
         for m in members:
             self.name(m[0])
-        self.specs.append((1, size, align, type_hash, name, 0, members))
+        self.specs.append((1, size, align, type_hash, name, 0, members, 0))
 
     def array(self, name, type_hash, element, size=16, align=8):
         self.name(name)
-        self.specs.append((3, size, align, type_hash, name, element, None))
+        self.specs.append((3, size, align, type_hash, name, element, None, 0))
+
+    def inline_array(self, name, type_hash, element, length, element_size, align=4):
+        """Tableau de taille fixe range dans la structure (metatype 4) : DECA lit element_length elements
+        a la position du membre, sans en-tete (EquipmentOwned[1024] des sauvegardes)."""
+        self.name(name)
+        self.specs.append((4, length * element_size, align, type_hash, name, element, None, length))
 
     def stringhash(self, name, type_hash, size=4):
         self.name(name)
-        self.specs.append((9, size, size, type_hash, name, 0x48c5294d, None))
+        self.specs.append((9, size, size, type_hash, name, 0x48c5294d, None, 0))
 
     def blob(self) -> bytes:
         out = b''
-        for metatype, size, align, type_hash, name, element, members in self.specs:
+        for metatype, size, align, type_hash, name, element, members, length in self.specs:
             out += struct.pack('<IIII', metatype, size, align, type_hash) + struct.pack('<Q', self.names.index(name))
-            out += struct.pack('<III', 0, element, 0)
+            out += struct.pack('<III', 0, element, length)
             if members is None:
                 out += struct.pack('<I', 0)
                 continue
@@ -408,3 +414,98 @@ def ammotune(instance_name: str, levels=(2, 3, 4, 5, 6), mass: float = 0.00616) 
     b.link()
     return build(t, [(instance_name, T_TUNE, bytes(b.b))], stringhashes=[(b'', 0xdeadbeef)], order='noms_a_la_fin',
                  comment=b'AmmunitionTuning.adf in THP')
+
+
+# ---------------------------------------------------------------------------
+# Sauvegarde du profil (journal 2026-10-03) : PlayerProfileData_22, puis conteneur SAVE / COMP / zlib
+# ---------------------------------------------------------------------------
+# Releves sur les sauvegardes reelles : EquipmentOwned, EquipmentAmount (en parallele), EquipmentBackPack et
+# EquipmentUnlocked sont des tableaux fixes de 1 024 u32 ; InventorySlot = 16 x PPSlot_1 { Slots : A[u32] } ;
+# LoadoutInfo.LoadoutData[].LoadoutEquipmentSlot, idem ; WeaponData = 1 024 x PPWeaponData_4.
+# INVENTE pour le test (non releve) : les hash des types, l'ordre et les offsets des membres, le contenu de
+# PPWeaponData_4 (WeaponHash, KillCount) et le membre LoadoutName.
+T_PROFILE, T_SLOT, T_LOADOUT_INFO, T_LOADOUT, T_WEAPON = (0x5AE00001 + i for i in range(5))
+IA_EQUIP, IA_SLOTS, IA_WEAPONS, A_LOADOUT = (0x5AE01001 + i for i in range(4))
+PROFILE_SLOTS = 16
+
+
+def profile_types(n_equipment: int, n_weapons: int) -> Tuple[Types, Dict[str, int], int]:
+    """Types du profil ; renvoie aussi l'offset de chaque membre et la taille de la structure."""
+    t = Types()
+    off = {}
+    pos = 0
+    members = []
+    for name, type_hash, size in (('EquipmentOwned', IA_EQUIP, 4 * n_equipment),
+                                  ('EquipmentAmount', IA_EQUIP, 4 * n_equipment),
+                                  ('EquipmentBackPack', IA_EQUIP, 4 * n_equipment),
+                                  ('EquipmentUnlocked', IA_EQUIP, 4 * n_equipment),
+                                  ('InventorySlot', IA_SLOTS, 16 * PROFILE_SLOTS),
+                                  ('LoadoutInfo', T_LOADOUT_INFO, 16),
+                                  ('WeaponData', IA_WEAPONS, 8 * n_weapons)):
+        off[name] = pos
+        members.append((name, type_hash, size, pos))
+        pos += size
+    t.struct('PlayerProfileData_22', T_PROFILE, pos, 8, members)
+    t.inline_array('equipment[]', IA_EQUIP, typedef_u32, n_equipment, 4)
+    t.struct('PPSlot_1', T_SLOT, 16, 8, [('Slots', A_U32, 16, 0)])
+    t.array('A[uint32]', A_U32, typedef_u32)
+    t.inline_array('PPSlot_1[16]', IA_SLOTS, T_SLOT, PROFILE_SLOTS, 16, 8)
+    t.struct('PPLoadoutInfo', T_LOADOUT_INFO, 16, 8, [('LoadoutData', A_LOADOUT, 16, 0)])
+    t.array('A[PPLoadoutData_2]', A_LOADOUT, T_LOADOUT)
+    t.struct('PPLoadoutData_2', T_LOADOUT, 8 + 16 * PROFILE_SLOTS, 8,
+             [('LoadoutName', STRING, 8, 0), ('LoadoutEquipmentSlot', IA_SLOTS, 16 * PROFILE_SLOTS, 8)])
+    t.struct('PPWeaponData_4', T_WEAPON, 8, 4, [('WeaponHash', typedef_u32, 4, 0), ('KillCount', typedef_u32, 4, 4)])
+    t.inline_array('PPWeaponData_4[]', IA_WEAPONS, T_WEAPON, n_weapons, 8)
+    return t, off, pos
+
+
+def profile(owned: Sequence[Tuple[int, int]], backpack: Sequence[int] = (), unlocked: Sequence[int] = (),
+            slots: Dict[int, Sequence[int]] = None, loadouts: Sequence[Tuple[str, Dict[int, Sequence[int]]]] = (),
+            weapons: Sequence[Tuple[int, int]] = (), n_equipment: int = 1024, n_weapons: int = 1024,
+            instance: str = 'thp_player_profile_adf') -> bytes:
+    """Charge utile d'une sauvegarde de profil : prefixe 01 01 00 00 00 puis l'ADF (types dans le fichier).
+    owned : (hash, quantite) ranges en tete d'EquipmentOwned / EquipmentAmount ; slots : emplacement (0..15) ->
+    hashes ; loadouts : (nom, emplacements) ; weapons : (hash de l'arme, compteur)."""
+    t, off, size = profile_types(n_equipment, n_weapons)
+    b = Blob(size)
+
+    def u32s(pos, values):
+        for i, v in enumerate(values):
+            b.put(pos + 4 * i, '<I', v)
+
+    u32s(off['EquipmentOwned'], [h for h, _n in owned])
+    u32s(off['EquipmentAmount'], [n for _h, n in owned])
+    u32s(off['EquipmentBackPack'], backpack)
+    u32s(off['EquipmentUnlocked'], unlocked)
+
+    def slot_array(pos, contents: Dict[int, Sequence[int]]):
+        for s, hashes in (contents or {}).items():
+            p = pos + 16 * s
+            data = b''.join(struct.pack('<I', h) for h in hashes)
+            b.pointer(p, b.alloc(data, 8) if hashes else 0)
+            b.put(p + 8, '<II', len(hashes), 0)
+
+    slot_array(off['InventorySlot'], slots)
+    if loadouts:
+        stride = 8 + 16 * PROFILE_SLOTS
+        lpos = b.alloc(b'\0' * stride * len(loadouts), 8)
+        b.pointer(off['LoadoutInfo'], lpos)
+        b.put(off['LoadoutInfo'] + 8, '<II', len(loadouts), 0)
+        for i, (name, contents) in enumerate(loadouts):
+            p = lpos + stride * i
+            b.pointer(p, b.alloc(name.encode() + b'\0', 1))
+            slot_array(p + 8, contents)
+    for i, (h, kills) in enumerate(weapons):
+        b.put(off['WeaponData'] + 8 * i, '<II', h, kills)
+    b.link()
+    return build(t, [(instance, T_PROFILE, bytes(b.b))], prefix=b'\x01\x01\x00\x00\x00',
+                 comment=b'savegamedata_spec_imm.adf in THP')
+
+
+def save_container(payload: bytes, level: int = 1, save_size=None) -> bytes:
+    """Fichier de sauvegarde : 'SAVE', u32 0x0032d3c2, u64 ; 'COMP', u32 0x0101, u64 taille decompressee ; zlib.
+    Le u64 de SAVE n'est pas interprete par le lecteur (save_size : valeur ecrite, defaut taille decompressee)."""
+    import zlib
+    size = len(payload) if save_size is None else save_size
+    return (b'SAVE' + struct.pack('<IQ', 0x0032d3c2, size) + b'COMP' + struct.pack('<IQ', 0x0101, len(payload))
+            + zlib.compress(payload, level))

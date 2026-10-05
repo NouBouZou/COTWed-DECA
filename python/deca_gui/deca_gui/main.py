@@ -102,6 +102,14 @@ class MainWindow(QMainWindow):
         self.action_ammo_workshop.setEnabled(False)
         self.ui.menu_Tools.addAction(self.action_ammo_workshop)
 
+        # COTW: save viewer (save_viewer.py); works without a project, names the items with the open one
+        self.save_viewers = []
+        self.action_save_open = QAction('Open &Save...', self)
+        self.action_save_open.setToolTip('Read a theHunter: COTW save file (owned items, slots, loadouts); '
+                                         'nothing is written')
+        self.action_save_open.triggered.connect(self.save_open)
+        self.ui.menu_File.insertAction(self.ui.action_exit, self.action_save_open)
+
         # filter
         self.ui.filter_edit.textChanged.connect(self.filter_text_changed)
         self.ui.filter_edit.installEventFilter(self)
@@ -286,6 +294,31 @@ class MainWindow(QMainWindow):
         self.ammo_workshop.show()
         self.ammo_workshop.raise_()
         self.ammo_workshop.activateWindow()
+
+    def save_project(self):
+        """Project whose files name the items of a save: the open one, unless it is being opened or scanned."""
+        return None if self.task_running() else self.vfs
+
+    def save_open(self, checked=False, path=None):
+        """Open a save file in a new Save viewer window; returns the window (None if cancelled or unreadable)."""
+        from .save_viewer import SaveViewer, default_saves_dir   # imported on demand, like the Ammo Workshop
+        if not isinstance(path, str):
+            path, _ = QFileDialog.getOpenFileName(self, 'Open Save ...', default_saves_dir(), 'All files (*)')
+            if not path:
+                return None
+        try:
+            viewer = SaveViewer(self.save_project, self)
+        except RuntimeError as exc:
+            self.error_dialog(str(exc))
+            return None
+        if not viewer.open_file(path):
+            self.error_dialog('Not readable as a save: {}\n\n{}'.format(path, '\n'.join(viewer.errors)))
+            viewer.deleteLater()
+            return None
+        self.save_viewers = [v for v in self.save_viewers if v.isVisible()] + [viewer]
+        viewer.show()
+        viewer.raise_()
+        return viewer
 
     def ammo_workshop_close(self) -> bool:
         """Close the Ammo Workshop; False if it refused (task running, unsaved mod kept)."""
