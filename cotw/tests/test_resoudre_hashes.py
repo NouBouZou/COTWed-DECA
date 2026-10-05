@@ -161,6 +161,9 @@ def equipment_data():
     return W.rtpc_to_binary(r)
 
 
+TO_FIND = ('is_part_of_dlc', 'secondary_ids', 'cash_price', 'received')
+
+
 class TestEndToEnd(unittest.TestCase):
     """Vrai scan DECA d'un faux jeu, puis recherche, injection et annulation."""
 
@@ -172,6 +175,13 @@ class TestEndToEnd(unittest.TestCase):
         exe = (b'MZ' + b'\0' * 64 + b'\0m_Name\0m_IsPartOfDLC\0m_SecondaryIds\0bReceived\0CEquipmentScreenStore\0'
                + b'\0' * 64)
         cls.project = faux_projet.build_fake_project(root, [('settings/hp_settings/equipment_data.bin', equipment_data())], exe)
+        # Depuis 2026-10-05, le scan charge cotw/dictionnaires/hp_noms.tsv : cash_price, secondary_ids... y sont deja
+        # connus. Le cas teste ici est celui d'un projet scanne AVANT que ces noms soient au dictionnaire (ou d'un
+        # nom trouve apres le scan) : on les retire de core_strings.
+        db = sqlite3.connect(str(Path(cls.project) / 'db' / 'core.db'))
+        db.execute('DELETE FROM core_strings WHERE string IN (?, ?, ?, ?)', TO_FIND)
+        db.commit()
+        db.close()
         cls.vocab = Path(root) / 'vocab.txt'
         cls.vocab.write_text('cash\nprice\nreceived\n', encoding='utf-8')
         cls.dictionary = Path(root) / 'noms.tsv'
@@ -190,7 +200,7 @@ class TestEndToEnd(unittest.TestCase):
     def test_1_search_writes_new_names(self):
         text = self.run_search()
         names = {n for ns in _projet.load_dictionary(self.dictionary).values() for n in ns}
-        self.assertTrue({'is_part_of_dlc', 'secondary_ids', 'cash_price', 'received'} <= names, names)
+        self.assertTrue(set(TO_FIND) <= names, names)
         self.assertIn('## Passes', text)
         self.assertIn('RTPC', text)
 

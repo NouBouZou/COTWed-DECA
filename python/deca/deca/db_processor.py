@@ -711,17 +711,17 @@ class VfsProcessor(VfsDatabase):
 
             (False, '../work/property_list.hsh'),  # Ashen Tools hash loading
 
+            # COTWed DECA: names found for this game's hashes (cotw/resoudre_hashes.py, checked by re-hashing)
+            (False, 'cotw/dictionnaires/{}_noms.tsv'.format(self.game_info.game_id)),
         ]
 
-        search_dir = 'resources/deca/ghidra_strings'
-        if UniPath.isdir(search_dir):
-            for file in os.listdir(search_dir):
-                fns.append((False, UniPath.join(search_dir, file)))
-
-        search_dir = 'resources/deca/field_strings'
-        if UniPath.isdir(search_dir):
-            for file in os.listdir(search_dir):
-                fns.append((False, UniPath.join(search_dir, file)))
+        # COTWed DECA (anomaly A3): these folders were listed relative to the current directory, so they were
+        # silently skipped when DECA was not started from the repository root. Sorted: same order on every OS.
+        for search_dir in ('resources/deca/ghidra_strings', 'resources/deca/field_strings'):
+            full_dir = UniPath.join(deca_root(), search_dir)
+            if UniPath.isdir(full_dir):
+                for file in sorted(os.listdir(full_dir)):
+                    fns.append((False, search_dir + '/' + file))
 
         string_count = 0
         with DbWrap(self, logger=self) as db:
@@ -734,6 +734,13 @@ class VfsProcessor(VfsDatabase):
                     if fn.endswith('txt'):
                         with open(fn, 'rb') as f:
                             custom_strings = f.readlines()
+                    elif fn.endswith('.tsv'):
+                        # cotw/dictionnaires/*.tsv: hash, width, name, ... ; comment lines start with '#'
+                        with open(fn, 'rb') as f:
+                            for line in f:
+                                cols = line.rstrip(b'\r\n').split(b'\t')
+                                if len(cols) >= 3 and not line.startswith(b'#') and cols[2]:
+                                    custom_strings.append(cols[2])
                     elif fn.endswith('hsh'):
                         with ArchiveFile(open(fn, 'rb')) as f:
                             while True:

@@ -95,7 +95,7 @@ class DbWrap:
         self._index_offset = index_offset
         self._drop_results = False
         self._nodes_to_add = []
-        self._nodes_to_update = set()
+        self._nodes_to_update = []  # list (deduplicated at flush) so that rollback() can drop the latest updates
         self._string_hash_to_add = []
         self._gtoc_archive_defs = []
         self._objects = []  # uid(ROWID), src_node_id, offset, class_str(_rowid), name_str(_rowid), object_id
@@ -145,9 +145,10 @@ class DbWrap:
                 self.log('DATABASE: Inserting {} nodes'.format(len(self._nodes_to_add)))
                 self._db.nodes_add_many(self._nodes_to_add)
 
-            if len(self._nodes_to_update) > 0:
-                self.log('DATABASE: Updating {} nodes'.format(len(self._nodes_to_update)))
-                self._db.node_update_many(self._nodes_to_update)
+            nodes_to_update = set(self._nodes_to_update)
+            if len(nodes_to_update) > 0:
+                self.log('DATABASE: Updating {} nodes'.format(len(nodes_to_update)))
+                self._db.node_update_many(nodes_to_update)
 
             hash_strings_to_add = list(set(self._string_hash_to_add))
             if len(hash_strings_to_add) > 0:
@@ -179,11 +180,23 @@ class DbWrap:
                     self.log('DATABASE: Inserting {} event id refs'.format(len(self._event_id_refs)))
                     self._db.event_id_refs_add_many(self._event_id_refs, obj_rowids)
 
+    # Buffers written at __exit__; mark() / rollback() let a caller drop what one failed node queued (COTWed DECA:
+    # a node that raises no longer stops the scan, but half of its children must not reach the database).
+    _BUFFERS = ('_nodes_to_add', '_nodes_to_update', '_string_hash_to_add', '_gtoc_archive_defs', '_objects',
+                '_object_id_refs', '_event_id_refs')
+
+    def mark(self):
+        return tuple(len(getattr(self, name)) for name in self._BUFFERS)
+
+    def rollback(self, mark):
+        for name, length in zip(self._BUFFERS, mark):
+            del getattr(self, name)[length:]
+
     def node_add(self, node):
         self._nodes_to_add.append(node)
 
     def node_update(self, node):
-        self._nodes_to_update.add(node)
+        self._nodes_to_update.append(node)
 
     def propose_string(
             self, string, parent_node=None, is_field_name=False, possible_file_types=None,

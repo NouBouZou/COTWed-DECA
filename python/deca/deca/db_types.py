@@ -19,6 +19,8 @@ node_flag_processed_file_raw_no_name = 1 << 21
 node_flag_processed_file_raw_with_name = 1 << 22
 node_flag_processed_file_type = 1 << 23
 node_flag_processed_file_specific = 1 << 24
+# COTWed DECA: a processing step raised an exception on this node; it is not retried during the scan (anomaly A2)
+node_flag_processing_failed = 1 << 25
 
 
 def to_bytes(s):

@@ -2,7 +2,7 @@ from .viewer import *
 from deca.db_types import (
     node_flag_compression_type_mask, node_flag_compression_flag_mask, node_flag_compression_flag_shift,
     node_flag_temporary_file, node_flag_processed_file_raw_no_name, node_flag_processed_file_raw_with_name,
-    node_flag_processed_file_type, node_flag_processed_file_specific)
+    node_flag_processed_file_type, node_flag_processed_file_specific, node_flag_processing_failed)
 from deca.dxgi_types import dxgi_name_db
 from deca.ff_types import ftype_adf_family
 from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QTextEdit
@@ -17,6 +17,7 @@ FLAG_NAMES = (
     (node_flag_processed_file_raw_with_name, 'type searched (with name)'),
     (node_flag_processed_file_type, 'explored'),
     (node_flag_processed_file_specific, 'specific processing'),
+    (node_flag_processing_failed, 'PROCESSING FAILED (see the log: loop_over_uid_wrapper)'),
 )
 
 

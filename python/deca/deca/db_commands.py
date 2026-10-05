@@ -113,6 +113,9 @@ class LogWrapper:
     def exception(self, exc):
         self._logger.error(f'EXCEPTION {exc}')
 
+    def error(self, msg):
+        self._logger.error(msg)
+
 
 class MultiProcessControl:
     def __init__(self, project_file, working_dir, logger):
@@ -352,25 +355,45 @@ class Processor:
             for i, index in enumerate(indexes):
                 self._comm.status(i, n_indexes)
                 node = db.db().node_where_uid(index)
+                if node.flags & node_flag_processing_failed:
+                    results[i] = (index, False)   # already failed in this project: reported once, not retried
+                    continue
+                mark = db.mark()
                 try:
                     results[i] = (index, func(node, db))
-                except:
-                    cn = node
-                    while cn is not None:
-                        try:
-                            self._comm.error(
-                                f'loop_over_uid_wrapper: failed for: id: {cn.uid}, pid:{cn.pid}, v: {cn.v_path}, p: {cn.p_path}')
-
-                            if cn.pid is None:
-                                break
-
-                            cn = db.db().node_where_uid(cn.pid)
-                        except:
-                            cn = None
-                    raise
+                except Exception as exc:  # noqa: BLE001 - one unreadable file must not stop the scan (anomaly A2)
+                    # COTWed DECA: the node is reported as failed and the scan goes on. Before, the exception killed
+                    # the worker process, then the whole scan ("Manager: PROCESSING FAILED"). What this node queued
+                    # (children of a half-read archive...) is dropped; it stays unprocessed, like a node whose
+                    # function returned False.
+                    db.rollback(mark)
+                    results[i] = (index, False)
+                    self._report_node_failure(db, node, exc)
+                    node = db.db().node_where_uid(index)   # state before the failed step
+                    node.flags_set(node_flag_processing_failed)
+                    db.node_update(node)
             self._comm.status(n_indexes, n_indexes)
 
         return results
+
+    def _report_node_failure(self, db, node, exc):
+        """One 'failed for' line for the node (counted by cotw/deca_audit.py), then its ancestors."""
+        tb = traceback.extract_tb(exc.__traceback__)[-2:]
+        where = ' <- '.join('{}:{} ({})'.format(os.path.basename(f.filename), f.lineno, f.name) for f in reversed(tb))
+        self._comm.error(
+            f'loop_over_uid_wrapper: failed for: id: {node.uid}, pid:{node.pid}, v: {node.v_path}, p: {node.p_path}'
+            f' : {type(exc).__name__}: {exc} -- {where}')
+        cn, depth = node, 0
+        while cn is not None and cn.pid is not None and depth < 16:
+            try:
+                cn = db.db().node_where_uid(cn.pid)
+            except Exception:  # noqa: BLE001 - diagnostic only
+                break
+            if cn is None:
+                break
+            self._comm.error(f'loop_over_uid_wrapper: ancestor of {node.uid}: id: {cn.uid}, pid:{cn.pid}, '
+                             f'v: {cn.v_path}, p: {cn.p_path}')
+            depth += 1
 
     def loop_over_vhash_wrapper(self, vhashes, func):
         n_indexes = len(vhashes)
@@ -495,28 +518,28 @@ class Processor:
         te: TabEntryFileBase
         for i, te in enumerate(tab_file.file_table):
             if te.size_c == 0 or te.size_u == 0:
-                # handle zero length items as symlinks?
+                # COTWed DECA (anomaly A4): zero-length entries were not added at all, so their hashes never reached
+                # the database (no name, no count). They are added without data (offset None): DECA types them as
+                # symlinks, like SARC entries that only reference a hash, and names them by their hash like any node.
                 blocks = None
                 te.offset = None
+            elif te.file_block_table is None:
+                blocks = None
             else:
-                if te.file_block_table is None:
-                    blocks = None
-                else:
-                    blocks = []
-                    offset = te.offset
-                    for bi, block in enumerate(te.file_block_table):
-                        blocks.append((offset, block[0], block[1]))
-                        offset += block[0]
+                blocks = []
+                offset = te.offset
+                for bi, block in enumerate(te.file_block_table):
+                    blocks.append((offset, block[0], block[1]))
+                    offset += block[0]
 
-                # for now don't include the nameless top level symlinks
-                cnode = VfsNode(
-                    v_hash_type=db.file_hash_type,
-                    v_hash=te.hashname, pid=node.uid, index=i,
-                    offset=te.offset, size_c=te.size_c, size_u=te.size_u,
-                    compression_type=te.compression_type,
-                    blocks=blocks)
+            cnode = VfsNode(
+                v_hash_type=db.file_hash_type,
+                v_hash=te.hashname, pid=node.uid, index=i,
+                offset=te.offset, size_c=te.size_c, size_u=te.size_u,
+                compression_type=te.compression_type,
+                blocks=blocks)
 
-                db.node_add(cnode)
+            db.node_add(cnode)
 
         node.flags_set(node_flag_processed_file_type)
         db.node_update(node)
@@ -1029,6 +1052,11 @@ class MultiProcessVfsBase:
 
     def exception(self, exc):
         self.send('exception', exc)
+
+    def error(self, msg):
+        # the manager already handles 'error' messages (logger.error); this method was missing, so the node
+        # identification written by loop_over_uid_wrapper raised AttributeError inside the worker processes
+        self.send('error', msg)
 
     def run(self, processor: Processor):
         keep_running = True
