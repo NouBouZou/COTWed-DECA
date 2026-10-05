@@ -1,8 +1,8 @@
 """
 StringLookup viewer (string_ids.stringlookup, ui_localization.stringlookup...): one row per key, its hash32 and
 its text in every language, with a filter. Read directly from the bytes with cotw/stringlookup.py (Vue): the game's
-38.8 MB string_ids opens in about a second, where DECA's generic ADF reading takes 17 s and its text dump is
-unusable (24.7 MB text block printed element by element).
+38.8 MB string_ids is read from its bytes, without DECA's generic ADF reading (17 s on that file; its text dump
+prints the 24.7 MB text block element by element).
 
 Format (research log, 2026-10-03): StringLookup { Languages: A[LanguageStringLookup], Text: A[int8] };
 per language, SortedPairs (Hash = hash32 of the key, TextOffset) sorted by hash, and SortedDialogueLines in the same
@@ -10,7 +10,7 @@ order whose NameOffset points at the key itself.
 """
 from typing import Dict, List, Optional
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QSortFilterProxyModel, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QPlainTextEdit, QSplitter, QTableView,
     QVBoxLayout)
@@ -37,13 +37,25 @@ class StringTable:
         for d in self.offsets:
             hashes.update(d)
         self.hashes = sorted(hashes)
+        # Each dialogue line carries its hash and the offset of its key in clear: hash -> key offset, language 0
+        # first, the other languages for hashes it lacks. Not tied to the lines being parallel to the pairs (the
+        # game's are), so a table where they are not still shows the keys it has.
         self.key_offsets: Dict[int, int] = {}
-        if n:
-            lines = self.vue.lines(0)
-            if len(lines) == len(self.offsets[0]):   # dialogue lines parallel to the pairs: they carry the key
-                self.key_offsets = {h: name_off for h, name_off, _s_off, _s_n in lines}
+        for i in range(n):
+            missing = len(self.hashes) - len(self.key_offsets)
+            if not missing:
+                break
+            for h, name_off, _s_off, _s_n in self.vue.lines(i):
+                self.key_offsets.setdefault(h, name_off)
         self.noms = noms
         self._search: Optional[List[str]] = None
+        self._keys: Optional[Dict[int, str]] = None
+
+    def keys(self) -> Dict[int, str]:
+        """hash -> key, decoded once (sorting by key reads every key)."""
+        if self._keys is None:
+            self._keys = {h: self.key(h) for h in self.hashes}
+        return self._keys
 
     def key(self, h: int) -> str:
         off = self.key_offsets.get(h)
@@ -69,15 +81,44 @@ class StringTable:
 
 
 class StringTableModel(QAbstractTableModel):
+    """Rows = indices into table.hashes, filtered and sorted here.
+
+    Why not a QSortFilterProxyModel: it sorts by calling data() for every comparison, through Python; on the game's
+    string_ids (22 079 keys) that is 350 000 calls and seconds of freeze when the tab opens. One list.sort on
+    precomputed keys takes a few milliseconds."""
+
     def __init__(self, table: StringTable, parent=None):
         super().__init__(parent)
         self.table = table
         self.rows = list(range(len(table.hashes)))
+        self._sort = None   # (column, order) of the last sort, re-applied after filtering
 
     def set_filter(self, text: str):
         self.beginResetModel()
         self.rows = self.table.matching(text)
+        self._apply_sort()
         self.endResetModel()
+
+    def sort(self, column, order=Qt.AscendingOrder):
+        self._sort = (column, order)
+        self.layoutAboutToBeChanged.emit()
+        self._apply_sort()
+        self.layoutChanged.emit()
+
+    def _apply_sort(self):
+        if self._sort is None:
+            return
+        column, order = self._sort
+        hashes = self.table.hashes
+        if column == 0:
+            keys = self.table.keys()
+            sort_key = lambda r: keys[hashes[r]].lower()  # noqa: E731
+        elif column == 1:
+            sort_key = lambda r: hashes[r]  # noqa: E731
+        else:
+            lang = column - 2
+            sort_key = lambda r: (self.table.text(hashes[r], lang) or '').lower()  # noqa: E731
+        self.rows.sort(key=sort_key, reverse=order == Qt.DescendingOrder)
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.rows)
@@ -118,10 +159,7 @@ class DataViewerStringLookup(DataViewer):
         super().__init__()
         self.table: Optional[StringTable] = None
         self.model: Optional[StringTableModel] = None
-        self.proxy = QSortFilterProxyModel(self)
         self.view = QTableView()
-        self.view.setModel(self.proxy)
-        self.view.setSortingEnabled(True)
         self.view.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.view.setSelectionMode(QAbstractItemView.SingleSelection)
         self.view.verticalHeader().setVisible(False)
@@ -156,7 +194,10 @@ class DataViewerStringLookup(DataViewer):
     def load(self, data: bytes, noms=None):
         self.table = StringTable(data, noms)
         self.model = StringTableModel(self.table, self)
-        self.proxy.setSourceModel(self.model)
+        self.view.setSortingEnabled(False)
+        self.view.setModel(self.model)
+        self.view.setSortingEnabled(True)
+        self.view.sortByColumn(0, Qt.AscendingOrder)   # by key, A to Z (Qt 6's default indicator is descending)
         self.view.selectionModel().currentRowChanged.connect(self._show_detail)
         self.language_combo.blockSignals(True)
         self.language_combo.clear()
@@ -186,8 +227,7 @@ class DataViewerStringLookup(DataViewer):
     def _show_detail(self, current, _previous=None):
         if not current.isValid() or self.model is None:
             return
-        row = self.proxy.mapToSource(current).row()
-        h = self.model.hash_at(row)
+        h = self.model.hash_at(current.row())
         lines = ['{}   (hash32 {:08x})'.format(self.table.key(h), h), '']
         for i, code in enumerate(self.table.languages):
             t = self.table.text(h, i)

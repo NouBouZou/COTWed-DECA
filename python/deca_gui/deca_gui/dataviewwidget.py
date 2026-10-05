@@ -36,7 +36,7 @@ class DataViewWidget(QWidget):
     Right-hand panel: the viewers of the node double-clicked in a list.
 
     COTWed DECA: heavy viewers run only when their tab is shown (the generic ADF tree of the 38.8 MB string_ids
-    takes DECA 17 s to read; its dedicated Strings tab takes about a second). An error in a viewer is shown in the
+    takes DECA 17 s to read; its dedicated Strings tab reads the bytes directly). An error in a viewer is shown in the
     Info tab instead of being lost in the console.
     """
 

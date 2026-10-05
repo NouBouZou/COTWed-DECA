@@ -27,6 +27,15 @@ Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec
 
 **Tout cela se fait aussi dans l'interface** (**Tools → Ammo Workshop…**, depuis le 2026-10-04). On y édite un **fichier de mod** (`.cotwmod.json`) qui liste les munitions à ajouter. **Build** reconstruit le dropzone du mod depuis les originaux du jeu, en une passe, avec exactement les mêmes octets que la ligne de commande. Exemple : [`cotw/mods/test14.cotwmod.json`](cotw/mods/test14.cotwmod.json).
 
+## Lecture des fichiers (2026-10-05)
+
+L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s'arrête.
+
+- **Le scan ne s'arrête plus sur un fichier illisible** : le fichier est marqué `PROCESSING FAILED` (onglet Info), une ligne du journal en donne la cause, le reste du jeu est exploré.
+- **Les noms trouvés par le fork sont connus dès le scan** : `cotw/dictionnaires/hp_noms.tsv` (`cash_price`, `compatibility_N`, `secondary_ids`…) est chargé avec les dictionnaires de DECA.
+- **Visionneuses** de l'interface pour les formats que le fork a documentés : RTPC et ADF en arbres (noms résolus, notes tirées du journal de recherche), tables de traduction (**Strings**), feuilles XLSBook (**Sheet**), archives SARC (**SARC**), sauvegardes (**File → Open Save…**).
+- **Mesure de ce qui reste à lire** : `deca_audit.py` donne, par extension, la part des fichiers qu'une visionneuse sait afficher, et prépare l'extraction d'échantillons des formats encore illisibles, à étudier ensuite.
+
 ## Contenu
 
 ### Modifications du cœur DECA (`python/deca`)
@@ -34,6 +43,9 @@ Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec
   - un nom RTPC contenant un antislash n'interrompt plus le scan ;
   - un processus de travail qui meurt sans prévenir (tué, mémoire insuffisante) fait échouer le scan, au lieu de le bloquer indéfiniment ;
   - le gestionnaire du scan n'occupe plus un cœur à 100 % pendant tout le scan (attente bloquante au lieu d'une attente active).
+  - un fichier dont le traitement lève une exception n'arrête plus le scan : ses écritures en base sont annulées, il reçoit le drapeau `node_flag_processing_failed` (affiché dans l'onglet Info, jamais retenté), et le journal donne une ligne `loop_over_uid_wrapper: failed for` avec la cause et ses archives parentes ;
+  - les dictionnaires de noms (`ghidra_strings`, `field_strings`) sont trouvés quel que soit le dossier courant, et `cotw/dictionnaires/<jeu>_noms.tsv` est chargé au scan ;
+  - les entrées de taille 0 des `.tab` sont gardées (liens), au lieu d'être perdues.
 - **Écriture RTPC** (`deca/ff_rtpc_write.py`) : versions 1 et 2, identique à l'octet près sur les 6 348 RTPC du jeu.
 - **Vues** (`db_view.py`, `db_types.py`) : le filtre est appliqué par SQLite. Les chemins non ASCII sont acceptés. La table `core_nodes` a un index sur `parent_id`, créé à la première ouverture d'un projet existant.
 
@@ -48,6 +60,12 @@ Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec
   - repeinture : plus aucune requête SQL par cellule.
 - **Onglet Info** rempli : chemins, hash, type, magic, flags décodés, archives parentes, nombre d'enfants, autres copies du même fichier.
 - **Tri** des listes Raw et Non-Mapped par colonne.
+- **Visionneuses** (panneau de droite, double-clic sur un fichier) ; les onglets lourds ne sont calculés qu'à l'affichage, et l'erreur d'une visionneuse s'affiche dans **Info** :
+  - **RTPC** et **ADF** : arbres chargés au fur et à mesure (les grands tableaux sont découpés en tranches de 256), noms résolus par lots (`cotw/noms.py`) ou tirés des chaînes du fichier, hashes annotés, notes du journal (`secondary_ids` : jeu de base ou DLC ; `locked` 5 : caché du magasin), recherche, **Export text…**, et la vue texte d'origine de DECA à la demande (**DECA text dump**) ;
+  - **Strings** (`*.stringlookup`) : clé, hash et texte dans les 10 langues, filtre ; lu directement sur les octets, sans l'arbre ADF générique (17 s pour `string_ids`, 38,8 Mo) ;
+  - **Sheet** (XLSBook, `equipment_stats_ui.bin`) : une grille par feuille, cases vides en blanc, lignes après la première ligne vide grisées (le jeu n'y lit plus les stats, test12) ;
+  - **SARC** : table des entrées (offset, taille, type détecté, lien) ; double-clic pour ouvrir une entrée.
+- **Sauvegardes** (**File → Open Save…**, `deca_gui/save_viewer.py`) : objets possédés et quantités, sac, objets débloqués, emplacements d'inventaire, loadouts, données d'armes, et l'arbre ADF complet. Les objets sont nommés avec le projet ouvert, dans la langue choisie, et avec les mods ajoutés (**Add mod file…**) ; un hash que rien ne nomme est signalé.
 - **Projet de démonstration** (`cotw/demo_projet.py`, `cotw/lancer_demo.bat`) : un faux COTW scanné par DECA, pour travailler sur l'interface sans le jeu. Il contient tout ce que demande l'atelier : entités avec `.ammotunec`, `string_ids` en 10 langues, feuille de stats terminée par deux lignes vides.
 - **Ammo Workshop** (**Tools → Ammo Workshop…**, `deca_gui/ammo_workshop.py`) :
   - à gauche, les munitions du jeu (nom affiché dans la langue choisie, prix, disponibilité, ligne de stats, armes) ;
@@ -72,8 +90,10 @@ Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec
 | `indexer_refs.py`, `differentiel.py`, `deca_refs.py`, `citations.py` | qui cite quoi, dans tout le jeu |
 | `resoudre_hashes.py` | retrouve les noms en clair des hashes (dictionnaire `cotw/dictionnaires/hp_noms.tsv`) |
 | `rtpc_roundtrip.py`, `sarc_roundtrip.py`, `adf_ecriture_controle.py` | validation des écrivains sur les fichiers réels |
-| `extraire.py` | copie octet pour octet de fichiers du jeu (par chemin ou motif), pour étude |
-| `deca_audit.py` | audit en lecture seule d'un projet DECA |
+| `sauvegarde.py` | lit une sauvegarde (conteneur SAVE/COMP/zlib, ADF) et en fait un rapport nommé ; `--charge` écrit l'ADF décompressé |
+| `noms.py` | noms en clair des hashes pour l'affichage (projet, dictionnaire du fork, noms d'un mod) |
+| `extraire.py` | copie octet pour octet de fichiers du jeu, pour étude : par chemin, motif, extension (`--echantillons N` : quelques fichiers répartis par taille) ou numéro de nœud (fichiers sans nom) |
+| `deca_audit.py` | audit en lecture seule d'un projet DECA : fichiers sans nom, formats non lus, **couverture de lecture par extension** et commandes d'extraction d'échantillons |
 
 ## Utilisation (Windows, Invite de commandes)
 
@@ -91,6 +111,8 @@ pip install -e python\deca -e python\deca_gui
 - **Sans le jeu** (portable) : `cotw\lancer_demo.bat` crée au besoin le projet de démonstration dans `..\work_demo` et l'ouvre. Le vrai projet `..\work\hp` n'est jamais touché.
 - **Atelier** : DECA ouvert sur le projet, **Tools → Ammo Workshop…**. **Open mod…** charge un `.cotwmod.json` ; **Build** écrit `<sortie>\dropzone`, à copier dans le `dropzone` du jeu. La sortie par défaut est `..\mods\<nom du mod>`.
 - **Mod en ligne de commande** : `python cotw\construire_mod.py ..\work\hp cotw\mods\test14.cotwmod.json --sortie ..\mods\test14`.
+- **Sauvegarde** : **File → Open Save…** dans DECA, ou `python cotw\sauvegarde.py <fichier> --projet ..\work\hp --langue fr`.
+- **Audit de lecture** : `python cotw\deca_audit.py ..\work\hp` (DECA fermé). Le dossier de sortie (`..\work\audits\…`) contient `rapport.md` (section 3 : couverture par extension et priorités), `couverture_extensions.csv` et `extraire_echantillons.bat`, qui copie quelques fichiers de chaque format non lu dans `echantillons\`. `--compare <ancien metrics.json>` montre l'évolution.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam

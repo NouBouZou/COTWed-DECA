@@ -270,6 +270,20 @@ class TestStringTable(unittest.TestCase):
         self.assertEqual(t.matching('{:08x}'.format(h)), [3])
         self.assertEqual(t.matching('ZZZ-nothing'), [])
 
+    def test_keys_when_lines_are_not_parallel(self):
+        """Une ligne de dialogue en moins (ex. collision de hash32) ne fait plus perdre toutes les cles."""
+        import stringlookup as SL
+        from deca_gui.viewer_stringlookup import StringTable
+        orig = SL.Vue.lines
+        SL.Vue.lines = lambda vue, lang: orig(vue, lang)[1:]   # la ligne du plus petit hash manque partout
+        try:
+            t = StringTable(demo_projet.string_ids())
+        finally:
+            SL.Vue.lines = orig
+        self.assertEqual(len(t.key_offsets), len(t.hashes) - 1)
+        self.assertEqual(t.key(t.hashes[0]), '')
+        self.assertEqual(N.hash32(t.key(t.hashes[1])), t.hashes[1])
+
     def test_key_from_names_when_no_dialogue_lines(self):
         from deca_gui.viewer_stringlookup import StringTable
         noms = demo_noms()
@@ -358,17 +372,41 @@ class TestWidgetsOffscreen(unittest.TestCase):
         v = DataViewerStringLookup()
         v.load(demo_projet.string_ids())
         n = len(v.table.hashes)
-        self.assertEqual(v.proxy.rowCount(), n)
-        self.assertEqual(v.proxy.columnCount(), 2 + len(demo_projet.LANGUAGES))
+        self.assertEqual(v.model.rowCount(), n)
+        self.assertEqual(v.model.columnCount(), 2 + len(demo_projet.LANGUAGES))
         self.assertIn('{} keys, 10 languages'.format(n), v.status.text())
         v.filter_edit.setText('carabine')
         v.apply_filter()
-        self.assertTrue(0 < v.proxy.rowCount() < n)
-        v.view.setCurrentIndex(v.proxy.index(0, 0))
+        self.assertTrue(0 < v.model.rowCount() < n)
+        v.view.setCurrentIndex(v.model.index(0, 0))
         self.assertIn('fr  ', v.detail.toPlainText())
         v.language_combo.setCurrentIndex(2)                  # francais seul
-        hidden = [v.view.isColumnHidden(c) for c in range(v.proxy.columnCount())]
+        hidden = [v.view.isColumnHidden(c) for c in range(v.model.columnCount())]
         self.assertEqual(hidden, [False, False, True, False] + [True] * 8)
+
+    def test_string_viewer_sorting(self):
+        """Tri fait par le modele (pas de QSortFilterProxyModel), garde apres un filtre."""
+        from PySide6.QtCore import Qt
+        from deca_gui.viewer_stringlookup import DataViewerStringLookup
+        v = DataViewerStringLookup()
+        v.load(demo_projet.string_ids())
+        m = v.model
+
+        def column(c):
+            return [m.data(m.index(r, c)) for r in range(m.rowCount())]
+        keys = column(0)
+        self.assertEqual(keys, sorted(keys, key=str.lower), 'trie par cle a l\'ouverture')
+        v.view.sortByColumn(0, Qt.DescendingOrder)
+        self.assertEqual(column(0), sorted(keys, key=str.lower, reverse=True))
+        v.view.sortByColumn(1, Qt.AscendingOrder)
+        self.assertEqual(column(1), sorted(column(1)))
+        v.view.sortByColumn(3, Qt.AscendingOrder)              # francais
+        self.assertEqual(column(3), sorted(column(3), key=str.lower))
+        v.filter_edit.setText('_name')
+        v.apply_filter()
+        self.assertTrue(0 < m.rowCount() < len(keys))
+        self.assertEqual(column(3), sorted(column(3), key=str.lower), 'tri garde apres filtre')
+        self.assertTrue(all(k.endswith('_name') for k in column(0)))
 
     def test_sheet_viewer(self):
         from deca_gui.viewer_xlsbook import DataViewerXlsBook
@@ -455,7 +493,7 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(self.show('settings/hp_settings/string_ids.stringlookup'), 'Strings')
         self.assertEqual(self.pending(), ['ADF'])            # arbre generique : calcule a l'affichage seulement
         self.assertTrue(dv.tab_widget.isTabEnabled(dv.tab_adf_index))
-        self.assertGreater(dv.tab_strings.proxy.rowCount(), 0)
+        self.assertGreater(dv.tab_strings.model.rowCount(), 0)
         dv.tab_widget.setCurrentIndex(dv.tab_adf_index)
         APP.processEvents()
         self.assertEqual(self.pending(), [])
