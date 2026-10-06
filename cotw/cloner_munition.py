@@ -42,6 +42,11 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
                    base_model ajoute aux composants fresh_round et empty_casing du .epe de l'entite propre, comme
                    dans les entites des .223 du jeu (modele_munition.py) ; sans cela, l'arme montre le sien.
                    --modele-de reprend les modeles declares par l'entite d'une autre munition.
+                   Une arme qui a son propre composant a ce point l'emporte (test17, la Ranger) : la construction
+                   le signale et refuse, sauf avec --basculer-armes, qui met l'arme dans la forme des .223 du jeu :
+                   ses composants de cartouche sont retires et leur modele est declare dans chaque munition
+                   compatible qui n'en declare pas (fichiers du jeu remplaces : l'entite de l'arme, celles de ces
+                   munitions ; aspect inchange pour elles).
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
@@ -71,6 +76,7 @@ from deca.ff_rtpc import Rtpc, RtpcNode, k_type_f32, k_type_str, k_type_u32  # n
 
 EQUIPMENT_DATA = 'settings/hp_settings/equipment_data.bin'
 SPAWN_AMMO = 'settings/spawn_ammunition_defs.bin'
+SPAWN_WEAPON = 'settings/spawn_weapon_defs.bin'   # meme structure : desc (nom de l'arme), tags, entity
 
 H_NAME = W.name_hash('name')                    # 0xd31ab684
 H_NOTE = W.name_hash('note')                    # 0x2314c9ea, libelle anglais
@@ -453,6 +459,135 @@ def own_models(vfs, sp_tree: Rtpc, m: 'Munition', entity: bytes, read, produced)
     return out, lines + more
 
 
+def read_or_fail(read, v_path: str, what: str) -> Tuple[bytes, str]:
+    try:
+        return read(v_path)
+    except SystemExit as e:       # _projet.read_by_path : chemin absent du projet
+        raise EClone('{} : {}'.format(what, str(e).replace('ERREUR : ', '')))
+
+
+def compat_names(item: RtpcNode) -> List[str]:
+    _, entries = compat_entries(item)
+    return [bytes(W.node_get_prop(e, H_EQUIPMENT_NAME).data).decode('utf-8') for e in entries]
+
+
+def weapon_models(eq_tree: Rtpc, sp_tree: Rtpc, munitions: Sequence['Munition'], read, produced) -> Tuple[List[str], List[str]]:
+    """Armes compatibles avec les munitions qui declarent un modele de cartouche (regle du journal, test17) :
+      - arme sans composant au point : le modele de la munition s'applique ;
+      - arme avec son composant, sans evenement : refus, sauf --basculer-armes : composants retires de l'arme, et
+        leur modele declare dans chaque munition compatible qui n'en declare pas ;
+      - variantes commandees par evenements : refus.
+    Les fichiers modifies vont dans ``produced`` ; renvoie (rapport, chemins des fichiers ajoutes)."""
+    import modele_munition as MM
+    sw_bytes, sw_src = read_or_fail(read, SPAWN_WEAPON, 'armes')
+    sw_tree = W.rtpc_from_bytes(sw_bytes)
+    lines, added = ['', 'Armes compatibles (origine : {}) :'.format(sw_src)], []
+    weapon_cache: Dict[str, Tuple[str, bytes, str]] = {}
+
+    def weapon(name):
+        if name not in weapon_cache:
+            path = entity_path_of(sw_tree, name)
+            data, origin = read_or_fail(read, path, 'arme ' + name)
+            weapon_cache[name] = (path, data, origin)
+        return weapon_cache[name]
+
+    def put(path, data):
+        if path not in produced:
+            added.append(path)
+        produced[path] = data
+
+    conversions: Dict[str, set] = {}
+    for m in munitions:
+        if not m.declare_modele():
+            continue
+        ammo_ee, _ = read(entity_path_of(sp_tree, m.nom))
+        declared = sorted({c.point for c in MM.lire(ammo_ee) if c.nom in MM.COMPOSANTS and c.modele})
+        _, item = find_item(eq_tree.root_node, m.nom, H_NAME)
+        for w in compat_names(item):
+            try:
+                comps = MM.lire_arme(weapon(w)[1])
+            except (MM.EModele, MM.S.ESarc) as e:
+                raise EClone('arme {} : {}'.format(w, e))
+            for point in declared:
+                at = [c for c in comps if c.point == point]
+                if not at:
+                    lines.append('  {} : aucun modele propre au point {} : celui de {} s\'applique'.format(w, point, m.nom))
+                    continue
+                if any(c.evenements for c in at):
+                    raise EClone('{} : au point {}, variantes de cartouche commandees par evenements (show_event / '
+                                 'hide_event) : le modele de {} serait ignore, cas non pris en charge'.format(w, point, m.nom))
+                if not m.basculer_armes:
+                    raise EClone('{} declare son propre modele au point {} ("{}") : celui de {} serait ignore avec cette '
+                                 'arme (constat test17). --basculer-armes reporte le modele de l\'arme dans ses munitions et '
+                                 'laisse chacune declarer le sien'.format(w, point, at[0].modele, m.nom))
+                conversions.setdefault(w, set()).add(point)
+    pushed: Dict[Tuple[str, str], str] = {}
+    for w in sorted(conversions):
+        path, data, origin = weapon(w)
+        try:
+            out, more, removed = MM.retirer_points(data, sorted(conversions[w]))
+        except (MM.EModele, MM.S.ESarc) as e:
+            raise EClone('arme {} : {}'.format(w, e))
+        put(path, out)
+        lines += ['  {} basculee (origine : {}) :'.format(w, origin)] + ['    ' + x for x in more]
+        for ammo_parent in {id(p): p for p in [find_item(eq_tree.root_node, m.nom, H_NAME)[0]
+                                                for m in munitions if m.declare_modele()]}.values():
+            for a in ammo_parent.child_table:
+                prop = W.node_get_prop(a, H_NAME)
+                if prop is None or prop.type != k_type_str or W.node_get_child(a, H_COMPAT) is None:
+                    continue
+                name = bytes(prop.data).decode('utf-8')
+                try:
+                    if w not in compat_names(a):
+                        continue
+                except EClone:
+                    continue
+                try:
+                    a_path = entity_path_of(sp_tree, name)
+                except EClone:
+                    lines.append('    {} : pas d\'entite dans spawn_ammunition_defs, ignoree'.format(name))
+                    continue
+                a_ee, a_origin = read_or_fail(read, a_path, 'munition ' + name)
+                push = {}
+                for point, model in removed.items():
+                    comp = MM.composant_du_point(a_ee, point)
+                    if comp is None:
+                        lines.append('    {} : pas de composant au point {}, rien a declarer'.format(name, point))
+                    elif comp.modele and pushed.get((a_path, point), comp.modele) != comp.modele:
+                        raise EClone('{} : deux armes basculees y reportent des modeles differents au point {}'.format(name, point))
+                    elif comp.modele:
+                        lines.append('    {} : declare deja "{}" au point {}'.format(name, comp.modele, point))
+                    else:
+                        push[comp.nom] = model
+                        pushed[(a_path, point)] = model
+                if push:
+                    try:
+                        a_out, more = MM.modifier(a_ee, push)
+                    except (MM.EModele, MM.S.ESarc) as e:
+                        raise EClone('munition {} : {}'.format(name, e))
+                    put(a_path, a_out)
+                    lines += ['    {} ({}) :'.format(name, a_origin)] + ['      ' + x for x in more]
+                    for w2 in compat_names(a):
+                        if w2 in conversions:
+                            continue
+                        try:
+                            other = MM.lire_arme(weapon(w2)[1])
+                        except (EClone, MM.EModele, MM.S.ESarc):
+                            continue
+                        missing = [p for p in push_points(push) if not any(c.point == p for c in other)]
+                        if missing:
+                            lines.append('      note : {} n\'a pas de composant aux points {} : il pourrait desormais '
+                                         'afficher ce modele avec {} [a verifier]'.format(w2, ', '.join(missing), name))
+    if not conversions:
+        lines.append('  aucune arme a basculer')
+    return lines, added
+
+
+def push_points(push: Dict[str, str]) -> List[str]:
+    """Points d'attache des composants de munition (fresh_round -> ammo_reload, empty_casing -> ammo_used)."""
+    return [{'fresh_round': 'ammo_reload', 'empty_casing': 'ammo_used'}[k] for k in push]
+
+
 def own_icon(vfs, eq_tree: Rtpc, item: RtpcNode, m: 'Munition', read) -> Tuple[str, bytes, List[str]]:
     """--icone / --icone-de : texture propre, ajoutee sous un chemin neuf, et designee par display_icon de ``item``
     (la nouvelle munition). Renvoie (chemin virtuel, contenu, lignes du rapport)."""
@@ -530,6 +665,7 @@ class Munition:
     modele_de: Optional[str] = None               # munition dont reprendre les modeles de cartouche (--modele-de)
     modele: Optional[str] = None                  # modele de la cartouche chargee, .modelc (--modele)
     modele_douille: Optional[str] = None          # modele de la douille ejectee, .modelc (--modele-douille)
+    basculer_armes: bool = False                  # armes a modele propre basculees cote munitions (--basculer-armes)
 
     def valider(self):
         if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
@@ -550,6 +686,11 @@ class Munition:
                          'declare dans l\'entite de la munition)'.format(self.nom))
         if self.modele_de and (self.modele or self.modele_douille):
             raise EClone('{} : --modele-de est incompatible avec --modele et --modele-douille'.format(self.nom))
+        if self.basculer_armes and not self.declare_modele():
+            raise EClone('{} : --basculer-armes demande --modele-de, --modele ou --modele-douille'.format(self.nom))
+
+    def declare_modele(self) -> bool:
+        return bool(self.modele_de or self.modele or self.modele_douille)
 
 
 @dataclass
@@ -726,6 +867,12 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
         eq_hashes.append(eq_item.name_hash)
         sp_hashes.append(sp_item.name_hash)
 
+    extra = []
+    if any(m.declare_modele() for m in mod.munitions):
+        step('armes compatibles : modeles de cartouche')
+        lines, extra = weapon_models(eq_tree, sp_tree, mod.munitions, read, produced)
+        report += lines
+
     step('verification equipment_data, spawn_ammunition_defs')
     eq_out, sp_out = W.rtpc_to_binary(eq_tree), W.rtpc_to_binary(sp_tree)
     verify_addition(eq_reference, eq_out, eq_hashes)
@@ -771,7 +918,7 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
 
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.' if single
                else 'Verification : relus, et identiques aux fichiers de depart une fois les nouvelles munitions retirees.']
-    order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + icons + [AL.STATS_UI, SL.STRING_IDS]
+    order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + extra + icons + [AL.STATS_UI, SL.STRING_IDS]
     return Resultat([(v, produced[v]) for v in order if v in produced], report)
 
 
@@ -851,6 +998,9 @@ def main(argv=None):
                     help='avec --entite-propre : modele de la cartouche chargee (.modelc du jeu ou du mod)')
     ap.add_argument('--modele-douille', metavar='CHEMIN',
                     help='avec --entite-propre : modele de la douille ejectee (.modelc du jeu ou du mod)')
+    ap.add_argument('--basculer-armes', action='store_true',
+                    help='avec un modele : les armes compatibles qui ont leur propre modele de cartouche (la Ranger) '
+                         'le reportent dans leurs munitions, et la nouvelle munition declare le sien')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -886,7 +1036,8 @@ def main(argv=None):
         stats_cellules_propres=args.stats_cellules_propres, nom_affiche=list(args.nom_affiche),
         description=list(args.description), champs=list(args.champ), forcer=args.forcer,
         balistique=balistique, classes=classes, icone=args.icone, icone_de=args.icone_de,
-        modele_de=args.modele_de, modele=args.modele, modele_douille=args.modele_douille)
+        modele_de=args.modele_de, modele=args.modele, modele_douille=args.modele_douille,
+        basculer_armes=args.basculer_armes)
     mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]

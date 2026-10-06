@@ -43,7 +43,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
   - icon : image (PNG...) dont fabriquer l'icone propre (magasin, inventaire), chemin relatif au fichier de mod ;
     icon_from : objet dont copier l'icone. Absents : icone de la source (voir cloner_munition.py, --icone).
   - model_from : munition dont reprendre les modeles 3D de cartouche et de douille ; ou model / casing_model :
-    chemins .modelc (du jeu ou du mod). Avec "entity": "own". Absents : modele de l'arme.
+    chemins .modelc (du jeu ou du mod). Avec "entity": "own". Absents : modele de l'arme. "convert_weapons": true
+    bascule les armes compatibles qui ont leur propre modele (voir cloner_munition.py, --basculer-armes).
 
 Sortie : SORTIE\\dropzone (a copier dans le dossier dropzone du jeu), SORTIE\\rapport_mod.txt, et
 SORTIE\\cotwmod_manifest.json, la liste des fichiers ecrits avec leur empreinte. A la construction suivante :
@@ -84,7 +85,7 @@ ENTITY_TO_TOOL = {'own': CM.ENTITE_PROPRE, 'source': CM.ENTITE_SOURCE, 'copy': C
 ENTITY_FROM_TOOL = {v: k for k, v in ENTITY_TO_TOOL.items()}
 AMMO_KEYS = {'source', 'name', 'label', 'price', 'weapons', 'entity', 'entity_path', 'stats_from', 'stats',
              'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes',
-             'icon', 'icon_from', 'model_from', 'model', 'casing_model'}
+             'icon', 'icon_from', 'model_from', 'model', 'casing_model', 'convert_weapons'}
 TOP_KEYS = {'format', 'version', 'name', 'notes', 'witness_prices', 'changes', 'ammo'}
 
 
@@ -193,7 +194,7 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
         balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes,
         icone=_str_or_none(d, 'icon', where), icone_de=_str_or_none(d, 'icon_from', where),
         modele_de=_str_or_none(d, 'model_from', where), modele=_str_or_none(d, 'model', where),
-        modele_douille=_str_or_none(d, 'casing_model', where))
+        modele_douille=_str_or_none(d, 'casing_model', where), basculer_armes=bool(d.get('convert_weapons', False)))
 
 
 def munition_to_dict(m: CM.Munition) -> dict:
@@ -218,6 +219,8 @@ def munition_to_dict(m: CM.Munition) -> dict:
     for key, value in (('model_from', m.modele_de), ('model', m.modele), ('casing_model', m.modele_douille)):
         if value:
             d[key] = value
+    if m.basculer_armes:
+        d['convert_weapons'] = True
     return d
 
 

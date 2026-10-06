@@ -7,6 +7,9 @@ Le faux jeu reprend la structure reelle relevee dans le journal de recherche :
                                              cash_price, locked, secondary_ids, compatibilities/compatibility_N,
                                              display_name et display_description (cles de traduction)
   settings/spawn_ammunition_defs.bin         RTPC v2 : spawn_system/resource_definitions (desc, tags, entity)
+  settings/spawn_weapon_defs.bin             idem pour les armes
+  editor/entities/hp_weapons/weapon_rifles_01/<arme>.ee  SARC : .epe (CBulletWeaponBase et composants de cartouche :
+                                             la Ranger a les siens, la .270 aucun, la 7,62x54R des variantes a evenements)
   settings/hp_settings/equipment_stats_ui.bin ADF XLSBook, disposition et chaine de relocation du jeu ; feuille
                                              ammo terminee par 2 lignes vides, comme dans le jeu (test12 H)
   settings/hp_settings/string_ids.stringlookup ADF StringLookup, 10 langues : noms et descriptions affiches
@@ -200,10 +203,11 @@ MODELS = {'equipment_ammo_270_sp_01': ('models/hp_ammunition/ammo_bullet_270_sof
 IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
 
-def model_component(node_hash: int, name: str, point: str, enabled: int, object_id: int, model=None):
-    """CModelAttachementWeaponComponent d'une entite de munition, proprietes du jeu dans leur ordre (par hash) ;
-    base_model en dernier s'il est donne (0xf9dcf6ab, le plus grand hash)."""
-    props = [W.make_prop('show_event', k_type_event, []),
+def model_component(node_hash: int, name: str, point, enabled: int, object_id: int, model=None, show=(), hide=()):
+    """CModelAttachementWeaponComponent (entite de munition ou d'arme), proprietes du jeu dans leur ordre (par hash) ;
+    point None : composant sans point d'attache (rail, mire) ; base_model en dernier s'il est donne (0xf9dcf6ab, le
+    plus grand hash) ; show / hide : evenements d'affichage (variantes de cartouche de certains fusils)."""
+    props = [W.make_prop('show_event', k_type_event, list(show)),
              W.make_prop('_class', k_type_str, b'CModelAttachementWeaponComponent'),
              W.make_prop('attachtomesh', k_type_u32, 0), W.make_prop(0x4c834277, k_type_u32, 1),
              W.make_prop(0x511c489f, k_type_u32, 0), W.make_prop('tags', k_type_array_u32, []),
@@ -212,11 +216,61 @@ def model_component(node_hash: int, name: str, point: str, enabled: int, object_
              W.make_prop('start_enabled', k_type_u32, enabled), W.make_prop(0xb3dc7024, k_type_u32, 0),
              W.make_prop('enable_with_parent', k_type_u32, 1), W.make_prop('_object_id', k_type_objid, object_id),
              W.make_prop('_class_hash', k_type_u32, W.name_hash('CModelAttachementWeaponComponent')),
-             W.make_prop('name', k_type_str, name.encode()), W.make_prop(0xdd3acc80, k_type_str, point.encode()),
-             W.make_prop('hide_event', k_type_event, [])]
+             W.make_prop('name', k_type_str, name.encode())]
+    if point is not None:
+        props.append(W.make_prop(0xdd3acc80, k_type_str, point.encode()))
+    props.append(W.make_prop('hide_event', k_type_event, list(hide)))
     if model:
         props.append(W.make_prop('base_model', k_type_str, model.encode()))
     return W.make_node(node_hash, props)
+
+
+# Composants de cartouche des armes, comme dans le jeu (2026-10-06) : la Ranger a les siens (modele de l'arme), la
+# .270 n'en a pas (ses munitions declarent le leur), le pistolet .243 a d'autres points d'attache, la 7,62x54R a des
+# variantes commandees par evenements (comme le 12GA semi-auto "type2").
+SLUG_EVENT, BUCK_EVENT = 0x75029400, 0xbb4883a5
+WEAPON_PARTS = {
+    'equipment_weapon_ba_rifle_243_01': [
+        (0x49a62396, 'model.bullet_used', 'ammo_used', 'models/hp_ammunition/ammo_bullet_243_empty.modelc', (), ()),
+        (0x88c0479a, 'model.bullet_new', 'ammo_reload', 'models/hp_ammunition/ammo_bullet_243_soft.modelc', (), ())],
+    'equipment_weapon_pistol_ss_243_01': [
+        (0x1a2b3c4d, 'model.bullet_dynamic', 'ammo_bullet', 'models/hp_ammunition/ammo_bullet_243_polymer.modelc', (), ()),
+        (0x2b3c4d5e, 'model.used', 'ammo_empty', 'models/hp_ammunition/ammo_bullet_243_empty.modelc', (), ())],
+    'equipment_weapon_ba_rifle_270_01': [],
+    'equipment_weapon_ba_rifle_762x54r_01': [
+        (0x3c4d5e6f, 'slug_01', 'ammo_reload', 'models/hp_ammunition/ammo_bullet_270_soft.modelc', (SLUG_EVENT,), (BUCK_EVENT,)),
+        (0x4d5e6f70, 'buck_01', 'ammo_reload', 'models/hp_ammunition/ammo_bullet_270_polymer.modelc', (BUCK_EVENT,), (SLUG_EVENT,))],
+}
+
+
+def weapon_entity_path(name: str, sep: str = '/') -> str:
+    return sep.join(['editor', 'entities', 'hp_weapons', 'weapon_rifles_01', name + '.ee'])
+
+
+def weapon_entity(name: str) -> bytes:
+    """Entite .ee d'une arme : SARC v2 avec un .epe (RTPC v1) : objet CBulletWeaponBase, un composant de rail sans
+    point d'attache, et ses composants de cartouche (WEAPON_PARTS)."""
+    oid = 0xffff000000000000 | int(hash32_func(name.encode()))
+    parts = [model_component(0xe1995a19, 'model.rail', None, 1, oid ^ 0x3333, 'models/hp_weapons/demo_rail.modelc')]
+    parts += [model_component(h, n, point, 1, oid ^ (k + 0x4444), model, show, hide)
+              for k, (h, n, point, model, show, hide) in enumerate(WEAPON_PARTS[name])]
+    epe = rtpc_bytes(W.make_node(0, [], [W.make_node(name, [
+        W.make_prop('_class', k_type_str, b'CBulletWeaponBase'),
+        W.make_prop('base_model', k_type_str, b'models/hp_weapons/demo_rifle_body.modelc'),
+        W.make_prop('_object_id', k_type_objid, oid)], parts)]), version=1)
+    path = weapon_entity_path(name)[:-3] + '.epe'
+    data, _ = S.build(S.Sarc(2, [S.Entry(path, epe, len(epe))]))
+    return data
+
+
+def spawn_weapon_defs() -> bytes:
+    entries = [W.make_node(name, [
+        W.make_prop('desc', k_type_str, name.encode()),
+        W.make_prop('tags', k_type_str, '{},rifle,weapon'.format(name).encode()),
+        W.make_prop('entity', k_type_str, weapon_entity_path(name, '\\').encode()),
+        W.make_prop('debug', k_type_str, b'Weapon')]) for name, *_ in WEAPONS]
+    return rtpc_bytes(W.make_node(0, [], [W.make_node('spawn_system', [], [
+        W.make_node('resource_definitions', [], entries)])]))
 
 
 def entity(name: str) -> bytes:
@@ -280,6 +334,9 @@ def files():
     out.append(('textures/ui/items/ammo/equipment_ammo_243_sp_01_alpha.dds', dds_rgba()))
     for (name, *_), tip in zip(AMMO, ICON_TIPS):
         out.append((icon_path(name), texture_fabrique.icone_ddsc(pointe=tip)))
+    out.append(('settings/spawn_weapon_defs.bin', spawn_weapon_defs()))
+    for name, *_ in WEAPONS:
+        out.append((weapon_entity_path(name), weapon_entity(name)))
     for path in sorted({p for pair in MODELS.values() for p in pair}):
         out.append((path, adf_minimal.build([(path.rsplit('/', 1)[1], 1, 2)], [3])))   # ADF lisible, pas un vrai modele
     out += [(ORPHANS[0], b'\x13\x37\x00\x00' + b'\0' * 60),

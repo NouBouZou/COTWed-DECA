@@ -12,8 +12,20 @@ Constat sur les 126 entites de munitions et l'entite de la .243 Ranger (2026-10-
     deux modeles differents pour la meme arme. Sans base_model (.243 SP et PT), c'est le modele de l'arme.
   [hypothese forte] le base_model de la munition remplace celui de l'arme pour le meme point d'attache.
 
-Ce module lit ces composants et ecrit base_model dans l'entite (propre) d'une munition ajoutee, comme le font les
-.223 du jeu ; le reste de l'entite est recopie a l'identique (verifie). L'arme n'est pas touchee.
+Constat en jeu (test17, 2026-10-06) : base_model ajoute a l'entite d'une copie de la .243 SP, ignore par la Ranger.
+Releve des 153 entites d'armes : les armes dont les munitions declarent un modele (.223 a verrou, .270, 12GA a
+pompe...) n'ont AUCUN composant aux points ammo_reload / ammo_used ; la Ranger en a deux (model.bullet_new,
+model.bullet_used), sans evenement. Regle : un composant de l'arme pour un point l'emporte ; le base_model de la
+munition ne sert que si l'arme n'a pas de composant a ce point. Certaines armes (12GA semi-auto "type2", 16GA 1897,
+10GA...) ont des variantes par type de munition, montrees et cachees par des evenements (show_event / hide_event)
+qu'aucune entite de munition n'emet : non prises en charge.
+
+Ce module :
+  - lit ces composants, cote munition et cote arme ;
+  - ecrit base_model dans l'entite (propre) d'une munition, comme le font les .223 du jeu ;
+  - "bascule" une arme dans la forme des .223 : retire ses composants d'un point (sans evenement) ; l'appelant
+    reporte leur modele dans les munitions compatibles qui n'en declarent pas (cloner_munition --basculer-armes).
+Le reste des entites est recopie a l'identique (verifie).
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\modele_munition.py D:\\dev\\work\\hp equipment_ammo_223_pt_01 [--base DROPZONE]
@@ -36,6 +48,9 @@ H_NAME = W.name_hash('name')               # 0xd31ab684
 H_BASE_MODEL = W.name_hash('base_model')   # 0xf9dcf6ab
 H_POINT = 0xdd3acc80                       # point d'attache sur l'arme ("ammo_reload", "ammo_used"), nom inconnu
 CLASSE_ITEM = b'CAmmunitionItem'
+CLASSE_ARME = b'CBulletWeaponBase'         # classe de l'objet arme dans les 153 entites d'armes relevees
+H_SHOW = W.name_hash('show_event')         # 0x0aa0fded
+H_HIDE = W.name_hash('hide_event')         # 0xf82b8a98
 CLASSE_COMPOSANT = b'CModelAttachementWeaponComponent'
 CARTOUCHE = 'fresh_round'                  # point ammo_reload : cartouche chargee
 DOUILLE = 'empty_casing'                   # point ammo_used : douille ejectee
@@ -51,6 +66,14 @@ class Composant:
     nom: str                      # fresh_round, empty_casing, usedAmmo_over...
     point: str                    # point d'attache sur l'arme
     modele: Optional[str]         # base_model, None : celui de l'arme
+
+
+@dataclass
+class ComposantArme:
+    nom: str                      # model.bullet_new...
+    point: str
+    modele: Optional[str]
+    evenements: bool              # show_event ou hide_event non vide : variante commandee par evenements
 
 
 def _text(node, h) -> Optional[str]:
@@ -87,6 +110,105 @@ def entree_epe(s) -> int:
     if len(found) != 1:
         raise EModele('{} entree(s) RTPC avec un CAmmunitionItem dans l\'entite, 1 attendue'.format(len(found)))
     return found[0]
+
+
+def _events(node) -> bool:
+    for h in (H_SHOW, H_HIDE):
+        p = W.node_get_prop(node, h)
+        if p is not None and len(p.data):
+            return True
+    return False
+
+
+def _composants_arme(tree) -> List[Tuple[object, object]]:
+    """(parent, noeud) des CModelAttachementWeaponComponent qui ont un point d'attache, dans l'objet arme."""
+    out = []
+
+    def walk(node, parent, in_weapon):
+        cls = W.node_get_prop(node, H_CLASS)
+        cls = bytes(cls.data) if cls is not None and cls.type == k_type_str else b''
+        if in_weapon and cls == CLASSE_COMPOSANT and _text(node, H_POINT):
+            out.append((parent, node))
+        for c in node.child_table:
+            walk(c, node, in_weapon or cls == CLASSE_ARME)
+
+    walk(tree.root_node, None, False)
+    return out
+
+
+def entree_arme(s) -> int:
+    """Index de l'unique .epe (RTPC) de l'entite d'une arme (objet CBulletWeaponBase)."""
+    found = [k for k, e in enumerate(s.entries)
+             if not e.is_link and e.data[:4] == W.RTPC_MAGIC and CLASSE_ARME in e.data]
+    if len(found) != 1:
+        raise EModele('{} entree(s) RTPC avec un CBulletWeaponBase dans l\'entite, 1 attendue'.format(len(found)))
+    return found[0]
+
+
+def lire_arme(ee: bytes) -> List[ComposantArme]:
+    s = S.parse(ee)
+    tree = W.rtpc_from_bytes(s.entries[entree_arme(s)].data)
+    return [ComposantArme(_text(n, H_NAME) or '0x{:08x}'.format(n.name_hash), _text(n, H_POINT),
+                          _text(n, H_BASE_MODEL), _events(n)) for _p, n in _composants_arme(tree)]
+
+
+def retirer_points(ee: bytes, points) -> Tuple[bytes, List[str], Dict[str, str]]:
+    """Retire de l'entite d'une arme ses composants aux points donnes (un seul par point, sans evenement), comme
+    les armes du jeu dont les munitions declarent leur modele. Renvoie (entite, rapport, {point: ancien modele})."""
+    s = S.parse(ee)
+    k = entree_arme(s)
+    epe = s.entries[k].data
+    tree = W.rtpc_from_bytes(epe)
+    pairs = _composants_arme(tree)
+    removed, lines = {}, []
+    for point in points:
+        hits = [(p, n) for p, n in pairs if _text(n, H_POINT) == point]
+        if not hits:
+            raise EModele('aucun composant au point "{}" dans l\'arme'.format(point))
+        if any(_events(n) for _p, n in hits):
+            raise EModele('point "{}" : variantes commandees par evenements (show_event / hide_event), non prises en '
+                          'charge'.format(point))
+        if len(hits) != 1:
+            raise EModele('point "{}" : {} composants dans l\'arme, 1 attendu'.format(point, len(hits)))
+        parent, node = hits[0]
+        model = _text(node, H_BASE_MODEL)
+        if not model:
+            raise EModele('point "{}" : composant sans base_model'.format(point))
+        parent.child_table = [c for c in parent.child_table if c is not node]
+        removed[point] = model
+        lines.append('{} : composant {} (point {}, "{}") retire'.format(s.entries[k].path, _text(node, H_NAME), point,
+                                                                       model))
+    new_epe = W.rtpc_to_binary(tree)
+    # verification : relu, l'arbre produit est l'original moins ces composants, et rien d'autre
+    expected = W.rtpc_from_bytes(epe)
+    for parent, node in [(p, n) for p, n in _composants_arme(expected) if _text(n, H_POINT) in removed]:
+        parent.child_table = [c for c in parent.child_table if c is not node]
+    produced = W.rtpc_from_bytes(new_epe)
+    diff = W.rtpc_diff(expected, produced)
+    if diff:
+        raise EModele('verification : arme : ' + diff)
+    if any(_text(n, H_POINT) in removed for _p, n in _composants_arme(produced)):
+        raise EModele('verification : arme : composant encore present')
+    out = _rebuild(s, k, new_epe)
+    return out, lines, removed
+
+
+def _rebuild(s, k: int, payload: bytes) -> bytes:
+    """SARC ``s`` avec l'entree ``k`` remplacee ; les autres recopiees a l'identique (verifie)."""
+    entries = [S.Entry(e.path, None, e.length) if e.is_link else
+               S.Entry(e.path, payload if j == k else e.data, len(payload) if j == k else len(e.data))
+               for j, e in enumerate(s.entries)]
+    out, _offsets = S.build(S.Sarc(s.version, entries))
+    t = S.parse(out)
+    if [(e.path, e.is_link) for e in t.entries] != [(e.path, e.is_link) for e in s.entries]:
+        raise EModele('verification : entrees de l\'entite changees')
+    for j, (x, y) in enumerate(zip(s.entries, t.entries)):
+        if x.is_link:
+            if x.length != y.length:
+                raise EModele('verification : lien {} modifie'.format(x.path))
+        elif y.data != (payload if j == k else x.data):
+            raise EModele('verification : entree {} modifiee'.format(x.path))
+    return out
 
 
 def lire_epe(epe: bytes) -> List[Composant]:
@@ -163,20 +285,13 @@ def modifier(ee: bytes, modeles: Dict[str, str]) -> Tuple[bytes, List[str]]:
     s = S.parse(ee)
     k = entree_epe(s)
     new_epe, lines = modifier_epe(s.entries[k].data, modeles)
-    entries = [S.Entry(e.path, None, e.length) if e.is_link else
-               S.Entry(e.path, new_epe if j == k else e.data, len(new_epe) if j == k else len(e.data))
-               for j, e in enumerate(s.entries)]
-    out, _offsets = S.build(S.Sarc(s.version, entries))
-    t = S.parse(out)
-    if [(e.path, e.is_link) for e in t.entries] != [(e.path, e.is_link) for e in s.entries]:
-        raise EModele('verification : entrees de l\'entite changees')
-    for j, (x, y) in enumerate(zip(s.entries, t.entries)):
-        if x.is_link:
-            if x.length != y.length:
-                raise EModele('verification : lien {} modifie'.format(x.path))
-        elif y.data != (new_epe if j == k else x.data):
-            raise EModele('verification : entree {} modifiee'.format(x.path))
-    return out, ['{} : {}'.format(s.entries[k].path, line) for line in lines]
+    return _rebuild(s, k, new_epe), ['{} : {}'.format(s.entries[k].path, line) for line in lines]
+
+
+def composant_du_point(ee: bytes, point: str) -> Optional[Composant]:
+    """Composant fresh_round / empty_casing de la munition attache a ce point (None s'il n'y en a pas)."""
+    hits = [c for c in lire(ee) if c.nom in COMPOSANTS and c.point == point]
+    return hits[0] if len(hits) == 1 else None
 
 
 # ---------------------------------------------------------------------------

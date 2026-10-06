@@ -1,0 +1,70 @@
+{
+  "format": "cotwed-mod",
+  "version": 1,
+  "name": "test18",
+  "notes": "Essai de bascule d'arme (2026-10-06) : test17, plus \"convert_weapons\" pour la copie a 77. La Ranger perd ses composants de cartouche (model.bullet_new / model.bullet_used, comme les armes .223 et .270 du jeu) ; leur modele (ammo_bullet_243_soft / _243_empty) est declare dans les entites des munitions compatibles qui n'en declarent pas : .243 SP, .243 PT et la copie a 88 (aspect inchange). La copie a 77 garde celui de la 12GA slug. Temoin de prix : .270 SP a 9876.",
+  "witness_prices": {
+    "equipment_ammo_270_sp_01": 9876
+  },
+  "changes": [],
+  "ammo": [
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_03",
+      "price": 88,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {
+        "Penetration": "17",
+        "Expansion": "20",
+        "Class": "3;4;5;6"
+      },
+      "display_name": {
+        "all": "BALLES DE TEST 88 .243"
+      },
+      "description": {
+        "all": "Munition de test : copie de la .243 SP, a 88, traceuse rouge."
+      },
+      "fields": {},
+      "ballistics": {
+        "tracer_settings.enabled": 1,
+        "tracer_settings.color.red": 1,
+        "tracer_settings.color.green": 0,
+        "tracer_settings.color.blue": 0
+      },
+      "classes": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "icon": "icones/test16_cartouches.png"
+    },
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_02",
+      "price": 77,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {
+        "Penetration": "17",
+        "Expansion": "20",
+        "Class": "3;4;5;6"
+      },
+      "display_name": {
+        "all": "BALLES DE TEST 77 .243"
+      },
+      "description": {
+        "all": "Munition de test : copie de la .243 SP, a 77."
+      },
+      "fields": {},
+      "icon_from": "equipment_ammo_12ga_slug_01",
+      "model_from": "equipment_ammo_12ga_slug_01",
+      "convert_weapons": true
+    }
+  ]
+}
