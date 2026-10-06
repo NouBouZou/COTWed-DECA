@@ -23,7 +23,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 **Nom et description propres** (`--nom-affiche`, `--description`, vérifiés en jeu) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
 
-**Balistique propre** (`--balistique CHAMP=VALEUR`, `--classes`, ou `"ballistics"` / `"classes"` dans un fichier de mod ; à vérifier en jeu, test15) : les valeurs du `.ammotunec` de l'entité propre sont modifiées (pénétration, expansion, masse, traçante, classes d'animaux…), sans toucher la source. `python cotw\ammotune.py PROJET OBJET` liste les champs et leurs valeurs. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod. Les stats affichées viennent de la ligne de stats : les mettre en accord.
+**Balistique propre** (`--balistique CHAMP=VALEUR`, `--classes`, ou `"ballistics"` / `"classes"` dans un fichier de mod ; test15 : réglage modifié accepté par le jeu, effet de la traçante non observé) : les valeurs du `.ammotunec` de l'entité propre sont modifiées (pénétration, expansion, masse, traçante, classes d'animaux…), sans toucher la source. `python cotw\ammotune.py PROJET OBJET` liste les champs et leurs valeurs. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod. Les stats affichées viennent de la ligne de stats : les mettre en accord.
 
 Encore emprunté à la munition source : l'icône.
 
