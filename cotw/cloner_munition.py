@@ -32,6 +32,11 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
                    balistique propre (avec --entite-propre) : valeurs du .ammotunec de la nouvelle entite
                    (ammotune.py) ; la source et les autres munitions gardent les leurs. Les stats affichees viennent
                    de la ligne de stats (--stat) : les mettre en accord a la main.
+  --icone IMAGE, --icone-de OBJET
+                   icone propre (magasin, inventaire) : texture <nom>_alpha.ddsc ajoutee a cote de celle de la
+                   source, designee par display_icon. --icone la fabrique depuis une image (PNG..., icone.py : mise a
+                   la taille, BC3, niveaux de detail, en-tete de l'icone de la source) ; --icone-de copie celle d'un
+                   autre objet (essai du mecanisme sans fabrication).
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
@@ -73,6 +78,7 @@ H_TAGS = W.name_hash('tags')                    # 0x54697e8f
 H_ENTITY = W.name_hash('entity')                # 0x399ed0ed
 H_DISPLAY_NAME = W.name_hash('display_name')    # 0x94142e13, cle de traduction du nom affiche
 H_DISPLAY_DESC = W.name_hash('display_description')  # 0x041df969, cle de traduction de la description
+H_DISPLAY_ICON = W.name_hash('display_icon')    # 0x31e9a4e0, chemin de l'icone (.ddsc), seul champ d'icone des munitions
 
 
 class EClone(Exception):
@@ -364,6 +370,72 @@ def verify_addition(original_bytes: bytes, produced_bytes: bytes, new_hash: Unio
         raise EClone('verification : l\'original ne se reecrit pas a l\'identique (cas jamais observe sur COTW)')
 
 
+def icon_path(item: RtpcNode, what: str) -> str:
+    prop = W.node_get_prop(item, H_DISPLAY_ICON)
+    if prop is None or prop.type != k_type_str:
+        raise EClone('{} : pas de display_icon (texte)'.format(what))
+    return bytes(prop.data).decode('utf-8')
+
+
+def new_icon_path(source_icon: str, new: str) -> str:
+    """Chemin de l'icone de la nouvelle munition : dossier, suffixe "_alpha" et separateurs de celle de la source
+    (textures\\ui\\items\\ammo\\<source>_alpha.ddsc -> textures\\ui\\items\\ammo\\<nouveau>_alpha.ddsc)."""
+    sep = '\\' if '\\' in source_icon else '/'
+    folder, _, file_name = source_icon.replace('\\', '/').rpartition('/')
+    stem, dot, ext = file_name.rpartition('.')
+    if not dot:
+        raise EClone('chemin d\'icone sans extension : "{}"'.format(source_icon))
+    name = new + ('_alpha' if stem.endswith('_alpha') else '') + '.' + ext
+    return (folder + '/' + name if folder else name).replace('/', sep)
+
+
+def own_icon(vfs, eq_tree: Rtpc, item: RtpcNode, m: 'Munition', read) -> Tuple[str, bytes, List[str]]:
+    """--icone / --icone-de : texture propre, ajoutee sous un chemin neuf, et designee par display_icon de ``item``
+    (la nouvelle munition). Renvoie (chemin virtuel, contenu, lignes du rapport)."""
+    import icone as I
+
+    def read_texture(v: str, what: str) -> Tuple[bytes, str]:
+        try:
+            return read(v)
+        except SystemExit as e:       # _projet.read_by_path : chemin absent du projet
+            raise EClone('{} : {}'.format(what, str(e).replace('ERREUR : ', '')))
+
+    old = icon_path(item, m.nom)
+    written = new_icon_path(old, m.nom)
+    v_path = written.replace('\\', '/')
+    if vfs is not None:
+        from deca.hashes import hash32_func
+        # par le chemin, et par son hash (fichier du jeu dont DECA ne connait pas le nom)
+        taken = list(_projet.nodes_by_path(vfs, v_path)) + list(vfs.nodes_where_match(v_hash=hash32_func(v_path.encode())))
+        if [n for n in taken if n.offset is not None]:
+            raise EClone('icone : un fichier du jeu porte deja le chemin {} : il serait remplace'.format(v_path))
+    if m.icone_de:
+        _, other = find_item(eq_tree.root_node, m.icone_de, H_NAME)
+        src_path = icon_path(other, m.icone_de).replace('\\', '/')
+        data, origin = read_texture(src_path, 'icone de ' + m.icone_de)
+        try:
+            f = I.forme(data)
+        except I.EIcone as e:
+            raise EClone('icone de {} ({}) : {}'.format(m.icone_de, src_path, e))
+        lines = ['Origine : ' + origin, 'icone : copie de celle de {} ({}x{}, format DXGI {}, {} octets)'.format(
+            m.icone_de, f.largeur, f.hauteur, f.format, len(data))]
+    else:
+        image = Path(m.icone).expanduser()
+        if not image.is_file():
+            raise EClone('icone : image introuvable : {}'.format(image))
+        modele, origin = read_texture(old.replace('\\', '/'), 'icone de la source')
+        try:
+            data, more = I.fabriquer(str(image), modele)
+        except I.EIcone as e:
+            raise EClone('icone : {}'.format(e))
+        except OSError as e:          # PIL : fichier illisible ou format inconnu
+            raise EClone('icone : image illisible : {} ({})'.format(image, e))
+        lines = ['Origine (modele) : ' + origin, 'icone fabriquee depuis {}'.format(image), '  ' + more[0]] + more[1:]
+    set_str(item, H_DISPLAY_ICON, written, 'display_icon')
+    lines.append('  display_icon : "{}" -> "{}"'.format(old, written))
+    return v_path, data, lines
+
+
 # ---------------------------------------------------------------------------
 # Construction : une munition (ligne de commande) ou plusieurs (mod, construire_mod.py, interface)
 # ---------------------------------------------------------------------------
@@ -393,6 +465,8 @@ class Munition:
     forcer: bool = False                          # armes absentes de la categorie weapons acceptees
     balistique: Dict[str, str] = field(default_factory=dict)   # champ du .ammotunec -> valeur (--balistique)
     classes: Optional[List[int]] = None           # classes d'animaux du .ammotunec (--classes ; None : celles de la source)
+    icone: Optional[str] = None                   # image dont fabriquer l'icone (--icone)
+    icone_de: Optional[str] = None                # objet dont copier l'icone (--icone-de)
 
     def valider(self):
         if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
@@ -406,6 +480,8 @@ class Munition:
         if (self.balistique or self.classes is not None) and self.entite != ENTITE_PROPRE:
             raise EClone('{} : --balistique et --classes demandent --entite-propre (sinon le reglage modifie serait '
                          'celui de la source, ou une copie de diagnostic)'.format(self.nom))
+        if self.icone and self.icone_de:
+            raise EClone('{} : --icone et --icone-de sont incompatibles'.format(self.nom))
 
 
 @dataclass
@@ -524,7 +600,7 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
     # reference de la verification : le depart avec les seuls changements volontaires d'objets existants
     eq_reference = W.rtpc_to_binary(eq_tree) if (mod.controle_prix or mod.modifier) else eq_bytes
 
-    text_entries, eq_hashes, sp_hashes, entities = [], [], [], []
+    text_entries, eq_hashes, sp_hashes, entities, icons = [], [], [], [], []
     for m in mod.munitions:
         if not single:
             report += ['', '## {} (copie de {})'.format(m.nom, m.source)]
@@ -538,6 +614,12 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
         entries, lines = display_keys(eq_item, m.nom, m.nom_affiche, m.description)
         text_entries += entries
         report += lines
+        if m.icone or m.icone_de:
+            step('{} : icone'.format(m.nom))
+            v_icon, icon_bytes, lines = own_icon(vfs, eq_tree, eq_item, m, read)
+            report += lines
+            produced[v_icon] = icon_bytes
+            icons.append(v_icon)
         entity_path = m.entite_chemin
         if m.entite in (ENTITE_PROPRE, ENTITE_COPIE):
             import entite as E
@@ -618,7 +700,7 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
 
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.' if single
                else 'Verification : relus, et identiques aux fichiers de depart une fois les nouvelles munitions retirees.']
-    order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + [AL.STATS_UI, SL.STRING_IDS]
+    order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + icons + [AL.STATS_UI, SL.STRING_IDS]
     return Resultat([(v, produced[v]) for v in order if v in produced], report)
 
 
@@ -686,6 +768,11 @@ def main(argv=None):
                          'champs : python cotw\\ammotune.py PROJET OBJET')
     ap.add_argument('--classes', metavar='CLASSES',
                     help='avec --entite-propre : classes d\'animaux du reglage balistique, ex : "3;4;5;6" ou "3-6"')
+    ap.add_argument('--icone', metavar='IMAGE',
+                    help='icone propre (magasin, inventaire) fabriquee depuis une image (PNG de preference, fond '
+                         'transparent ; mise a la taille de l\'icone de la source, proportions gardees)')
+    ap.add_argument('--icone-de', metavar='OBJET',
+                    help='icone propre copiee de celle d\'OBJET, ex : equipment_ammo_12ga_slug_01')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -720,7 +807,7 @@ def main(argv=None):
         entite_chemin=args.entite, stats_de=args.stats_de, stats=AL.parse_values(args.stat),
         stats_cellules_propres=args.stats_cellules_propres, nom_affiche=list(args.nom_affiche),
         description=list(args.description), champs=list(args.champ), forcer=args.forcer,
-        balistique=balistique, classes=classes)
+        balistique=balistique, classes=classes, icone=args.icone, icone_de=args.icone_de)
     mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]

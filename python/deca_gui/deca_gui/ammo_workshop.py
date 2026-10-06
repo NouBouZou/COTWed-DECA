@@ -1190,9 +1190,11 @@ class AmmoWorkshop(QMainWindow):
             return
         mod_dict = self.cmod.to_dict(self.mf)   # the worker gets its own copy: editing can go on during the build
         project, overwrite, cmod, projet = self.project_dir, self.overwrite_check.isChecked(), self.cmod, self._projet
+        # relative icon paths ("icon") are relative to the mod file
+        folder = os.path.dirname(os.path.abspath(self.mod_path)) if self.mod_path else None
 
         def work(progress):
-            mf = cmod.from_dict(mod_dict)
+            mf = cmod.from_dict(mod_dict, folder)
             vfs = projet.open_project(project)
             try:
                 result = cmod.construire(vfs, mf, etape=progress)

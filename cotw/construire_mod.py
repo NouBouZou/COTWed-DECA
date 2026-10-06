@@ -24,7 +24,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
          "description": {"all": "Munition de test."},
          "fields": {"locked": "3"},
          "ballistics": {"projectile_penetration": 0.08, "tracer_settings.enabled": 1},
-         "classes": [3, 4, 5, 6]}
+         "classes": [3, 4, 5, 6],
+         "icon": "icones/ma_munition.png"}
       ]
     }
   - entity : "own" (entite propre, recommande), "source" (celle de la source : l'arme charge alors la source),
@@ -38,6 +39,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
   - ballistics, classes : balistique propre (avec "entity": "own") : champs du .ammotunec de la nouvelle entite
     (chemin ou fin de chemin unique, voir ammotune.py) et classes d'animaux ([3, 4, 5, 6] ou "3;4;5;6") ; null ou
     absent : valeurs de la source.
+  - icon : image (PNG...) dont fabriquer l'icone propre (magasin, inventaire), chemin relatif au fichier de mod ;
+    icon_from : objet dont copier l'icone. Absents : icone de la source (voir cloner_munition.py, --icone).
 
 Sortie : SORTIE\\dropzone (a copier dans le dossier dropzone du jeu), SORTIE\\rapport_mod.txt, et
 SORTIE\\cotwmod_manifest.json, la liste des fichiers ecrits avec leur empreinte. A la construction suivante :
@@ -54,6 +57,7 @@ deploye, par exemple celui d'un essai fait avec cloner_munition). string_ids est
 un mod construit en une passe donne un fichier plus petit que plusieurs commandes enchainees, aux memes textes.
 """
 import argparse
+import dataclasses
 import hashlib
 import json
 import sys
@@ -76,7 +80,8 @@ ALL = 'all'
 ENTITY_TO_TOOL = {'own': CM.ENTITE_PROPRE, 'source': CM.ENTITE_SOURCE, 'copy': CM.ENTITE_COPIE}
 ENTITY_FROM_TOOL = {v: k for k, v in ENTITY_TO_TOOL.items()}
 AMMO_KEYS = {'source', 'name', 'label', 'price', 'weapons', 'entity', 'entity_path', 'stats_from', 'stats',
-             'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes'}
+             'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes',
+             'icon', 'icon_from'}
 TOP_KEYS = {'format', 'version', 'name', 'notes', 'witness_prices', 'changes', 'ammo'}
 
 
@@ -90,6 +95,7 @@ class ModFile:
     mod: CM.Mod
     name: str = ''
     notes: str = ''
+    dossier: Optional[Path] = None   # dossier du fichier de mod : base des chemins relatifs ("icon")
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +187,8 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
         stats_cellules_propres=bool(d.get('stats_own_cells', False)),
         nom_affiche=texts_to_specs(d.get('display_name')), description=texts_to_specs(d.get('description')),
         champs=_field_specs(d.get('fields')), forcer=bool(d.get('allow_unknown_weapons', False)),
-        balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes)
+        balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes,
+        icone=_str_or_none(d, 'icon', where), icone_de=_str_or_none(d, 'icon_from', where))
 
 
 def munition_to_dict(m: CM.Munition) -> dict:
@@ -199,6 +206,10 @@ def munition_to_dict(m: CM.Munition) -> dict:
         d['ballistics'] = {k: _number(v) for k, v in m.balistique.items()}
     if m.classes is not None:
         d['classes'] = list(m.classes)
+    if m.icone:
+        d['icon'] = m.icone
+    if m.icone_de:
+        d['icon_from'] = m.icone_de
     return d
 
 
@@ -212,7 +223,8 @@ def _number(text: str):
     return text
 
 
-def from_dict(d: dict) -> ModFile:
+def from_dict(d: dict, dossier=None) -> ModFile:
+    """``dossier`` : dossier du fichier de mod, base des chemins relatifs (icon) ; None pour un mod pas enregistre."""
     _require(isinstance(d, dict), 'fichier de mod : objet JSON attendu')
     _require(d.get('format') == FORMAT, 'pas un fichier de mod COTWed DECA ("format": "{}" attendu)'.format(FORMAT))
     _require(d.get('version') == VERSION, 'version {} non prise en charge (attendu : {})'.format(d.get('version'), VERSION))
@@ -231,7 +243,8 @@ def from_dict(d: dict) -> ModFile:
     mod = CM.Mod([munition_from_dict(a, i) for i, a in enumerate(ammo)],
                  controle_prix=['{}={}'.format(k, v) for k, v in witness.items()],
                  modifier=['{}:{}={}'.format(c['item'], c['field'], c['value']) for c in changes])
-    return ModFile(mod, name=str(d.get('name') or ''), notes=str(d.get('notes') or ''))
+    return ModFile(mod, name=str(d.get('name') or ''), notes=str(d.get('notes') or ''),
+                   dossier=Path(dossier) if dossier is not None else None)
 
 
 def to_dict(mf: ModFile) -> dict:
@@ -254,7 +267,7 @@ def load(path) -> ModFile:
     except (OSError, ValueError) as e:
         raise EMod('{} : lecture impossible ({})'.format(path, e))
     try:
-        return from_dict(d)
+        return from_dict(d, Path(path).expanduser().resolve().parent)
     except EMod as e:
         raise EMod('{} : {}'.format(path, e))
 
@@ -365,9 +378,23 @@ def comparer(result: CM.Resultat, dossier: Path) -> List[str]:
     return lines
 
 
+def resolved(mf: ModFile) -> CM.Mod:
+    """Le mod avec ses chemins d'images absolus (relatifs au fichier de mod) ; ``mf`` n'est pas modifie (le fichier
+    garde ses chemins relatifs, qui suivent le dossier du mod)."""
+    munitions = []
+    for m in mf.mod.munitions:
+        if m.icone and not Path(m.icone).expanduser().is_absolute():
+            if mf.dossier is None:
+                raise EMod('{} : chemin d\'icone relatif "{}" et mod jamais enregistre : enregistre-le, ou donne un '
+                           'chemin complet'.format(m.nom, m.icone))
+            m = dataclasses.replace(m, icone=str(mf.dossier / Path(m.icone)))
+        munitions.append(m)
+    return dataclasses.replace(mf.mod, munitions=munitions)
+
+
 def construire(vfs, mf: ModFile, etape: Optional[Callable[[str], None]] = None) -> CM.Resultat:
     """Construit le mod depuis les originaux du jeu (jamais depuis une base)."""
-    result = CM.construire(vfs, mf.mod, base=None, etape=etape)
+    result = CM.construire(vfs, resolved(mf), base=None, etape=etape)
     if mf.name:
         result.rapport[0:0] = ['Mod : {}'.format(mf.name)]
     return result

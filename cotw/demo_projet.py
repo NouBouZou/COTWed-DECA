@@ -12,6 +12,8 @@ Le faux jeu reprend la structure reelle relevee dans le journal de recherche :
   settings/hp_settings/string_ids.stringlookup ADF StringLookup, 10 langues : noms et descriptions affiches
   editor/entities/.../<munition>.ee          SARC v2 : .fmod_guids, .ammotunec (ADF AmmunitionTuning, instance
                                              nommee comme dans le jeu) et .epe (RTPC CAmmunitionItem)
+  textures/ui/items/ammo/<munition>_alpha.ddsc icone AVTX BC3 64 x 32, 7 niveaux (icones du jeu : 640 x 320, 9
+                                             niveaux), cartouches dessinees, pointe d'une couleur par munition
   textures/ui/items/ammo/<munition>.dds      image DDS non compressee (onglet Image)
   settings/demo_notes.txt                    texte (onglet Text)
   + 3 fichiers dont le nom est efface        hashes orphelins (onglet Non-Mapped List)
@@ -24,7 +26,7 @@ Usage, depuis la racine du depot, environnement virtuel active :
 Le projet est cree a cote du vrai (work_demo, pas work) : il ne touche jamais work\\hp.
 
 Avec ces fichiers, toute la chaine de cloner_munition / construire_mod (entite propre, ligne de stats, nom et
-description) fonctionne sur le portable, sans le jeu. Les valeurs sont inventees, sauf les noms de la .243 SP
+description, icone) fonctionne sur le portable, sans le jeu. Les valeurs sont inventees, sauf les noms de la .243 SP
 dans les 10 langues et les stats des .243 SP et PT (journal de recherche, 2026-10-03).
 """
 import argparse
@@ -43,6 +45,7 @@ sys.path.insert(0, str(HERE / 'tests'))
 import _projet  # noqa: E402,F401  (substitut de zugbruecke hors Windows)
 import faux_projet  # noqa: E402
 import adf_fabrique  # noqa: E402
+import texture_fabrique  # noqa: E402
 import sarc as S  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import Rtpc, k_type_str, k_type_u32, k_type_f32, k_type_objid  # noqa: E402
@@ -146,7 +149,7 @@ def equipment_data() -> bytes:
                 W.make_prop('equipment_name', k_type_str, w.encode()),
                 W.make_prop('ammunition_slot_index', k_type_u32, 0)])
             for i, w in enumerate(weapons)])
-        icon = 'textures\\ui\\items\\ammo\\{}_alpha.ddsc'.format(name)
+        icon = icon_path(name, '\\')
         node = item(name, price, locked, dlc, [compat])
         W.node_add_prop(node, W.make_prop('display_icon', k_type_str, icon.encode()), position=len(node.prop_table))
         ammo.append(node)
@@ -206,6 +209,14 @@ def entity(name: str) -> bytes:
     return data
 
 
+# Icones des munitions (.ddsc, BC3, 64 x 32 : forme de celles du jeu en plus petit), une couleur de pointe chacune
+ICON_TIPS = [(220, 30, 30), (30, 90, 220), (230, 200, 30), (150, 40, 200), (30, 190, 190)]
+
+
+def icon_path(name: str, sep: str = '/') -> str:
+    return sep.join(['textures', 'ui', 'items', 'ammo', name + '_alpha.ddsc'])
+
+
 def dds_rgba(width: int = 64, height: int = 64) -> bytes:
     """DDS non compresse 32 bits (A8R8G8B8) : degrade, pour tester l'onglet Image sans bibliotheque C++."""
     header = struct.pack('<4sIIIIIII', b'DDS ', 124, 0x1 | 0x2 | 0x4 | 0x1000 | 0x8, height, width, width * 4, 0, 1)
@@ -234,6 +245,8 @@ def files():
     for name, *_ in AMMO:
         out.append((entity_path(name), entity(name)))
     out.append(('textures/ui/items/ammo/equipment_ammo_243_sp_01_alpha.dds', dds_rgba()))
+    for (name, *_), tip in zip(AMMO, ICON_TIPS):
+        out.append((icon_path(name), texture_fabrique.icone_ddsc(pointe=tip)))
     out += [(ORPHANS[0], b'\x13\x37\x00\x00' + b'\0' * 60),
             (ORPHANS[1], orphan_rtpc()),
             (ORPHANS[2], bytes(range(256)))]
