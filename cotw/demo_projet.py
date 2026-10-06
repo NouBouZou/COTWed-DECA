@@ -15,6 +15,8 @@ Le faux jeu reprend la structure reelle relevee dans le journal de recherche :
   textures/ui/items/ammo/<munition>_alpha.ddsc icone AVTX BC3 64 x 32, 7 niveaux (icones du jeu : 640 x 320, 9
                                              niveaux), cartouches dessinees, pointe d'une couleur par munition
   textures/ui/items/ammo/<munition>.dds      image DDS non compressee (onglet Image)
+  models/hp_ammunition/ammo_bullet_270_*.modelc  modeles designes par l'entite de la .270 SP (base_model) : ADF
+                                             lisibles, pas de vrais modeles (seule leur presence compte)
   settings/demo_notes.txt                    texte (onglet Text)
   + 3 fichiers dont le nom est efface        hashes orphelins (onglet Non-Mapped List)
 
@@ -26,7 +28,7 @@ Usage, depuis la racine du depot, environnement virtuel active :
 Le projet est cree a cote du vrai (work_demo, pas work) : il ne touche jamais work\\hp.
 
 Avec ces fichiers, toute la chaine de cloner_munition / construire_mod (entite propre, ligne de stats, nom et
-description, icone) fonctionne sur le portable, sans le jeu. Les valeurs sont inventees, sauf les noms de la .243 SP
+description, icone, modele de cartouche) fonctionne sur le portable, sans le jeu. Les valeurs sont inventees, sauf les noms de la .243 SP
 dans les 10 langues et les stats des .243 SP et PT (journal de recherche, 2026-10-03).
 """
 import argparse
@@ -45,10 +47,12 @@ sys.path.insert(0, str(HERE / 'tests'))
 import _projet  # noqa: E402,F401  (substitut de zugbruecke hors Windows)
 import faux_projet  # noqa: E402
 import adf_fabrique  # noqa: E402
+import adf_minimal  # noqa: E402
 import texture_fabrique  # noqa: E402
 import sarc as S  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
-from deca.ff_rtpc import Rtpc, k_type_str, k_type_u32, k_type_f32, k_type_objid  # noqa: E402
+from deca.ff_rtpc import (Rtpc, k_type_str, k_type_u32, k_type_f32, k_type_objid, k_type_event,  # noqa: E402
+                          k_type_array_u32, k_type_mat4x4)
 from deca.hashes import hash32_func  # noqa: E402
 from deca.util import deca_root  # noqa: E402
 
@@ -190,17 +194,46 @@ def string_ids() -> bytes:
     return adf_fabrique.stringlookup(entries)
 
 
+# Modeles de cartouche declares par l'entite (base_model), comme la .270 SP du jeu ; les autres prennent celui de l'arme
+MODELS = {'equipment_ammo_270_sp_01': ('models/hp_ammunition/ammo_bullet_270_soft.modelc',
+                                       'models/hp_ammunition/ammo_bullet_270_empty.modelc')}
+IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+
+def model_component(node_hash: int, name: str, point: str, enabled: int, object_id: int, model=None):
+    """CModelAttachementWeaponComponent d'une entite de munition, proprietes du jeu dans leur ordre (par hash) ;
+    base_model en dernier s'il est donne (0xf9dcf6ab, le plus grand hash)."""
+    props = [W.make_prop('show_event', k_type_event, []),
+             W.make_prop('_class', k_type_str, b'CModelAttachementWeaponComponent'),
+             W.make_prop('attachtomesh', k_type_u32, 0), W.make_prop(0x4c834277, k_type_u32, 1),
+             W.make_prop(0x511c489f, k_type_u32, 0), W.make_prop('tags', k_type_array_u32, []),
+             W.make_prop('attachtowater', k_type_u32, 0), W.make_prop('attachtoground', k_type_u32, 0),
+             W.make_prop('weapon_data_index', k_type_u32, 0), W.make_prop('world', k_type_mat4x4, IDENTITY),
+             W.make_prop('start_enabled', k_type_u32, enabled), W.make_prop(0xb3dc7024, k_type_u32, 0),
+             W.make_prop('enable_with_parent', k_type_u32, 1), W.make_prop('_object_id', k_type_objid, object_id),
+             W.make_prop('_class_hash', k_type_u32, W.name_hash('CModelAttachementWeaponComponent')),
+             W.make_prop('name', k_type_str, name.encode()), W.make_prop(0xdd3acc80, k_type_str, point.encode()),
+             W.make_prop('hide_event', k_type_event, [])]
+    if model:
+        props.append(W.make_prop('base_model', k_type_str, model.encode()))
+    return W.make_node(node_hash, props)
+
+
 def entity(name: str) -> bytes:
     """Entite .ee d'une munition, comme celle de la .243 SP : un SARC v2 avec .fmod_guids, .ammotunec (ADF, instance
-    nommee d'apres le fichier source tronque a 31 caracteres) et .epe (RTPC : item_id, tuning_file sans le c final,
-    _object_id)."""
+    nommee d'apres le fichier source tronque a 31 caracteres) et .epe (RTPC v1 : CAmmunitionItem avec item_id,
+    tuning_file sans le c final, _object_id, et ses composants fresh_round / empty_casing ; base_model selon MODELS)."""
     base = 'editor/entities/hp_weapons/ammunition/rifles/' + name
+    oid = 0xffff000000000000 | int(hash32_func(name.encode()))
+    fresh, used = MODELS.get(name, (None, None))
     epe = rtpc_bytes(W.make_node(0, [], [W.make_node('CAmmunitionItem', [
         W.make_prop('_class', k_type_str, b'CAmmunitionItem'),
         W.make_prop('item_id', k_type_str, name.encode()),
         W.make_prop('item_category', k_type_u32, 0),
         W.make_prop('tuning_file', k_type_str, (base + '.ammotune').encode()),
-        W.make_prop('_object_id', k_type_objid, 0xffff000000000000 | int(hash32_func(name.encode())))])]), version=1)
+        W.make_prop('_object_id', k_type_objid, oid)], [
+        model_component(0x41a67c61, 'fresh_round', 'ammo_reload', 1, oid ^ 0x1111, fresh),
+        model_component(0x7621ba14, 'empty_casing', 'ammo_used', 0, oid ^ 0x2222, used)])]), version=1)
     classes = [int(c) for c in STATS[name][4].split(';')]
     tune = adf_fabrique.ammotune((name + '.ammotune')[:31], levels=classes)
     data, _ = S.build(S.Sarc(2, [S.Entry(base + '.fmod_guids', b'\x01\x02\x03\x04\x05\x06\x07\x08', 8),
@@ -247,6 +280,8 @@ def files():
     out.append(('textures/ui/items/ammo/equipment_ammo_243_sp_01_alpha.dds', dds_rgba()))
     for (name, *_), tip in zip(AMMO, ICON_TIPS):
         out.append((icon_path(name), texture_fabrique.icone_ddsc(pointe=tip)))
+    for path in sorted({p for pair in MODELS.values() for p in pair}):
+        out.append((path, adf_minimal.build([(path.rsplit('/', 1)[1], 1, 2)], [3])))   # ADF lisible, pas un vrai modele
     out += [(ORPHANS[0], b'\x13\x37\x00\x00' + b'\0' * 60),
             (ORPHANS[1], orphan_rtpc()),
             (ORPHANS[2], bytes(range(256)))]

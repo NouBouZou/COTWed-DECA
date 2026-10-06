@@ -25,7 +25,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
          "fields": {"locked": "3"},
          "ballistics": {"projectile_penetration": 0.08, "tracer_settings.enabled": 1},
          "classes": [3, 4, 5, 6],
-         "icon": "icones/ma_munition.png"}
+         "icon": "icones/ma_munition.png",
+         "model_from": "equipment_ammo_12ga_slug_01"}
       ]
     }
   - entity : "own" (entite propre, recommande), "source" (celle de la source : l'arme charge alors la source),
@@ -41,6 +42,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
     absent : valeurs de la source.
   - icon : image (PNG...) dont fabriquer l'icone propre (magasin, inventaire), chemin relatif au fichier de mod ;
     icon_from : objet dont copier l'icone. Absents : icone de la source (voir cloner_munition.py, --icone).
+  - model_from : munition dont reprendre les modeles 3D de cartouche et de douille ; ou model / casing_model :
+    chemins .modelc (du jeu ou du mod). Avec "entity": "own". Absents : modele de l'arme.
 
 Sortie : SORTIE\\dropzone (a copier dans le dossier dropzone du jeu), SORTIE\\rapport_mod.txt, et
 SORTIE\\cotwmod_manifest.json, la liste des fichiers ecrits avec leur empreinte. A la construction suivante :
@@ -81,7 +84,7 @@ ENTITY_TO_TOOL = {'own': CM.ENTITE_PROPRE, 'source': CM.ENTITE_SOURCE, 'copy': C
 ENTITY_FROM_TOOL = {v: k for k, v in ENTITY_TO_TOOL.items()}
 AMMO_KEYS = {'source', 'name', 'label', 'price', 'weapons', 'entity', 'entity_path', 'stats_from', 'stats',
              'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes',
-             'icon', 'icon_from'}
+             'icon', 'icon_from', 'model_from', 'model', 'casing_model'}
 TOP_KEYS = {'format', 'version', 'name', 'notes', 'witness_prices', 'changes', 'ammo'}
 
 
@@ -188,7 +191,9 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
         nom_affiche=texts_to_specs(d.get('display_name')), description=texts_to_specs(d.get('description')),
         champs=_field_specs(d.get('fields')), forcer=bool(d.get('allow_unknown_weapons', False)),
         balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes,
-        icone=_str_or_none(d, 'icon', where), icone_de=_str_or_none(d, 'icon_from', where))
+        icone=_str_or_none(d, 'icon', where), icone_de=_str_or_none(d, 'icon_from', where),
+        modele_de=_str_or_none(d, 'model_from', where), modele=_str_or_none(d, 'model', where),
+        modele_douille=_str_or_none(d, 'casing_model', where))
 
 
 def munition_to_dict(m: CM.Munition) -> dict:
@@ -210,6 +215,9 @@ def munition_to_dict(m: CM.Munition) -> dict:
         d['icon'] = m.icone
     if m.icone_de:
         d['icon_from'] = m.icone_de
+    for key, value in (('model_from', m.modele_de), ('model', m.modele), ('casing_model', m.modele_douille)):
+        if value:
+            d[key] = value
     return d
 
 

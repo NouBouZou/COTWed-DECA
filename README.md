@@ -27,6 +27,8 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 **Icône propre** (`--icone IMAGE` ou `--icone-de OBJET`, ou `"icon"` / `"icon_from"` dans un fichier de mod ; à vérifier en jeu, test16) : une texture `textures/ui/items/ammo/<nom>_alpha.ddsc` est ajoutée, et `display_icon` de la nouvelle munition la désigne. `--icone` la fabrique depuis une image (PNG à fond transparent de préférence, mise à 640 × 320 en gardant les proportions) : compression BC3 et 9 niveaux de détail par `cotw/icone.py`, en-tête repris de l'icône de la source, contrôle par un décodage de référence et par la lecture de DECA. `--icone-de` copie l'icône d'un autre objet. Dans un fichier de mod, le chemin de l'image est relatif au fichier. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod.
 
+**Modèle de cartouche** (`--modele-de OBJET`, `--modele`, `--modele-douille`, ou `"model_from"` / `"model"` / `"casing_model"` dans un fichier de mod ; à vérifier en jeu, test17) : l'arme fournit le modèle par défaut de la cartouche chargée et de la douille éjectée, mais l'entité d'une munition peut déclarer les siens (`base_model` des composants `fresh_round` et `empty_casing` du `.epe`), comme le font les .223, .270, 12GA… du jeu. L'outil écrit ces `base_model` dans l'entité propre de la nouvelle munition ; l'arme n'est pas touchée. `python cotw\modele_munition.py PROJET OBJET` affiche les modèles déclarés par une munition.
+
 **Tout cela se fait aussi dans l'interface** (**Tools → Ammo Workshop…**, depuis le 2026-10-04). On y édite un **fichier de mod** (`.cotwmod.json`) qui liste les munitions à ajouter. **Build** reconstruit le dropzone du mod depuis les originaux du jeu, en une passe, avec exactement les mêmes octets que la ligne de commande. Exemple : [`cotw/mods/test14.cotwmod.json`](cotw/mods/test14.cotwmod.json).
 
 ## Lecture des fichiers (2026-10-05)
@@ -87,6 +89,7 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
 | `adf_ajouter_ligne.py` | ajoute une ligne à `equipment_stats_ui.bin` (ou une autre feuille XLSBook), copiée de celle d'un objet existant |
 | `stringlookup.py`, `traduction.py` | lit les textes affichés (noms, descriptions) dans les 10 langues ; ajoute des clés de traduction sans rien écraser |
 | `ammotune.py` | lit et modifie le réglage balistique (`.ammotunec`) d'une munition, dans son entité |
+| `modele_munition.py` | modèles 3D de cartouche et de douille déclarés dans l'entité d'une munition : lecture, écriture de `base_model` |
 | `icone.py` | icônes `.ddsc` (AVTX, BC3) : lecture, export PNG, fabrication depuis une image (compression BC3 et niveaux de détail en numpy) |
 | `adf_remplacer_chaine.py` | remplace une chaîne d'un ADF sur place |
 | `rtpc_dump.py`, `adf_dump.py`, `sarc_dump.py` | affichage lisible des formats, noms résolus |

@@ -37,6 +37,11 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
                    source, designee par display_icon. --icone la fabrique depuis une image (PNG..., icone.py : mise a
                    la taille, BC3, niveaux de detail, en-tete de l'icone de la source) ; --icone-de copie celle d'un
                    autre objet (essai du mecanisme sans fabrication).
+  --modele-de OBJET, --modele CHEMIN.modelc, --modele-douille CHEMIN.modelc
+                   modele 3D propre de la cartouche chargee et de la douille ejectee (avec --entite-propre) :
+                   base_model ajoute aux composants fresh_round et empty_casing du .epe de l'entite propre, comme
+                   dans les entites des .223 du jeu (modele_munition.py) ; sans cela, l'arme montre le sien.
+                   --modele-de reprend les modeles declares par l'entite d'une autre munition.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
@@ -389,6 +394,65 @@ def new_icon_path(source_icon: str, new: str) -> str:
     return (folder + '/' + name if folder else name).replace('/', sep)
 
 
+def entity_path_of(sp_tree: Rtpc, name: str) -> str:
+    """Chemin virtuel (avec des '/') de l'entite d'un objet, d'apres spawn_ammunition_defs."""
+    _, spawn = find_item(sp_tree.root_node, name, H_SPAWN_NAME)
+    prop = W.node_get_prop(spawn, H_ENTITY)
+    if prop is None or prop.type != k_type_str:
+        raise EClone('{} : pas d\'entite dans spawn_ammunition_defs'.format(name))
+    return bytes(prop.data).decode('utf-8').replace('\\', '/')
+
+
+def entite_de(vfs, base: Optional[Path], name: str) -> Tuple[str, bytes, str]:
+    """(chemin, octets, origine) de l'entite d'une munition du jeu, ou de la base (dropzone) si elle y est."""
+    sp_bytes, _ = load(vfs, base, SPAWN_AMMO)
+    path = entity_path_of(W.rtpc_from_bytes(sp_bytes), name)
+    data, origin = load(vfs, base, path)
+    return path, data, origin
+
+
+def game_file_exists(vfs, v_path: str) -> bool:
+    """Fichier present dans les archives du jeu, par son chemin ou par son hash (nom inconnu de DECA)."""
+    from deca.hashes import hash32_func
+    v_path = v_path.replace('\\', '/')
+    nodes = list(_projet.nodes_by_path(vfs, v_path)) + list(vfs.nodes_where_match(v_hash=hash32_func(v_path.encode())))
+    return any(n.offset is not None for n in nodes)
+
+
+def own_models(vfs, sp_tree: Rtpc, m: 'Munition', entity: bytes, read, produced) -> Tuple[bytes, List[str]]:
+    """--modele-de / --modele / --modele-douille : base_model ecrit dans l'entite propre ``entity``."""
+    import modele_munition as MM
+    lines = []
+    if m.modele_de:
+        path = entity_path_of(sp_tree, m.modele_de)
+        try:
+            data, origin = read(path)
+        except SystemExit as e:       # _projet.read_by_path : chemin absent du projet
+            raise EClone('modele de {} : {}'.format(m.modele_de, str(e).replace('ERREUR : ', '')))
+        try:
+            models = MM.modeles_declares(data)
+        except (MM.EModele, MM.S.ESarc) as e:
+            raise EClone('modele de {} : {}'.format(m.modele_de, e))
+        if not models:
+            raise EClone('{} ne declare aucun modele de cartouche : elle prend celui de l\'arme'.format(m.modele_de))
+        lines.append('modeles repris de {} ({}) : {}'.format(m.modele_de, origin, ', '.join(
+            '{} = {}'.format(k, v) for k, v in sorted(models.items()))))
+        missing = [c for c in MM.COMPOSANTS if c not in models]
+        if missing:
+            lines.append('  {} : pas de modele chez {}, celui de l\'arme reste'.format(', '.join(missing), m.modele_de))
+    else:
+        models = {k: v for k, v in ((MM.CARTOUCHE, m.modele), (MM.DOUILLE, m.modele_douille)) if v}
+    for comp, path in models.items():
+        v_path = path.replace('\\', '/')
+        if v_path not in produced and (vfs is None or not game_file_exists(vfs, v_path)):
+            raise EClone('modele {} introuvable dans le jeu : {}'.format(comp, v_path))
+    try:
+        out, more = MM.modifier(entity, models)
+    except (MM.EModele, MM.S.ESarc) as e:
+        raise EClone('modele : {}'.format(e))
+    return out, lines + more
+
+
 def own_icon(vfs, eq_tree: Rtpc, item: RtpcNode, m: 'Munition', read) -> Tuple[str, bytes, List[str]]:
     """--icone / --icone-de : texture propre, ajoutee sous un chemin neuf, et designee par display_icon de ``item``
     (la nouvelle munition). Renvoie (chemin virtuel, contenu, lignes du rapport)."""
@@ -403,12 +467,8 @@ def own_icon(vfs, eq_tree: Rtpc, item: RtpcNode, m: 'Munition', read) -> Tuple[s
     old = icon_path(item, m.nom)
     written = new_icon_path(old, m.nom)
     v_path = written.replace('\\', '/')
-    if vfs is not None:
-        from deca.hashes import hash32_func
-        # par le chemin, et par son hash (fichier du jeu dont DECA ne connait pas le nom)
-        taken = list(_projet.nodes_by_path(vfs, v_path)) + list(vfs.nodes_where_match(v_hash=hash32_func(v_path.encode())))
-        if [n for n in taken if n.offset is not None]:
-            raise EClone('icone : un fichier du jeu porte deja le chemin {} : il serait remplace'.format(v_path))
+    if vfs is not None and game_file_exists(vfs, v_path):
+        raise EClone('icone : un fichier du jeu porte deja le chemin {} : il serait remplace'.format(v_path))
     if m.icone_de:
         _, other = find_item(eq_tree.root_node, m.icone_de, H_NAME)
         src_path = icon_path(other, m.icone_de).replace('\\', '/')
@@ -467,6 +527,9 @@ class Munition:
     classes: Optional[List[int]] = None           # classes d'animaux du .ammotunec (--classes ; None : celles de la source)
     icone: Optional[str] = None                   # image dont fabriquer l'icone (--icone)
     icone_de: Optional[str] = None                # objet dont copier l'icone (--icone-de)
+    modele_de: Optional[str] = None               # munition dont reprendre les modeles de cartouche (--modele-de)
+    modele: Optional[str] = None                  # modele de la cartouche chargee, .modelc (--modele)
+    modele_douille: Optional[str] = None          # modele de la douille ejectee, .modelc (--modele-douille)
 
     def valider(self):
         if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
@@ -482,6 +545,11 @@ class Munition:
                          'celui de la source, ou une copie de diagnostic)'.format(self.nom))
         if self.icone and self.icone_de:
             raise EClone('{} : --icone et --icone-de sont incompatibles'.format(self.nom))
+        if (self.modele_de or self.modele or self.modele_douille) and self.entite != ENTITE_PROPRE:
+            raise EClone('{} : --modele-de, --modele et --modele-douille demandent --entite-propre (le modele est '
+                         'declare dans l\'entite de la munition)'.format(self.nom))
+        if self.modele_de and (self.modele or self.modele_douille):
+            raise EClone('{} : --modele-de est incompatible avec --modele et --modele-douille'.format(self.nom))
 
 
 @dataclass
@@ -647,6 +715,9 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
                     if m.classes is not None and m.stats_de and not any('class' in k.lower() for k in m.stats):
                         lines.append('  note : classes du reglage {} ; la ligne de stats garde celles de {} (--stat '
                                      'Class=... pour les afficher)'.format(';'.join(map(str, m.classes)), m.stats_de))
+                if m.modele_de or m.modele or m.modele_douille:
+                    entity_out, more = own_models(vfs, sp_tree, m, entity_out, read, produced)
+                    lines += ['  ' + line for line in more]
             report += ['Origine : ' + ee_src] + lines
             produced[entity_path] = entity_out
             entities.append(entity_path)
@@ -773,6 +844,13 @@ def main(argv=None):
                          'transparent ; mise a la taille de l\'icone de la source, proportions gardees)')
     ap.add_argument('--icone-de', metavar='OBJET',
                     help='icone propre copiee de celle d\'OBJET, ex : equipment_ammo_12ga_slug_01')
+    ap.add_argument('--modele-de', metavar='OBJET',
+                    help='avec --entite-propre : modeles 3D de cartouche et de douille repris de l\'entite d\'une '
+                         'autre munition qui en declare, ex : equipment_ammo_12ga_slug_01')
+    ap.add_argument('--modele', metavar='CHEMIN',
+                    help='avec --entite-propre : modele de la cartouche chargee (.modelc du jeu ou du mod)')
+    ap.add_argument('--modele-douille', metavar='CHEMIN',
+                    help='avec --entite-propre : modele de la douille ejectee (.modelc du jeu ou du mod)')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -807,7 +885,8 @@ def main(argv=None):
         entite_chemin=args.entite, stats_de=args.stats_de, stats=AL.parse_values(args.stat),
         stats_cellules_propres=args.stats_cellules_propres, nom_affiche=list(args.nom_affiche),
         description=list(args.description), champs=list(args.champ), forcer=args.forcer,
-        balistique=balistique, classes=classes, icone=args.icone, icone_de=args.icone_de)
+        balistique=balistique, classes=classes, icone=args.icone, icone_de=args.icone_de,
+        modele_de=args.modele_de, modele=args.modele, modele_douille=args.modele_douille)
     mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]

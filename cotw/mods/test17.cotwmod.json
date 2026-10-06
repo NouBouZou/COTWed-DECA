@@ -1,0 +1,69 @@
+{
+  "format": "cotwed-mod",
+  "version": 1,
+  "name": "test17",
+  "notes": "Essai de modele 3D de cartouche (2026-10-06) : test16, plus, pour la copie a 77, les modeles de la cartouche de 12GA slug (model_from = equipment_ammo_12ga_slug_01) : base_model ajoute aux composants fresh_round (cartouche chargee, point ammo_reload) et empty_casing (douille ejectee, point ammo_used) de son entite, comme dans les entites des .223 du jeu. Essai du mecanisme seul, avec un modele du jeu impossible a confondre. Temoins : la .243 SP et la copie a 88 gardent la cartouche de la Ranger ; prix de la .270 SP a 8765.",
+  "witness_prices": {
+    "equipment_ammo_270_sp_01": 8765
+  },
+  "changes": [],
+  "ammo": [
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_03",
+      "price": 88,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {
+        "Penetration": "17",
+        "Expansion": "20",
+        "Class": "3;4;5;6"
+      },
+      "display_name": {
+        "all": "BALLES DE TEST 88 .243"
+      },
+      "description": {
+        "all": "Munition de test : copie de la .243 SP, a 88, traceuse rouge."
+      },
+      "fields": {},
+      "ballistics": {
+        "tracer_settings.enabled": 1,
+        "tracer_settings.color.red": 1,
+        "tracer_settings.color.green": 0,
+        "tracer_settings.color.blue": 0
+      },
+      "classes": [
+        3,
+        4,
+        5,
+        6
+      ],
+      "icon": "icones/test16_cartouches.png"
+    },
+    {
+      "source": "equipment_ammo_243_sp_01",
+      "name": "equipment_ammo_243_test_02",
+      "price": 77,
+      "label": null,
+      "weapons": null,
+      "entity": "own",
+      "stats_from": "equipment_ammo_243_sp_01",
+      "stats": {
+        "Penetration": "17",
+        "Expansion": "20",
+        "Class": "3;4;5;6"
+      },
+      "display_name": {
+        "all": "BALLES DE TEST 77 .243"
+      },
+      "description": {
+        "all": "Munition de test : copie de la .243 SP, a 77."
+      },
+      "fields": {},
+      "icon_from": "equipment_ammo_12ga_slug_01",
+      "model_from": "equipment_ammo_12ga_slug_01"
+    }
+  ]
+}
