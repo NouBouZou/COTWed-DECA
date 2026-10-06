@@ -395,25 +395,54 @@ LOOKUP_ENTRIES_10 = {k: [v[i] if i < len(v) else '{} ({})'.format(v[0], code) fo
 
 
 # --- reglage balistique (.ammotunec), disposition du jeu : donnees, instances, types, StringHash, noms ---
-T_TUNE, T_CLASS, A_CLASS = 0x5bb59511, 0x5EE73001, 0x5EE73002
+# Types, hash, tailles et offsets releves dans equipment_ammo_243_sp_01.ammotunec du jeu (2026-10-06).
+T_TUNE, A_CLASS, T_CLASS, T_SH_TUNE = 0x5bb59511, 0x4bcce369, 0xf18aface, 0xc03f64bf
+T_TRACER, T_TRACER_COLOR, T_PICKUP = 0x3792cf6b, 0x0accbe7a, 0x44a9307e
+# valeurs de la .243 SP, a l'octet pres : (membre, offset, format struct, valeur)
+TUNE_243_SP = [('max_range', 16, '<f', 1000.0), ('diameter', 20, '<f', 0.0062), ('length', 24, '<f', 0.017),
+               ('drag_coefficient', 28, '<f', 0.27979), ('kinetic_energy', 32, '<f', 2618.0), ('mass', 36, '<f', 0.00616),
+               ('projectile_penetration', 40, '<f', 0.106935985), ('projectile_damage', 44, '<f', 0.00158776145),
+               ('projectile_expansion_rate', 48, '<f', 0.19658), ('projectile_contraction_rate', 52, '<f', 0.02184222),
+               ('projectile_max_expansion', 56, '<f', 0.00294869975), ('projectiles_per_shot', 60, '<B', 1),
+               ('projectile_entity_spawn_tag', 64, '<I', 0xdeadbeef), ('projectile_model_path', 68, '<I', 0xdeadbeef),
+               ('broken_projectile_model_path', 72, '<I', 0xdeadbeef), ('scatter_multiplier', 76, '<f', 1.0),
+               ('velocity_deviance', 80, '<f', 0.0)]
+TRACER_243_SP = [('enabled', 0, '<B', 0), ('flash_freq', 4, '<f', 0.1), ('radius', 8, '<f', 0.3),
+                 ('tracer_scale_factor', 12, '<f', 0.001), ('position_offset', 16, '<f', 0.0)]
 
 
 def ammotune(instance_name: str, levels=(2, 3, 4, 5, 6), mass: float = 0.00616) -> bytes:
-    """AmmunitionTuning reduit : ammunition_class (tableau), max_range, mass ; instance nommee comme dans le jeu
-    (nom du fichier source tronque a 31 caracteres) ; une chaine StringHash comme dans les fichiers du jeu."""
+    """Reglage balistique (AmmunitionTuning, 128 octets) avec les types et les valeurs de la .243 SP ; instance
+    nommee comme dans le jeu (nom du fichier source tronque a 31 caracteres) ; une chaine StringHash."""
+    from deca.ff_adf import typedef_f32 as F32, typedef_u8 as U8
     t = Types()
-    t.struct('AmmunitionTuning', T_TUNE, 32, 8, [('ammunition_class', A_CLASS, 16, 0), ('max_range', typedef_f32, 4, 16),
-                                                 ('mass', typedef_f32, 4, 20)])
+    t.struct('AmmunitionTuning', T_TUNE, 128, 8,
+             [('ammunition_class', A_CLASS, 8, 0)]
+             + [(n, {'<f': F32, '<B': U8, '<I': T_SH_TUNE}[f], 4 if f != '<B' else 1, o) for n, o, f, _v in TUNE_243_SP]
+             + [('tracer_settings', T_TRACER, 4, 84), ('pickup_settings', T_PICKUP, 4, 116)])
     t.array('A[AmmunitionClass]', A_CLASS, T_CLASS)
-    t.struct('AmmunitionClass', T_CLASS, 1, 1, [('level', typedef_u8, 1, 0)])
-    b = Blob(32)
-    arr = b.alloc(bytes(levels), 8)
-    b.pointer(0, arr)
-    b.put(8, '<II', len(levels), 0)
-    b.put(16, '<ff', 1000.0, mass)
+    t.struct('AmmunitionClass', T_CLASS, 1, 1, [('level', U8, 1, 0)])
+    t.stringhash('StringHash_48c5294d_4', T_SH_TUNE)
+    t.struct('Tracer', T_TRACER, 32, 4, [(n, {'<f': F32, '<B': U8}[f], 4, o) for n, o, f, _v in TRACER_243_SP]
+             + [('color', T_TRACER_COLOR, 4, 20)])
+    t.struct('TracerColor', T_TRACER_COLOR, 12, 4, [('red', F32, 4, 0), ('green', F32, 4, 4), ('blue', F32, 4, 8)])
+    t.struct('PickupData', T_PICKUP, 8, 4, [('collision_path', T_SH_TUNE, 4, 0), ('never_break', U8, 1, 4),
+                                            ('dog_requires_skill', U8, 1, 5)])
+    b = Blob(128)
+    for name, off, fmt, value in TUNE_243_SP:
+        b.put(off, fmt, mass if name == 'mass' else value)
+    for _n, off, fmt, value in TRACER_243_SP:
+        b.put(84 + off, fmt, value)
+    b.put(84 + 20, '<fff', 0.0, 1.0, 0.0)
+    b.put(116, '<IBB', 0xdeadbeef, 0, 1)
+    if levels:
+        arr = b.alloc(bytes(levels), 8)
+        b.pointer(0, arr)
+        b.put(8, '<II', len(levels), 0)
+    # sans classes (clay_pigeon, 22_hp... dans le jeu) : tableau vide de cible 0, instance sans chaine de relocation
     b.link()
     return build(t, [(instance_name, T_TUNE, bytes(b.b))], stringhashes=[(b'', 0xdeadbeef)], order='noms_a_la_fin',
-                 comment=b'AmmunitionTuning.adf in THP')
+                 comment=b'AmmunitionTuningSettings_adf.adf in THP')
 
 
 # ---------------------------------------------------------------------------

@@ -27,7 +27,11 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
                    nom et description propres : cles de traduction <nom>_name et <nom>_description ajoutees a
                    string_ids.stringlookup (stringlookup.py), dans les 10 langues, et designees par display_name
                    et display_description de la nouvelle munition. Un texte sans prefixe vaut pour toutes les
-                   langues ; "en=TEXT" (option repetee) donne celui d'une langue.
+                   langues ; "en=TEXT" (option repetee) donne celui d'une langue ;
+  --balistique CHAMP=VALEUR, --classes 3;4;5;6
+                   balistique propre (avec --entite-propre) : valeurs du .ammotunec de la nouvelle entite
+                   (ammotune.py) ; la source et les autres munitions gardent les leurs. Les stats affichees viennent
+                   de la ligne de stats (--stat) : les mettre en accord a la main.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
@@ -387,6 +391,8 @@ class Munition:
     description: List[str] = field(default_factory=list)
     champs: List[str] = field(default_factory=list)       # CHAMP=VALEUR (--champ)
     forcer: bool = False                          # armes absentes de la categorie weapons acceptees
+    balistique: Dict[str, str] = field(default_factory=dict)   # champ du .ammotunec -> valeur (--balistique)
+    classes: Optional[List[int]] = None           # classes d'animaux du .ammotunec (--classes ; None : celles de la source)
 
     def valider(self):
         if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
@@ -397,6 +403,9 @@ class Munition:
             raise EClone('{} : entite "{}" inconnue ({})'.format(self.nom, self.entite, ', '.join(ENTITES)))
         if self.entite_chemin and self.entite != ENTITE_SOURCE:
             raise EClone('{} : --entite, --entite-copie et --entite-propre sont incompatibles'.format(self.nom))
+        if (self.balistique or self.classes is not None) and self.entite != ENTITE_PROPRE:
+            raise EClone('{} : --balistique et --classes demandent --entite-propre (sinon le reglage modifie serait '
+                         'celui de la source, ou une copie de diagnostic)'.format(self.nom))
 
 
 @dataclass
@@ -546,6 +555,16 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
                     entity_out, _renames, lines = E.clone_entity(ee_bytes, m.source, m.nom)
                 except (E.EEntite, E.S.ESarc) as e:
                     raise EClone('entite : {}'.format(e))
+                if m.balistique or m.classes is not None:
+                    import ammotune as AT
+                    try:
+                        entity_out, more = AT.modifier_entite(entity_out, m.balistique, m.classes)
+                    except (AT.EAmmotune, E.S.ESarc) as e:
+                        raise EClone('balistique : {}'.format(e))
+                    lines += ['  ' + line for line in more]
+                    if m.classes is not None and m.stats_de and not any('class' in k.lower() for k in m.stats):
+                        lines.append('  note : classes du reglage {} ; la ligne de stats garde celles de {} (--stat '
+                                     'Class=... pour les afficher)'.format(';'.join(map(str, m.classes)), m.stats_de))
             report += ['Origine : ' + ee_src] + lines
             produced[entity_path] = entity_out
             entities.append(entity_path)
@@ -603,6 +622,19 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
     return Resultat([(v, produced[v]) for v in order if v in produced], report)
 
 
+def parse_assignments(specs: Sequence[str], option: str) -> Dict[str, str]:
+    """["CHAMP=VALEUR", ...] -> {champ: valeur}, dans l'ordre ; un champ donne deux fois est refuse."""
+    out: Dict[str, str] = {}
+    for spec in specs:
+        key, sep, value = spec.partition('=')
+        if not sep or not key.strip():
+            raise EClone('{} attend CHAMP=VALEUR, recu "{}"'.format(option, spec))
+        if key.strip() in out:
+            raise EClone('{} : champ "{}" donne deux fois'.format(option, key.strip()))
+        out[key.strip()] = value.strip()
+    return out
+
+
 def ecrire_fichiers(fichiers: Sequence[Tuple[str, bytes]], racine: Path) -> List[str]:
     """Ecrit les fichiers sous ``racine`` (un dossier au format dropzone) ; renvoie les lignes du rapport."""
     lines = []
@@ -648,6 +680,12 @@ def main(argv=None):
                          'langue (option repetable ; langues : en, fr, de, es, ru, pl, ja, pt, cs, zh)')
     ap.add_argument('--description', action='append', default=[], metavar='[LANGUE=]TEXTE',
                     help='description affichee en jeu, meme forme que --nom-affiche')
+    ap.add_argument('--balistique', action='append', default=[], metavar='CHAMP=VALEUR',
+                    help='avec --entite-propre : valeur d\'un champ du reglage balistique (.ammotunec) de la nouvelle '
+                         'munition (option repetable), ex : projectile_penetration=0.08, tracer_settings.enabled=1 ; '
+                         'champs : python cotw\\ammotune.py PROJET OBJET')
+    ap.add_argument('--classes', metavar='CLASSES',
+                    help='avec --entite-propre : classes d\'animaux du reglage balistique, ex : "3;4;5;6" ou "3-6"')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -669,13 +707,20 @@ def main(argv=None):
     if sum(bool(x) for x in (args.entite, args.entite_propre, args.entite_copie)) > 1:
         raise SystemExit('ERREUR : --entite, --entite-copie et --entite-propre sont incompatibles')
     import adf_ajouter_ligne as AL
+    import ammotune as AT
+    try:
+        balistique = parse_assignments(args.balistique, '--balistique')
+        classes = AT.parse_classes(args.classes) if args.classes is not None else None
+    except (EClone, AT.EAmmotune) as e:
+        raise SystemExit('ERREUR : {}'.format(e))
     munition = Munition(
         source=args.source, nom=args.nom, libelle=args.libelle, prix=args.prix,
         armes=[w.strip() for w in args.armes.split(',') if w.strip()] if args.armes else None,
         entite=ENTITE_PROPRE if args.entite_propre else (ENTITE_COPIE if args.entite_copie else ENTITE_SOURCE),
         entite_chemin=args.entite, stats_de=args.stats_de, stats=AL.parse_values(args.stat),
         stats_cellules_propres=args.stats_cellules_propres, nom_affiche=list(args.nom_affiche),
-        description=list(args.description), champs=list(args.champ), forcer=args.forcer)
+        description=list(args.description), champs=list(args.champ), forcer=args.forcer,
+        balistique=balistique, classes=classes)
     mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]

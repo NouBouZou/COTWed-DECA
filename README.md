@@ -10,7 +10,7 @@ Projet personnel, privé pour l'instant.
 Ce projet part de [DECA](https://github.com/kk49/deca), de Krzysztof Kamieniecki (kk49), sous licence MIT : branche `develop`, commit `9231177` (2025-12-10).
 DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concentre sur COTW. Le README d'origine est conservé dans [`docs/README_DECA.md`](docs/README_DECA.md).
 
-## État au 2026-10-03
+## État au 2026-10-06
 
 **Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`), son nom et sa description, ainsi que le logo de possession. Elle se charge, se tire et consomme ses propres munitions. Plusieurs copies d'une même munition coexistent avec elle sans bloquer le changement de munition (test14). Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
 
@@ -23,7 +23,9 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 **Nom et description propres** (`--nom-affiche`, `--description`, vérifiés en jeu) : un cinquième fichier, `settings/hp_settings/string_ids.stringlookup` (ADF StringLookup, table de traduction des 10 langues), reçoit les clés `<nom>_name` et `<nom>_description`, que désignent `display_name` et `display_description` de la nouvelle munition. Le fichier passe de 38,8 à 49,4 Mo (les anciennes copies des tableaux triés restent en place).
 
-Encore empruntés à la munition source : l'icône et les valeurs du `.ammotunec` (balistique réelle ; les stats affichées viennent de la ligne de stats).
+**Balistique propre** (`--balistique CHAMP=VALEUR`, `--classes`, ou `"ballistics"` / `"classes"` dans un fichier de mod ; à vérifier en jeu, test15) : les valeurs du `.ammotunec` de l'entité propre sont modifiées (pénétration, expansion, masse, traçante, classes d'animaux…), sans toucher la source. `python cotw\ammotune.py PROJET OBJET` liste les champs et leurs valeurs. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod. Les stats affichées viennent de la ligne de stats : les mettre en accord.
+
+Encore emprunté à la munition source : l'icône.
 
 **Tout cela se fait aussi dans l'interface** (**Tools → Ammo Workshop…**, depuis le 2026-10-04). On y édite un **fichier de mod** (`.cotwmod.json`) qui liste les munitions à ajouter. **Build** reconstruit le dropzone du mod depuis les originaux du jeu, en une passe, avec exactement les mêmes octets que la ligne de commande. Exemple : [`cotw/mods/test14.cotwmod.json`](cotw/mods/test14.cotwmod.json).
 
@@ -84,6 +86,7 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
 | `adf_ecriture.py`, `xlsbook.py` | agrandit des tableaux d'un ADF sans déplacer les données existantes ; ajoute une ligne à une feuille XLSBook |
 | `adf_ajouter_ligne.py` | ajoute une ligne à `equipment_stats_ui.bin` (ou une autre feuille XLSBook), copiée de celle d'un objet existant |
 | `stringlookup.py`, `traduction.py` | lit les textes affichés (noms, descriptions) dans les 10 langues ; ajoute des clés de traduction sans rien écraser |
+| `ammotune.py` | lit et modifie le réglage balistique (`.ammotunec`) d'une munition, dans son entité |
 | `adf_remplacer_chaine.py` | remplace une chaîne d'un ADF sur place |
 | `rtpc_dump.py`, `adf_dump.py`, `sarc_dump.py` | affichage lisible des formats, noms résolus |
 | `comparer_objets.py`, `separateurs.py`, `liste_objets.py` | comparaison d'objets d'`equipment_data` |

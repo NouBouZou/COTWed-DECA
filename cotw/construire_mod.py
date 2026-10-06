@@ -22,7 +22,9 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
          "stats": {"Penetration": "17", "Expansion": "20", "Class": "3;4;5;6"},
          "display_name": {"all": "BALLES DE TEST 88 .243", "en": ".243 TEST 88 BULLET"},
          "description": {"all": "Munition de test."},
-         "fields": {"locked": "3"}}
+         "fields": {"locked": "3"},
+         "ballistics": {"projectile_penetration": 0.08, "tracer_settings.enabled": 1},
+         "classes": [3, 4, 5, 6]}
       ]
     }
   - entity : "own" (entite propre, recommande), "source" (celle de la source : l'arme charge alors la source),
@@ -33,6 +35,9 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
   - display_name, description : "all" pour toutes les langues, puis un code de langue (en, fr, de, es, ru, pl,
     ja, pt, cs, zh) pour celles qui different.
   - fields : champs de la nouvelle munition (nom ou hash 0x...), "allow_unknown_weapons" : armes hors categorie.
+  - ballistics, classes : balistique propre (avec "entity": "own") : champs du .ammotunec de la nouvelle entite
+    (chemin ou fin de chemin unique, voir ammotune.py) et classes d'animaux ([3, 4, 5, 6] ou "3;4;5;6") ; null ou
+    absent : valeurs de la source.
 
 Sortie : SORTIE\\dropzone (a copier dans le dossier dropzone du jeu), SORTIE\\rapport_mod.txt, et
 SORTIE\\cotwmod_manifest.json, la liste des fichiers ecrits avec leur empreinte. A la construction suivante :
@@ -71,7 +76,7 @@ ALL = 'all'
 ENTITY_TO_TOOL = {'own': CM.ENTITE_PROPRE, 'source': CM.ENTITE_SOURCE, 'copy': CM.ENTITE_COPIE}
 ENTITY_FROM_TOOL = {v: k for k, v in ENTITY_TO_TOOL.items()}
 AMMO_KEYS = {'source', 'name', 'label', 'price', 'weapons', 'entity', 'entity_path', 'stats_from', 'stats',
-             'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons'}
+             'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes'}
 TOP_KEYS = {'format', 'version', 'name', 'notes', 'witness_prices', 'changes', 'ammo'}
 
 
@@ -156,8 +161,18 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
              '{} : "weapons" doit etre null ou une liste de noms'.format(where))
     entity = d.get('entity', 'own')
     _require(entity in ENTITY_TO_TOOL, '{} : "entity" vaut {}'.format(where, ', '.join(ENTITY_TO_TOOL)))
-    for key in ('stats', 'fields', 'display_name', 'description'):
+    for key in ('stats', 'fields', 'display_name', 'description', 'ballistics'):
         _require(d.get(key) is None or isinstance(d.get(key), dict), '{} : "{}" doit etre un objet'.format(where, key))
+    ballistics = d.get('ballistics') or {}
+    _require(all(isinstance(v, (int, float, str)) and not isinstance(v, bool) for v in ballistics.values()),
+             '{} : "ballistics" : valeurs nombres ou textes attendues'.format(where))
+    classes = None
+    if d.get('classes') is not None:
+        import ammotune as AT
+        try:
+            classes = AT.parse_classes(d['classes'])
+        except AT.EAmmotune as e:
+            raise EMod('{} : {}'.format(where, e))
     return CM.Munition(
         source=d['source'], nom=d['name'], libelle=_str_or_none(d, 'label', where), prix=price,
         armes=list(weapons) if weapons else None, entite=ENTITY_TO_TOOL[entity],
@@ -165,7 +180,8 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
         stats={str(k): str(v) for k, v in (d.get('stats') or {}).items()},
         stats_cellules_propres=bool(d.get('stats_own_cells', False)),
         nom_affiche=texts_to_specs(d.get('display_name')), description=texts_to_specs(d.get('description')),
-        champs=_field_specs(d.get('fields')), forcer=bool(d.get('allow_unknown_weapons', False)))
+        champs=_field_specs(d.get('fields')), forcer=bool(d.get('allow_unknown_weapons', False)),
+        balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes)
 
 
 def munition_to_dict(m: CM.Munition) -> dict:
@@ -179,7 +195,21 @@ def munition_to_dict(m: CM.Munition) -> dict:
         d['stats_own_cells'] = True
     if m.forcer:
         d['allow_unknown_weapons'] = True
+    if m.balistique:
+        d['ballistics'] = {k: _number(v) for k, v in m.balistique.items()}
+    if m.classes is not None:
+        d['classes'] = list(m.classes)
     return d
+
+
+def _number(text: str):
+    """Valeur de balistique ecrite comme nombre JSON si elle en est un (lecture plus simple du fichier)."""
+    for conv in (int, float):
+        try:
+            return conv(text)
+        except ValueError:
+            pass
+    return text
 
 
 def from_dict(d: dict) -> ModFile:
