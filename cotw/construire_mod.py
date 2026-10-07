@@ -26,7 +26,8 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
          "ballistics": {"projectile_penetration": 0.08, "tracer_settings.enabled": 1},
          "classes": [3, 4, 5, 6],
          "icon": "icones/ma_munition.png",
-         "model_from": "equipment_ammo_12ga_slug_01"}
+         "model_from": "equipment_ammo_12ga_slug_01",
+         "tags": ["ammo_cal_243", "ammo_type_test", "ammunition"]}
       ]
     }
   - entity : "own" (entite propre, recommande), "source" (celle de la source : l'arme charge alors la source),
@@ -45,6 +46,11 @@ Fichier de mod (JSON, cles en anglais pour pouvoir le partager) :
   - model_from : munition dont reprendre les modeles 3D de cartouche et de douille ; ou model / casing_model :
     chemins .modelc (du jeu ou du mod). Avec "entity": "own". Absents : modele de l'arme. "convert_weapons": true
     bascule les armes compatibles qui ont leur propre modele (voir cloner_munition.py, --basculer-armes).
+  - tags : etiquettes de spawn (liste, ou texte separe par des virgules), sans le nom de la munition, qui reste en
+    tete ; absent ou null : celles de la source (voir cloner_munition.py, --etiquettes).
+
+Le rapport se termine par les dependances restantes (dependances.py) : ce que chaque munition doit encore a un objet
+d'origine du jeu.
 
 Sortie : SORTIE\\dropzone (a copier dans le dossier dropzone du jeu), SORTIE\\rapport_mod.txt, et
 SORTIE\\cotwmod_manifest.json, la liste des fichiers ecrits avec leur empreinte. A la construction suivante :
@@ -85,7 +91,7 @@ ENTITY_TO_TOOL = {'own': CM.ENTITE_PROPRE, 'source': CM.ENTITE_SOURCE, 'copy': C
 ENTITY_FROM_TOOL = {v: k for k, v in ENTITY_TO_TOOL.items()}
 AMMO_KEYS = {'source', 'name', 'label', 'price', 'weapons', 'entity', 'entity_path', 'stats_from', 'stats',
              'stats_own_cells', 'display_name', 'description', 'fields', 'allow_unknown_weapons', 'ballistics', 'classes',
-             'icon', 'icon_from', 'model_from', 'model', 'casing_model', 'convert_weapons'}
+             'icon', 'icon_from', 'model_from', 'model', 'casing_model', 'convert_weapons', 'tags'}
 TOP_KEYS = {'format', 'version', 'name', 'notes', 'witness_prices', 'changes', 'ammo'}
 
 
@@ -176,6 +182,11 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
     ballistics = d.get('ballistics') or {}
     _require(all(isinstance(v, (int, float, str)) and not isinstance(v, bool) for v in ballistics.values()),
              '{} : "ballistics" : valeurs nombres ou textes attendues'.format(where))
+    tags = d.get('tags')
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(',') if t.strip()]
+    _require(tags is None or (isinstance(tags, list) and all(isinstance(t, str) for t in tags)),
+             '{} : "tags" doit etre null, une liste de textes ou un texte separe par des virgules'.format(where))
     classes = None
     if d.get('classes') is not None:
         import ammotune as AT
@@ -194,7 +205,8 @@ def munition_from_dict(d: dict, index: int) -> CM.Munition:
         balistique={str(k): str(v) for k, v in ballistics.items()}, classes=classes,
         icone=_str_or_none(d, 'icon', where), icone_de=_str_or_none(d, 'icon_from', where),
         modele_de=_str_or_none(d, 'model_from', where), modele=_str_or_none(d, 'model', where),
-        modele_douille=_str_or_none(d, 'casing_model', where), basculer_armes=bool(d.get('convert_weapons', False)))
+        modele_douille=_str_or_none(d, 'casing_model', where), basculer_armes=bool(d.get('convert_weapons', False)),
+        etiquettes=[t.strip() for t in tags] if tags is not None else None)
 
 
 def munition_to_dict(m: CM.Munition) -> dict:
@@ -221,6 +233,8 @@ def munition_to_dict(m: CM.Munition) -> dict:
             d[key] = value
     if m.basculer_armes:
         d['convert_weapons'] = True
+    if m.etiquettes is not None:
+        d['tags'] = list(m.etiquettes)
     return d
 
 

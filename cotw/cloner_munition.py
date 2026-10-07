@@ -47,6 +47,13 @@ description, icone, et par defaut la meme entite (.ee). Options qui completent l
                    ses composants de cartouche sont retires et leur modele est declare dans chaque munition
                    compatible qui n'en declare pas (fichiers du jeu remplaces : l'entite de l'arme, celles de ces
                    munitions ; aspect inchange pour elles).
+  --etiquettes A,B,C
+                   etiquettes de spawn de la nouvelle munition (spawn_ammunition_defs, propriete tags), a la place de
+                   celles de la source ; le nom de la munition reste en tete, comme dans le jeu. Role des etiquettes
+                   inconnu (ammo_cal_243, ammo_type_sp, ammunition...) : une etiquette absente du jeu est signalee.
+
+Chaque construction se termine par l'analyse des dependances restantes (dependances.py) : ce que la nouvelle munition
+doit encore a un objet d'origine (entite, textes, icone, modele, son, valeurs recopiees...).
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\cloner_munition.py D:\\dev\\work\\hp --source equipment_ammo_243_sp_01 ^
@@ -307,18 +314,81 @@ def clone_equipment(tree: Rtpc, source: str, new: str, label: Optional[str] = No
     return parent, item, report
 
 
-def clone_spawn(tree: Rtpc, source: str, new: str, entity: Optional[str] = None) -> Tuple[RtpcNode, RtpcNode, List[str]]:
+def spawn_tags(root: RtpcNode) -> set:
+    """Toutes les etiquettes (propriete tags, separees par des virgules) des entrees de spawn_ammunition_defs."""
+    found = set()
+
+    def walk(node):
+        for c in node.child_table:
+            p = W.node_get_prop(c, H_TAGS)
+            if p is not None and p.type == k_type_str:
+                found.update(t for t in bytes(p.data).decode('utf-8', 'replace').split(',') if t)
+            walk(c)
+
+    walk(root)
+    return found
+
+
+def spawn_names(root: RtpcNode) -> set:
+    """Noms des objets (propriete desc) des entrees de spawn_ammunition_defs."""
+    found = set()
+
+    def walk(node):
+        for c in node.child_table:
+            p = W.node_get_prop(c, H_SPAWN_NAME)
+            if p is not None and p.type == k_type_str:
+                found.add(bytes(p.data).decode('utf-8', 'replace'))
+            walk(c)
+
+    walk(root)
+    return found
+
+
+def check_tags(tags: Sequence[str], what: str):
+    """Etiquettes de spawn : lettres ASCII, chiffres et _ (forme de toutes celles du jeu), chacune une fois."""
+    for t in tags:
+        if not t or not t.isascii() or not t.replace('_', '').isalnum():
+            raise EClone('{} : etiquette "{}" refusee (lettres ASCII, chiffres et _ seulement)'.format(what, t))
+    if len(set(tags)) != len(tags):
+        raise EClone('{} : etiquette donnee deux fois'.format(what))
+
+
+def clone_spawn(tree: Rtpc, source: str, new: str, entity: Optional[str] = None,
+                tags: Optional[Sequence[str]] = None) -> Tuple[RtpcNode, RtpcNode, List[str]]:
+    """Copie l'entree de la source. ``tags`` (option --etiquettes) remplace ses etiquettes, sauf le nom de l'objet,
+    garde en tete s'il y etait (dans le jeu, la premiere etiquette d'une entree est le nom de son objet)."""
     parent, src = find_item(tree.root_node, source, H_SPAWN_NAME)
+    known = spawn_tags(tree.root_node) if tags is not None else set()
     item = W.clone_node(src)
     item.name_hash = W.name_hash(new)
     set_str(item, H_SPAWN_NAME, new, 'nom')
     report = ['spawn_ammunition_defs : source trouvee, {} proprietes'.format(len(src.prop_table))]
-    tags = W.node_get_prop(item, H_TAGS)
-    if tags is not None and tags.type == k_type_str:
-        parts = bytes(tags.data).decode('utf-8').split(',')
-        parts = [new if p.strip() == source else p for p in parts]
-        tags.data = ','.join(parts).encode('utf-8')
-        report.append('  tags : "{}"'.format(tags.data.decode()))
+    prop = W.node_get_prop(item, H_TAGS)
+    if tags is not None and (prop is None or prop.type != k_type_str):
+        raise EClone('--etiquettes : l\'entree de la source n\'a pas de propriete tags (texte)')
+    if prop is not None and prop.type == k_type_str:
+        old = bytes(prop.data).decode('utf-8')
+        parts = old.split(',')
+        if tags is None:
+            parts = [new if p.strip() == source else p for p in parts]
+        else:
+            check_tags(tags, '--etiquettes')
+            if new in tags:
+                raise EClone('--etiquettes : le nom de la munition est ajoute en tete, ne pas le donner')
+            names = sorted(set(tags) & spawn_names(tree.root_node))
+            if names:
+                raise EClone('--etiquettes : {} : nom d\'un objet du jeu ; dans le jeu, une entree ne porte que le nom '
+                             'de son propre objet'.format(', '.join(names)))
+            parts = ([new] if source in [p.strip() for p in parts] else []) + list(tags)
+        prop.data = ','.join(parts).encode('utf-8')
+        W.prop_value_bytes(prop)
+        if tags is None:
+            report.append('  tags : "{}"'.format(prop.data.decode()))
+        else:
+            report.append('  tags : "{}" -> "{}"'.format(old, prop.data.decode()))
+            unknown = [t for t in tags if t not in known]
+            if unknown:
+                report.append('  note : etiquette(s) absente(s) du jeu, role inconnu : {}'.format(', '.join(unknown)))
     n = replace_hash_values(item, W.name_hash(source), W.name_hash(new))
     report.append('  u32 = hash de l\'ancien nom remplaces : {}'.format(n))
     if entity is not None:
@@ -666,6 +736,7 @@ class Munition:
     modele: Optional[str] = None                  # modele de la cartouche chargee, .modelc (--modele)
     modele_douille: Optional[str] = None          # modele de la douille ejectee, .modelc (--modele-douille)
     basculer_armes: bool = False                  # armes a modele propre basculees cote munitions (--basculer-armes)
+    etiquettes: Optional[List[str]] = None        # etiquettes de spawn, sans le nom (--etiquettes ; None : celles de la source)
 
     def valider(self):
         if not self.nom or not self.nom.isascii() or not self.nom.replace('_', '').isalnum():
@@ -688,6 +759,8 @@ class Munition:
             raise EClone('{} : --modele-de est incompatible avec --modele et --modele-douille'.format(self.nom))
         if self.basculer_armes and not self.declare_modele():
             raise EClone('{} : --basculer-armes demande --modele-de, --modele ou --modele-douille'.format(self.nom))
+        if self.etiquettes is not None:
+            check_tags(self.etiquettes, '{} : --etiquettes'.format(self.nom))
 
     def declare_modele(self) -> bool:
         return bool(self.modele_de or self.modele or self.modele_douille)
@@ -705,6 +778,7 @@ class Mod:
 class Resultat:
     fichiers: List[Tuple[str, bytes]]   # (chemin virtuel, contenu), dans l'ordre d'ecriture
     rapport: List[str]
+    dependances: list = field(default_factory=list)   # dependances.Bilan, un par munition ajoutee
 
     def chemins(self) -> List[str]:
         return [v for v, _ in self.fichiers]
@@ -862,7 +936,7 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
             report += ['Origine : ' + ee_src] + lines
             produced[entity_path] = entity_out
             entities.append(entity_path)
-        _, sp_item, lines = clone_spawn(sp_tree, m.source, m.nom, entity_path)
+        _, sp_item, lines = clone_spawn(sp_tree, m.source, m.nom, entity_path, m.etiquettes)
         report += lines
         eq_hashes.append(eq_item.name_hash)
         sp_hashes.append(sp_item.name_hash)
@@ -919,7 +993,15 @@ def construire(vfs, mod: Mod, base: Optional[Path] = None,
     report += ['', 'Verification : relus, et identiques aux originaux une fois la nouvelle munition retiree.' if single
                else 'Verification : relus, et identiques aux fichiers de depart une fois les nouvelles munitions retirees.']
     order = [EQUIPMENT_DATA, SPAWN_AMMO] + entities + extra + icons + [AL.STATS_UI, SL.STRING_IDS]
-    return Resultat([(v, produced[v]) for v in order if v in produced], report)
+    bilans = []
+    step('dependances restantes')
+    try:
+        import dependances as DEP
+        bilans = DEP.analyser(vfs, mod.munitions, produced, lambda v: load(vfs, base, v)[0])
+        report += DEP.rapport(bilans)
+    except Exception as e:   # analyse informative, faite apres la verification : elle ne fait jamais echouer la construction
+        report += ['', 'Dependances restantes : analyse impossible ({}: {})'.format(type(e).__name__, e)]
+    return Resultat([(v, produced[v]) for v in order if v in produced], report, bilans)
 
 
 def parse_assignments(specs: Sequence[str], option: str) -> Dict[str, str]:
@@ -1001,6 +1083,9 @@ def main(argv=None):
     ap.add_argument('--basculer-armes', action='store_true',
                     help='avec un modele : les armes compatibles qui ont leur propre modele de cartouche (la Ranger) '
                          'le reportent dans leurs munitions, et la nouvelle munition declare le sien')
+    ap.add_argument('--etiquettes', metavar='A,B,C',
+                    help='etiquettes de spawn de la nouvelle munition, separees par des virgules, a la place de celles '
+                         'de la source (son nom reste en tete), ex : "ammo_cal_243,ammo_type_test,ammunition"')
     ap.add_argument('--sortie', required=True, help='dossier de sortie ; les fichiers sont ecrits dans SORTIE\\dropzone')
     ap.add_argument('--base', help='dossier au format dropzone dont partir, s\'il contient deja ces fichiers')
     ap.add_argument('--ecraser', action='store_true', help='remplacer des fichiers deja presents dans la sortie')
@@ -1037,7 +1122,8 @@ def main(argv=None):
         description=list(args.description), champs=list(args.champ), forcer=args.forcer,
         balistique=balistique, classes=classes, icone=args.icone, icone_de=args.icone_de,
         modele_de=args.modele_de, modele=args.modele, modele_douille=args.modele_douille,
-        basculer_armes=args.basculer_armes)
+        basculer_armes=args.basculer_armes,
+        etiquettes=[t.strip() for t in args.etiquettes.split(',') if t.strip()] if args.etiquettes is not None else None)
     mod = Mod([munition], controle_prix=list(args.controle_prix), modifier=list(args.modifier))
     out_root = Path(args.sortie).expanduser().resolve() / 'dropzone'
     existing = [str(out_root / Path(v)) for v in fichiers_vises(mod.munitions) if (out_root / Path(v)).exists()]

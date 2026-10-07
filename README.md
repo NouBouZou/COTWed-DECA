@@ -10,7 +10,7 @@ Projet personnel, privé pour l'instant.
 Ce projet part de [DECA](https://github.com/kk49/deca), de Krzysztof Kamieniecki (kk49), sous licence MIT : branche `develop`, commit `9231177` (2025-12-10).
 DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concentre sur COTW. Le README d'origine est conservé dans [`docs/README_DECA.md`](docs/README_DECA.md).
 
-## État au 2026-10-06
+## État au 2026-10-07
 
 **Une munition ajoutée fonctionne en jeu.** Elle est visible au magasin, s'achète, affiche ses propres stats (`--stats-de` et `--stat`), son nom et sa description, ainsi que le logo de possession. Elle se charge, se tire et consomme ses propres munitions. Plusieurs copies d'une même munition coexistent avec elle sans bloquer le changement de munition (test14). Pour cela, quatre fichiers sont déposés dans `dropzone`, tous écrits sans rien écraser :
 
@@ -25,7 +25,7 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 
 **Balistique propre** (`--balistique CHAMP=VALEUR`, `--classes`, ou `"ballistics"` / `"classes"` dans un fichier de mod ; test15 : réglage modifié accepté par le jeu, effet de la traçante non observé) : les valeurs du `.ammotunec` de l'entité propre sont modifiées (pénétration, expansion, masse, traçante, classes d'animaux…), sans toucher la source. `python cotw\ammotune.py PROJET OBJET` liste les champs et leurs valeurs. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod. Les stats affichées viennent de la ligne de stats : les mettre en accord.
 
-**Icône propre** (`--icone IMAGE` ou `--icone-de OBJET`, ou `"icon"` / `"icon_from"` dans un fichier de mod ; à vérifier en jeu, test16) : une texture `textures/ui/items/ammo/<nom>_alpha.ddsc` est ajoutée, et `display_icon` de la nouvelle munition la désigne. `--icone` la fabrique depuis une image (PNG à fond transparent de préférence, mise à 640 × 320 en gardant les proportions) : compression BC3 et 9 niveaux de détail par `cotw/icone.py`, en-tête repris de l'icône de la source, contrôle par un décodage de référence et par la lecture de DECA. `--icone-de` copie l'icône d'un autre objet. Dans un fichier de mod, le chemin de l'image est relatif au fichier. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod.
+**Icône propre** (`--icone IMAGE` ou `--icone-de OBJET`, ou `"icon"` / `"icon_from"` dans un fichier de mod ; vérifiée en jeu, test16) : une texture `textures/ui/items/ammo/<nom>_alpha.ddsc` est ajoutée, et `display_icon` de la nouvelle munition la désigne. `--icone` la fabrique depuis une image (PNG à fond transparent de préférence, mise à 640 × 320 en gardant les proportions) : compression BC3 et 9 niveaux de détail par `cotw/icone.py`, en-tête repris de l'icône de la source, contrôle par un décodage de référence et par la lecture de DECA. `--icone-de` copie l'icône d'un autre objet. Dans un fichier de mod, le chemin de l'image est relatif au fichier. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod.
 
 **Modèle de cartouche** (`--modele-de OBJET`, `--modele`, `--modele-douille`, ou `"model_from"` / `"model"` / `"casing_model"` dans un fichier de mod) : l'entité d'une munition peut déclarer le modèle de la cartouche chargée et de la douille éjectée (`base_model` des composants `fresh_round` et `empty_casing` du `.epe`), et l'outil les écrit dans l'entité propre de la nouvelle munition. **L'arme a le dernier mot** (test17 : la Ranger .243 a ignoré le modèle déclaré) :
 - une arme sans composant de cartouche (`CModelAttachementWeaponComponent` aux points `ammo_reload` / `ammo_used`), comme les .223 et .270 du jeu, affiche le modèle de la munition ;
@@ -33,6 +33,20 @@ DECA n'est plus maintenu. Ce dépôt n'en suit plus les évolutions et se concen
 - une arme dont les cartouches changent sur événement (`show_event` / `hide_event` ; relevé : 12GA semi-automatique type 2, 16GA 1897, 10GA superposé et semi-automatique, .410) n'est pas prise en charge : refus.
 
 `python cotw\modele_munition.py PROJET OBJET` affiche les modèles déclarés par une munition.
+
+**Étiquettes de spawn** (`--etiquettes A,B,C`, ou `"tags"` dans un fichier de mod) : les étiquettes de l'entrée de `spawn_ammunition_defs.bin` (`ammo_cal_243`, `ammo_type_sp`, `ammunition`…), à la place de celles de la source ; le nom de la munition reste en tête, comme dans le jeu. Leur rôle en jeu est inconnu : une étiquette absente du jeu est signalée, le nom d'un autre objet est refusé.
+
+**Dépendances restantes** (2026-10-07, `cotw/dependances.py`) : chaque construction (ligne de commande, `construire_mod`, atelier) se termine par une section qui dit, élément par élément, ce que chaque munition ajoutée doit encore à un objet d'origine, d'après les fichiers produits :
+
+| Statut | Sens |
+|---|---|
+| `partage` | le jeu lit une ressource d'un objet d'origine : entité, clé de traduction, icône, modèle de l'arme, son (`.fmod_guids`), nom d'instance du réglage… ; « (munition du mod) » quand c'est une autre munition du même mod |
+| `absent` | élément manquant : pas de ligne de stats, aucun modèle |
+| `inconnu` | non déterminé (fichier illisible, ligne de stats placée après la première ligne vide…) |
+| `herite` | valeur recopiée, encore égale à celle d'origine : champs d'`equipment_data`, étiquettes, valeurs balistiques… |
+| `propre` | propre à la munition |
+
+Elle signale aussi les incohérences connues, par exemple des classes affichées (ligne de stats) différentes de celles du réglage balistique. `python cotw\dependances.py PROJET MOD.cotwmod.json [--json FICHIER]` construit le mod en mémoire et n'affiche que cette analyse.
 
 **Tout cela se fait aussi dans l'interface** (**Tools → Ammo Workshop…**, depuis le 2026-10-04). On y édite un **fichier de mod** (`.cotwmod.json`) qui liste les munitions à ajouter. **Build** reconstruit le dropzone du mod depuis les originaux du jeu, en une passe, avec exactement les mêmes octets que la ligne de commande. Exemple : [`cotw/mods/test14.cotwmod.json`](cotw/mods/test14.cotwmod.json).
 
@@ -94,6 +108,7 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
 | `adf_ajouter_ligne.py` | ajoute une ligne à `equipment_stats_ui.bin` (ou une autre feuille XLSBook), copiée de celle d'un objet existant |
 | `stringlookup.py`, `traduction.py` | lit les textes affichés (noms, descriptions) dans les 10 langues ; ajoute des clés de traduction sans rien écraser |
 | `ammotune.py` | lit et modifie le réglage balistique (`.ammotunec`) d'une munition, dans son entité |
+| `dependances.py` | ce qu'une munition ajoutée doit encore à un objet d'origine (partagé, hérité, propre, absent) ; appelé à la fin de chaque construction |
 | `modele_munition.py` | modèles 3D de cartouche et de douille : déclarés par une munition (lecture, écriture de `base_model`) ou par une arme (lecture, retrait des composants pour la bascule) |
 | `icone.py` | icônes `.ddsc` (AVTX, BC3) : lecture, export PNG, fabrication depuis une image (compression BC3 et niveaux de détail en numpy) |
 | `adf_remplacer_chaine.py` | remplace une chaîne d'un ADF sur place |
