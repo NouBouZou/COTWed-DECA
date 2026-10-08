@@ -158,3 +158,1120 @@
 0xa78d9f8d	32	compatibility_126	positionnels	3e-05	equipment_data.bin : cle de la 126-ieme entree de compatibilities
 0x76c810b4	32	compatibility_127	positionnels	3e-05	equipment_data.bin : cle de la 127-ieme entree de compatibilities
 0xa10e30c1	32	compatibility_01	positionnels	3e-05	equipment_data.bin : cle d'entree de compatibilities (variante a deux chiffres, 1 occurrence)
+0x5f521e08	32	player_weapon_tag	triplets	0.009	adf_stringhash_32|1 ; missions/achievements.hpmissionsc
+0x8ffd7e70	32	between	directs	0.00071	adf_stringhash_32|1 ; missions/missions_16.hpmissionsc
+0x932aa8ae	32	animal_track_name	triplets	0.009	adf_stringhash_32|1 ; missions/missions_3.hpmissionsc
+0xa5ffaf76	32	player_ammo_count	triplets	0.009	adf_stringhash_32|1 ; missions/missions_10.hpmissionsc
+0xe69d4f18	32	animal_call_type	affixes	0.013	adf_stringhash_32|1 ; missions/achievements.hpmissionsc
+0xf986e1dc	32	kill_pulse	verbes	0.0012	adf_stringhash_32|1 ; missions/achievements.hpmissionsc
+0x52a4e331	32	animal_track_type	triplets	0.014	adf_stringhash_32|10-99 ; missions/achievements.hpmissionsc
+0x52f5549d	32	subject_distance	paires	0.045	adf_stringhash_32|10-99 ; missions/missions.hpmissionsc
+0x60c6d8f1	32	animal_distance	paires	0.045	adf_stringhash_32|10-99 ; missions/achievements.hpmissionsc
+0x6290bde3	32	player_weapon_name	triplets	0.014	adf_stringhash_32|10-99 ; missions/achievements.hpmissionsc
+0x6c332483	32	subject_visibility	paires	0.045	adf_stringhash_32|10-99 ; missions/achievements.hpmissionsc
+0xac821d12	32	animal_weight	paires	0.045	adf_stringhash_32|10-99 ; missions/missions.hpmissionsc
+0xc9e9fcd2	32	subject_id	affixes	0.02	adf_stringhash_32|10-99 ; missions/missions.hpmissionsc
+0xd1e7b544	32	animal_visibility	paires	0.045	adf_stringhash_32|10-99 ; missions/missions.hpmissionsc
+0xe4a80077	32	animal_track_id	triplets	0.014	adf_stringhash_32|10-99 ; missions/achievements.hpmissionsc
+0x2ade7fba	32	glass_categories	paires	0.019	adf_stringhash_32|100-999 ; missions/achievements.hpmissionsc
+0xa7bf04f4	32	player_is_local	triplets	0.082	adf_stringhash_32|100-999 ; missions/achievements.hpmissionsc
+0xccd4a27e	32	player_location_name	triplets	0.082	adf_stringhash_32|100-999 ; missions/achievements.hpmissionsc
+0xdf90ccfa	32	unique	directs	0.00046	adf_stringhash_32|100-999 ; missions/achievements.hpmissionsc
+0xfbfeb43d	32	animal_rank_game	triplets	0.082	adf_stringhash_32|100-999 ; missions/achievements.hpmissionsc
+0x001d2cb6	32	animal_rank_trophy	triplets	0.0077	adf_stringhash_32|2-9 ; missions/missions.hpmissionsc
+0x6d59ca0e	32	animal_group_id	directs	0.00061	adf_stringhash_32|2-9 ; missions/achievements.hpmissionsc
+0x742556ad	32	kill_stance	verbes	0.001	adf_stringhash_32|2-9 ; missions/missions.hpmissionsc
+0xa22dd51f	32	recovery_bonus	paires	0.025	adf_stringhash_32|2-9 ; missions/missions_3.hpmissionsc
+0xcf71574d	32	photo_id	affixes	0.011	adf_stringhash_32|2-9 ; missions/missions.hpmissionsc
+0x72450fb5	32	animal_species	paires	0.0042	adf_stringhash_32|>=1000 ; missions/achievements.hpmissionsc
+0x48d0d8bb	32	hide_clues	affixes	0.0022	rtpc_event|10-99 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20150_mission_items.blo
+0x59852288	32	show_clues	affixes	0.0022	rtpc_event|10-99 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20150_mission_items.blo
+0x55812357	32	world_changed	paires	0.043	rtpc_event|100-999 ; worlds/world5/locations/hp_nh/spawn_points_nh.blo
+0xa07fc01e	32	snd_wpn_fired	directs	0.0046	rtpc_event|100-999 ; editor/entities/hp_weapons/weapon_bows_01/equipment_weapon_longbow_02.epe
+0x18c14801	32	hide_plate	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0x393403a4	32	hide_interaction	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20110_mission_items.blo
+0x39d0e8a5	32	show_interaction	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20110_mission_items.blo
+0x3a29a8a1	32	show_haggis	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20130_mission_items.blo
+0x5013e03d	32	hide_blood	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0x610b8079	32	hide_rifle	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19110_mission_items.blo
+0x67dc6346	32	show_plate	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0x73a461a6	32	hide_haggis	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20130_mission_items.blo
+0x75ea7e1a	32	show_rifle	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19110_mission_items.blo
+0x9fa32fed	32	show_radio	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0xc47c12b6	32	show_headphones	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20170_mission_items.blo
+0xe81b99c5	32	show_blood	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0xf3daaf02	32	show_interact	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19110_mission_items.blo
+0xfd2f526c	32	hide_radio	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19160_mission_items.blo
+0xff8ed400	32	hide_interact	affixes	0.055	rtpc_event|2-9 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19110_mission_items.blo
+0xffd1d3b4	32	hide_headphones	affixes	0.055	rtpc_event|2-9 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20170_mission_items.blo
+0x01e9e8ca	32	threshold_29	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x0323e875	32	settlement_114	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x03aaa8f0	32	settlement_113	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x055649ef	32	settlement_109	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x06632b1c	32	preset19	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0x06c5869e	32	set_67	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0x0a652d25	32	entry_3	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0x0b8a509f	32	template_0	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x0bba7657	32	settlement_126	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0c390e02	32	settlement_67	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0d26260e	32	settlement_14	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0da6ee09	32	settlement_60	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0ea0dbaa	32	settlement_22	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0ec9d7e6	32	entry_1	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0x0f1d9405	32	preset22	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0x0f2e0d30	32	settlement_24	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x0f65abb2	32	mission_28	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x11fcb1d2	32	set_63	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0x1252ba67	32	settlement_93	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x14414a64	32	template_18	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x14897031	32	settlement_102	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x14e54cfc	32	settlement_30	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x15799d8b	32	target_00	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0x15e8ec8f	32	template_14	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x162c9ff8	32	settlement_94	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x16b16304	32	threshold_31	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x16d9534e	32	chaos_00	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0x1afab7c5	32	settlement_101	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x1c6f6db4	32	settlement_38	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x1e2f5777	32	template_17	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x1ece72ba	32	settlement_53	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x1f02d799	32	template_3	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x1f309736	32	settlement_98	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x1fb7f574	32	set_127	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 536f0e5c
+0x2197185a	32	set_108	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 6258a109
+0x22a0f31e	32	set_126	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 536f0e5c
+0x235a673d	32	settlement_21	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x23775f29	32	settlement_59	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x23ab03eb	32	preset14	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0x25710729	32	settlement_124	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x258ea3b1	32	settlement_28	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x265349e4	32	settlement_120	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x272339a3	32	set_112	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 2edcd441
+0x27adfd2e	32	settlement_5	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x27d8d6d2	32	settlement_121	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x293b1a03	32	settlement_65	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x2b15360d	32	settlement_37	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x2ca527cd	32	settlement_11	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x2d121794	32	settlement_117	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x2d497863	32	settlement_108	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x301a124e	32	settlement_23	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x3037a289	32	template_8	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x306e4aba	32	settlement_19	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x31ce1749	32	settlement_122	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x31d5827f	32	settlement_103	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x327b56c3	32	set_62	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0x33061919	32	type_1	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 86526f6a
+0x334e0e92	32	custom4	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0x336356b6	32	settlement_88	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x3471e9f8	32	settlement_95	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x34fa9087	32	set_66	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0x3578aa87	32	road_9	positionnels	0.12	rtpc_noeud|1 ; settings/road_rendering.bin
+0x374d9ce2	32	settlement_63	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x38f5715b	32	settlement_107	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x3ad1fcdf	32	settlement_68	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x3c74758c	32	decoration_1	positionnels	0.12	rtpc_noeud|1 ; settings/worlddecorations.bin
+0x416210bc	32	threshold_20	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x423c2a05	32	preset17	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0x432adb33	32	settlement_75	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x4416290c	32	template_1	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x44976ae2	32	threshold_27	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x44c5c5ce	32	settlement_110	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x46a4cc0b	32	settlement_92	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x47dfbbd2	32	settlement_41	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x4a4ff089	32	threshold_22	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x4a80262b	32	settlement_99	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x4c5da6a6	32	settlement_47	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x4d8b9ead	32	threshold_18	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x4f2911f4	32	road_8	positionnels	0.12	rtpc_noeud|1 ; settings/road_rendering.bin
+0x5057adb5	32	settlement_119	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x51d53cc1	32	settlement_71	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x51f5e76d	32	settlement_29	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x531e7d27	32	threshold_24	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x5328db16	32	template_19	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x5463b287	32	settlement_91	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x55600728	32	mission_29	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x569feddf	32	template_4	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x57f8dbd8	32	settlement_70	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x5946e853	32	settlement_111	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x59f20819	32	entry_6	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0x5a60ab70	32	settlement_7	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x5ace87a2	32	template_12	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x5cbe31ef	32	settlement_27	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x5d32ca51	32	settlement_116	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x5e4cd7e4	32	type_3	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 86526f6a
+0x5f1c19ff	32	settlement_50	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x62b373f5	32	settlement_80	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x62e9650a	32	settlement_45	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x6420fe2c	32	set_38	positionnels	0.12	rtpc_noeud|1 ; (sans nom) f1d84f63
+0x6865f58c	32	target_01	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0x695d83a4	32	custom2	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0x6a5046e2	32	settlement_96	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x72429f43	32	settlement_48	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x754da27d	32	settlement_26	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x775ea232	32	settlement_54	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x7790a33c	32	bitmap_24	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_19.bin
+0x7aacb783	32	chaos_03	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0x7b9904bc	32	settlement_97	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x7bb50d11	32	settlement_81	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x7c3bba5d	32	settlement_16	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x7d302840	32	threshold_19	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x80b15cf7	32	preset21	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0x810c13b7	32	template_15	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x82b681a3	32	set_81	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 2edcd441
+0x86ba8fcf	32	target_03	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0x873a3dbf	32	template_10	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x87c86224	32	settlement_49	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x8948c4d2	32	chaos_01	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0x8961b746	32	threshold_23	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0x899d83bb	32	settlement_34	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x89faf1ba	32	set_82	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 2edcd441
+0x8a2f92e5	32	settlement_61	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x8e25bd88	32	option_1	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_20.bin
+0x8e46c8df	32	settlement_33	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x8f1903c6	32	settlement_77	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x90c52e03	32	settlement_66	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x962af615	32	type_0	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 86526f6a
+0x968c15fe	32	settlement_73	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x96cb0cc2	32	settlement_43	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x9c682686	32	settlement_13	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x9cf25c97	32	settlement_100	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0x9d38a3b0	32	type_2	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 86526f6a
+0x9e489a9e	32	template_7	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x9f8f46bb	32	mission_31	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xa0214eb0	32	settlement_87	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xa247f965	32	settlement_10	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xa524befb	32	settlement_57	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xa5d3fbeb	32	settlement_84	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xa6dcc481	32	preset18	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xa6eeb581	32	settlement_6	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xa94e3786	32	set_90	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 2edcd441
+0xad3ec08b	32	entry_2	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0xaddc0de5	32	settlement_12	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xaef4b206	32	template_6	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xb06e7bb5	32	settlement_58	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xb0b0e72b	32	settlement_125	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xb0e071a4	32	template_5	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xb0e472e3	32	custom3	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0xb19f3f16	32	settlement_79	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xb2074e55	32	threshold_17	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xb49767b9	32	template_20	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xb603d76f	32	template_13	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xb8bd4edc	32	settlement_9	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xb90abfaf	32	threshold_16	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xbab11cff	32	settlement_90	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xbbbe66cb	32	schedule_10	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_20.bin
+0xbccd7c91	32	settlement_25	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xbe8c9c3d	32	threshold_28	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xbec639ac	32	settlement_82	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc19859ba	32	settlement_85	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc1b0584f	32	settlement_106	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc200a2ea	32	settlement_8	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc26a5fe9	32	road_7	positionnels	0.12	rtpc_noeud|1 ; settings/road_rendering.bin
+0xc2b2f23a	32	threshold_25	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xc3f3d5d9	32	schedule_9	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_20.bin
+0xc4c96ce5	32	settlement_40	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc4efeae3	32	settlement_123	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc50a45a7	32	settlement_127	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc51f1ffb	32	set_58	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0xc69b2f02	32	entry_4	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0xc6e44946	32	settlement_105	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc760b843	32	settlement_86	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc862971f	32	settlement_76	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xc9adc12f	32	preset23	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xca5eeff6	32	settlement_89	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xcaad7565	32	settlement_52	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xcf054856	32	settlement_64	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xd094c3a8	32	settlement_15	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xd1c7ad70	32	settlement_20	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xd28fcc07	32	custom1	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0xd366a536	32	turn_00	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0xd3e988c2	32	set_64	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0xd5427ec1	32	chaos_02	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0xd55a4e73	32	entry_0	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0xd6be3d2f	32	threshold_30	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xd84116b4	32	target_02	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0xd8e67e77	32	entry_5	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 244ac773
+0xd9fccc99	32	spawner1	positionnels	0.12	rtpc_noeud|1 ; (sans nom) bf32e8d4
+0xdd5eee39	32	settlement_46	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xddabbd8d	32	threshold_21	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xdff9f73d	32	settlement_69	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xe18c93bf	32	settlement_17	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xe230b617	32	settlement_4	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xe3e2eaad	32	settlement_18	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xe4424f08	32	preset16	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xe52f5a65	32	turn_01	positionnels	0.12	rtpc_noeud|1 ; settings/turn_taker.bin
+0xe5acc41f	32	chaos_04	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 8a397ab3
+0xe5eb36f0	32	template_11	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xe6152001	32	mission_30	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xe749a4d5	32	preset24	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xe93c6aff	32	decoration_2	positionnels	0.12	rtpc_noeud|1 ; settings/worlddecorations.bin
+0xe9ee5907	32	settlement_32	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xea041ef5	32	settlement_39	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xea12f2b5	32	settlement_2	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xeae1f106	32	preset20	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xebf527db	32	settlement_55	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xebf892fd	32	threshold_26	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 3a614426
+0xedababb2	32	template_16	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xede8421b	32	settlement_31	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xee20f1ca	32	settlement_118	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xeefbdae9	32	preset25	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xef69abe8	32	schedule_11	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_20.bin
+0xf1e73d9c	32	preset15	positionnels	0.12	rtpc_noeud|1 ; settings/landscape_effects.bin
+0xf32310fc	32	settlement_112	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xf4de03e1	32	settlement_72	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xf5cee047	32	set_109	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 6258a109
+0xf6a1951c	32	settlement_42	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xf8453a60	32	settlement_104	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xf902ab16	32	bitmap_23	positionnels	0.12	rtpc_noeud|1 ; settings/hp_settings/reserve_19.bin
+0xf90c9d44	32	set_61	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0xfa02e13b	32	settlement_83	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xfb40ef7c	32	template_9	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0xfb5e1f0a	32	set_59	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 195ab6a0
+0xfba0a68a	32	set_113	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 2edcd441
+0xfc938a99	32	settlement_3	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xfdce19df	32	settlement_74	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xfdf3e40f	32	settlement_115	positionnels	0.12	rtpc_noeud|1 ; (sans nom) a3f8559d
+0xffe36ce1	32	template_2	positionnels	0.12	rtpc_noeud|1 ; (sans nom) 0aa98776
+0x00c0696d	32	transition_1	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 20f1f59f
+0x03b7cbe4	32	bitmap_5	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x05ab7fb6	32	set_10	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 6258a109
+0x09a8f527	32	bitmap_4	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x0bab0a7d	32	set_15	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) f1d84f63
+0x12ddffb0	32	mm123058	positionnels	0.031	rtpc_noeud|10-99 ; worlds/world5/locations/hp_finland/landmarks/21x54_dock_01.blo
+0x180bbdbc	32	weapon_1	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 8a397ab3
+0x27bbb3b4	32	bitmap_14	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_10.bin
+0x2b5f034c	32	bitmap_1	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x31224498	32	bitmap_7	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x38050b89	32	mm1110078	positionnels	0.031	rtpc_noeud|10-99 ; animations/hp_statemachine/animals/felidae/lynx/lynx.asb
+0x47f801d0	32	bitmap_12	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x4c15b779	32	bitmap_6	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x52828610	32	weapon_2	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 8a397ab3
+0x70995063	32	bitmap_3	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x75c9f7d1	32	set_11	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 6258a109
+0x76e8c19b	32	bitmap_10	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x846c9d24	32	transition_0	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 20f1f59f
+0x84ab7eaf	32	schedule_8	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x868b1bc3	32	bitmap_2	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x922563a2	32	bitmap_8	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0x988eb52c	32	bitmap_0	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0xcb2600b8	32	schedule_7	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0xd06e6e0b	32	set_101	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 6258a109
+0xd606a6e6	32	set_100	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 6258a109
+0xe762e1e1	32	bitmap_11	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0xeb5501fd	32	bitmap_9	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_0.bin
+0xf25d1e13	32	leaf_1	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 7e942bb3
+0xf6dbeac1	32	bitmap_13	positionnels	0.031	rtpc_noeud|10-99 ; settings/hp_settings/reserve_10.bin
+0xf7b1a2af	32	leaf_0	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 7e942bb3
+0xfbeb6f1d	32	weapon_0	positionnels	0.031	rtpc_noeud|10-99 ; (sans nom) 8a397ab3
+0x1a376f1e	32	layer_2	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x2983b984	32	layer_3	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x58bf0390	32	layer_1	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x59048823	32	schedule_0	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x5bc67f1f	32	schedule_1	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x80fa512c	32	layer_0	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x88f4b303	32	schedule_6	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x9468d95e	32	schedule_4	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0xa05fd9c2	32	schedule_2	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0xa54a5f92	32	schedule_5	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0xbd307cba	32	schedule_3	positionnels	0.0021	rtpc_noeud|100-999 ; settings/hp_settings/reserve_0.bin
+0x0198d03a	32	set_0	positionnels	0.14	rtpc_noeud|2-9 ; settings/roaddecorationtypes.bin
+0x01b259b4	32	set_125	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x04f9bc24	32	set_31	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x057f77c7	32	threshold_4	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x05b28d55	32	set_24	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x06215d8d	32	spawner0	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) bf32e8d4
+0x07975516	32	threshold_0	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x0988e85a	32	preset3	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x0a93c446	32	set_23	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x0fc62342	32	set_29	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x1029f260	32	set_19	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0x107d135b	32	mission_4	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x150e01ff	32	set_56	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 28f2d02b
+0x15bcae12	32	set_3	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0x16676a8f	32	road_1	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0x183b3055	32	threshold_15	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x18da3fe5	32	set_21	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x1973cb8e	32	road_0	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0x1a606c5c	32	set_110	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x1c1e2208	32	road_2	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0x1cab03d8	32	mission_19	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x20ae8b33	32	mission_0	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x22c03f37	32	set_121	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x23fd8e6a	32	preset13	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x24590631	32	set_01	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x24ca8f3f	32	bitmap_19	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0x266fef16	32	bitmap_22	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0x2685d16a	32	threshold_5	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x27f4e824	32	envelope_00	positionnels	0.14	rtpc_noeud|2-9 ; settings/turn_taker.bin
+0x28a1e707	32	mission_27	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x2d3ac11b	32	envelope_01	positionnels	0.14	rtpc_noeud|2-9 ; settings/turn_taker.bin
+0x2ff7c153	32	threshold_11	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x301bf25e	32	set_28	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x305a02a5	32	preset11	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x30c85c62	32	mission_11	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x3831c0e7	32	threshold_12	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x3bf445dc	32	mission_22	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x3fdbc778	32	set_06	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x40fa1c46	32	set_36	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x47272c44	32	mission_2	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x4933919f	32	mission_17	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x4a59ecf3	32	set_7	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0x4bfef6d7	32	set_107	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x4c1edf80	32	mission_9	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x4e9a7e76	32	preset8	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x5424ae16	32	set_9	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0x572b06c7	32	threshold_14	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x5736cdc6	32	preset4	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x58d82e8a	32	set_2	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) cadaaff4
+0x59f2e043	32	set_115	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 2edcd441
+0x5b746d89	32	preset10	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x5c7dc1bb	32	set_13	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x5e7943d5	32	preset9	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x5f6df2b0	32	set_17	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0x67a0a731	32	set_4	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0x6918b684	32	mission_6	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x6d38a39d	32	set_22	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x6d59893c	32	threshold_6	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x6d747929	32	set_123	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x6e2e70e5	32	bitmap_18	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0x6f1b9669	32	threshold_2	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x7170a674	32	threshold_8	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x74387c04	32	mission_24	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x78d7cee6	32	mission_23	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x7ad236f7	32	set_04	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x7b0ae5b2	32	set_37	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x7b30b168	32	mission_15	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x7ca3c2fc	32	set_60	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x7d081261	32	mission_20	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x808c2068	32	set_1	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) cadaaff4
+0x8094125e	32	set_51	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x875997f9	32	mission_18	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x87ec60d5	32	bitmap_16	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0x8877b426	32	preset6	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0x887fe37b	32	set_122	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x8a5a4bb4	32	set_120	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x8a6c2316	32	mission_16	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x90e6c60c	32	set_105	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x92b458b1	32	set_05	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x92b7c373	32	bitmap_15	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_12.bin
+0x951c05b0	32	set_25	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x96322cf3	32	set_5	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0x97dd8ce5	32	set_124	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x98a9419b	32	set_111	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0x9b158b5e	32	threshold_7	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x9b66f1e2	32	mission_8	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x9c923c44	32	threshold_13	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0x9eb49845	32	preset0	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xaaf2eb75	32	threshold_3	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xab2cdd3f	32	mission_3	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xad108506	32	set_02	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xad8ca456	32	mission_7	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xad9b4d82	32	road_3	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0xafd15ef0	32	mission_21	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xb16a63a9	32	set_65	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0xb18e85cd	32	set_41	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0xb3180cc3	32	mission_14	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xb4328af5	32	set_40	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0xb6aa1687	32	mission_5	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xb7fd2678	32	bitmap_17	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0xb80c1fb6	32	set_35	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0xba7de7f8	32	set_103	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xbedff956	32	threshold_9	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xbf32cc8f	32	preset1	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xc00a4e29	32	mission_13	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xc2429154	32	mission_10	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xc2a00a1d	32	set_102	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xc3fa44be	32	mission_12	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xc532b1bb	32	threshold_10	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xc63e2a9f	32	set_03	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xc72d3cc8	32	road_4	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0xc8797d1d	32	threshold_1	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xc8d42bab	32	set_55	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 28f2d02b
+0xcb1781fe	32	set_27	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xcca43944	32	option_118	positionnels	0.14	rtpc_noeud|2-9 ; worlds/base/locations/hp_africa/z00/mission_locations/mm4300.blo
+0xd06f9e7a	32	bitmap_21	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0xd0738044	32	set_18	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0xd128e300	32	set_104	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xd49b392a	32	weapon_3	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 8a397ab3
+0xd5333181	32	mission_26	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xd7d66cd1	32	set_32	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0xd87978e5	32	preset7	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xd8d797ad	32	preset5	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xda47fc0c	32	set_106	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xdb6e5152	32	mission_25	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xe169d3f6	32	set_26	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xe2c4a504	32	decoration_0	positionnels	0.14	rtpc_noeud|2-9 ; settings/roaddecorationtypes.bin
+0xe428d50b	32	set_16	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) c9610c1e
+0xe5156ae9	32	set_30	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0xe65939fa	32	set_12	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 6258a109
+0xe6e155b0	32	set_8	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0xe7b6d03c	32	road_5	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0xe9953dc8	32	preset12	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xec8d7b10	32	road_6	positionnels	0.14	rtpc_noeud|2-9 ; settings/road_logic.bin
+0xee7a0920	32	bitmap_20	positionnels	0.14	rtpc_noeud|2-9 ; settings/hp_settings/reserve_13.bin
+0xf14ef8df	32	mission_1	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 3a614426
+0xf3140018	32	preset2	positionnels	0.14	rtpc_noeud|2-9 ; settings/gamestaterun.bin
+0xf8e56d59	32	set_6	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) 195ab6a0
+0xfa07d67f	32	set_14	positionnels	0.14	rtpc_noeud|2-9 ; (sans nom) f1d84f63
+0x01551601	32	frame_88	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x01e2efee	32	frame_48	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x04b9733f	32	frame_83	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x05d8c214	32	frame_65	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x0aa81f99	32	frame_16	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x11cd6358	32	frame_89	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x131ed14a	32	frame_77	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x13378250	32	frame_15	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x1361b88f	32	frame_12	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x14ac9faf	32	frame_37	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x18afd7c9	32	frame_13	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x1ec39d97	32	frame_4	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x1ef0aa7a	32	frame_45	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x2529780c	32	frame_6	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x254c9128	32	frame_90	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x25d45e4c	32	frame_32	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x28460390	32	frame_9	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x287db841	32	frame_55	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x2d8eac98	32	frame_95	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x2eed385a	32	frame_80	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x2f499a42	32	frame_0	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x2f728196	32	mirror_files	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x32dbb686	32	frame_8	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x331e6d36	32	frame_68	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x347e7d5a	32	frame_19	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x34c14991	32	frame_62	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x3a4049ec	32	frame_5	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x3c38ea71	32	frame_73	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x48d67b8f	32	frame_35	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x4a363c56	32	frame_99	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x51aa149d	32	frame_72	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5324ad9a	32	frame_44	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x54bcd4fa	32	sub_files	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x54dbb480	32	frame_81	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5604e003	32	frame_42	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5ae6bd15	32	frame_86	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5b65c6b5	32	frame_70	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5b9527e3	32	frame_34	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5c326dec	32	types	directs	0.0076	rtpc_noeud|>=1000 ; (sans nom) 6258a109
+0x5cafb3eb	32	track_events	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x5cfaddaf	32	frame_64	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x5d39ee70	32	frame_87	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x64a5f828	32	frame_58	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x6625f815	32	retarget_source_skeletons	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x6986df93	32	frame_39	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x6cc36f3d	32	frame_78	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x6db05b8d	32	frame_50	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x6f4c8f7e	32	frame_84	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x702ad8fc	32	frame_24	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x71358e2d	32	frame_91	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x7157ea6a	32	frame_51	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x75d7d81f	32	frame_10	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x76131db3	32	frame_30	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x79cbfcdc	32	frame_38	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x7b2ff11e	32	frame_29	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x7b83d303	32	frame_74	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x7e0763bd	32	frame_94	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x81514042	32	frame_53	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x82a20f0a	32	frame_14	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x837a076f	32	additive_files	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x8679fb1a	32	frame_1	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x8a06c3e6	32	frame_67	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x8b5f8a64	32	frame_93	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x8cac50a9	32	frame_20	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x90a11f60	32	frame_25	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x91da4ee8	32	segment_associations	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x92c86de8	32	frame_21	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x933d2696	32	frame_17	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x93928e1c	32	frame_28	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x954b4627	32	frame_56	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x9a53d94d	32	frame_61	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x9a5687ec	32	frame_11	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x9bf0c484	32	ordered_modifiers	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x9cdd1dde	32	frame_96	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x9edf294d	32	frame_31	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xa09fe798	32	frame_33	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xa0e5e6db	32	frame_59	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xa534214d	32	frame_41	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xa6df8f3a	32	retarget_target_skeletons	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xa7bb610d	32	frame_46	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xa9832df8	32	frame_85	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xad7233fb	32	frame_98	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xb426fe93	32	frame_82	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xb5caf0de	32	frame_52	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xb9d7eb1e	32	frame_47	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xbebdb708	32	frame_43	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xbf2beb5c	32	frame_71	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xc4327293	32	frame_92	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xc68e83ab	32	frame_79	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xc6b6c26e	32	track_messages	directs	0.0076	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xcccbdb10	32	frame_75	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xcd678731	32	frame_18	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xcffb3acb	32	frame_23	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xd03f28d3	32	frame_69	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xd197d399	32	frame_60	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xd35395ec	32	frame_40	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xd44da628	32	frame_22	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xdc3c4292	32	frame_57	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xe049139a	32	frame_2	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xe18a211d	32	frame_63	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xe1b9bdb7	32	frame_27	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xe375aab9	32	frame_76	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xe78fecd9	32	frame_66	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xeb2e118c	32	frame_26	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xf3771017	32	frame_3	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xf888a0c8	32	frame_97	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xfd28c937	32	frame_36	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xfd73b5ec	32	frame_54	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xfe3edced	32	take_files	paires	0.091	rtpc_noeud|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xff0669ac	32	frame_7	positionnels	0.083	rtpc_noeud|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x00c66c37	32	melee_combat	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0x02710033	32	outer_cone	paires	0.27	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x02eb08cc	32	bone55	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x04e18dec	32	snowmap	directs	0.038	rtpc_propriete|1 ; settings/hp_settings/reserve_17.bin
+0x057a4f3b	32	bone19	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x06887615	32	condition_0	positionnels	0.41	rtpc_propriete|1 ; settings/hp_settings/hybrid_mount_recipes.bin
+0x06e3d8bb	32	bone96	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x076df7e1	32	bone17	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x09e0afe7	32	bone29	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x0bed24ac	32	bone15	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x0ed0c5fa	32	bone44	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x0f1368c0	32	bone41	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x0fa38a36	32	bone102	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x10b05885	32	enable_specular	verbes	0.065	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x10d3338f	32	bone99	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x12aa03d5	32	bone83	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x158c622d	32	bone23	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x16ffb958	32	bone51	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x1944fd96	32	bone80	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x1d9f36cf	32	first_target	paires	0.27	rtpc_propriete|1 ; locations/debug/iberia_climb_test.blo
+0x1fbd81e7	32	Caller	directs	0.038	rtpc_propriete|1 ; (sans nom) 43f5fb2e
+0x1feafee3	32	music	directs	0.038	rtpc_propriete|1 ; settings/turn_taker.bin
+0x241011d4	32	major	directs	0.038	rtpc_propriete|1 ; settings/build_version.bin
+0x27750b42	32	magnitude	directs	0.038	rtpc_propriete|1 ; (sans nom) 69306179
+0x27c4202b	32	min_altitude	affixes	0.00081	rtpc_propriete|1 ; settings/weathersettings.bin
+0x28189872	32	bone69	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x2b079e84	32	melee_damage	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0x2b0db099	32	bone46	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x2cdf714b	32	bone78	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x2daab781	32	inner_cone	paires	0.27	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x2ddfdc29	32	bone88	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x30158441	32	bone71	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x302b073c	32	outdoor	directs	0.038	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x3091bf59	32	bone74	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x318b413a	32	bone36	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x326cbab5	32	bone56	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x32a1013d	32	standing_radius	paires	0.27	rtpc_propriete|1 ; settings/character_pfx_settings.bin
+0x34cf1d22	32	bone75	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x37474bd3	32	water_splash	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0x37b7c7b4	32	default_height	affixes	0.00081	rtpc_propriete|1 ; (sans nom) bf32e8d4
+0x39206ec5	32	bone49	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x3ecee514	32	bone87	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x3eebdee7	32	bone62	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x4031c562	32	bone95	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x48290e54	32	rpm_max	paires	0.27	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0x48d372f8	32	keep_distance	directs	0.038	rtpc_propriete|1 ; settings/character_pfx_settings.bin
+0x4b8db658	32	bone42	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x4e76473e	32	bone81	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x4f818de8	32	bone37	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x507efbc7	32	focus_alias	paires	0.27	rtpc_propriete|1 ; settings/gamestaterun.bin
+0x50b25a82	32	bone93	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x50f1936a	32	bone21	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x514c04e6	32	bone85	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x5332e85e	32	bone20	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x575a9cb4	32	minor	directs	0.038	rtpc_propriete|1 ; settings/build_version.bin
+0x59c61787	32	bone67	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x5a1ac42c	32	bone45	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x5c50f180	32	offset_x	directs	0.038	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x5e80f270	32	standing_height	paires	0.27	rtpc_propriete|1 ; settings/character_pfx_settings.bin
+0x5f1d0784	32	preset_frequency	paires	0.27	rtpc_propriete|1 ; settings/weathersettings.bin
+0x5f240683	32	focus_system	paires	0.27	rtpc_propriete|1 ; settings/turn_taker.bin
+0x60388e80	32	volumetric	directs	0.038	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x6452657a	32	bone16	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x65c03fa8	32	rpm_acc	paires	0.27	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0x669b2732	32	bone68	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x68f5ca64	32	secondary_dialogue	paires	0.27	rtpc_propriete|1 ; settings/turn_taker.bin
+0x6949e194	32	is_great_one	directs	0.038	rtpc_propriete|1 ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20130_mission_items.blo
+0x6df4d98c	32	bone77	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x6fa5f754	32	bone28	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x77c5c773	32	bone40	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x796995fc	32	water_idle	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0x796eae83	32	chromatic_aberration	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0x7b91cc41	32	bone70	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x7c540637	32	bone92	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x7ddc604d	32	bone22	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x7e41b059	32	bait_site_attraction_previous_setup	directs	0.038	rtpc_propriete|1 ; settings/hp_settings/interest_area_manager_settings.bin
+0x7fd9772f	32	bone76	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x8062f617	32	sun_intensity	paires	0.27	rtpc_propriete|1 ; settings/post_effects.bin
+0x820ce076	32	ext5	positionnels	0.41	rtpc_propriete|1 ; (sans nom) 6d944dac
+0x84ea8ce7	32	bone27	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x87df01a7	32	condition_1	positionnels	0.41	rtpc_propriete|1 ; settings/hp_settings/hybrid_mount_recipes.bin
+0x8b639e1e	32	saturation	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0x8beb629c	32	bone31	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x8c273d80	32	bone50	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x90a15e38	32	reserve_mission	paires	0.27	rtpc_propriete|1 ; settings/hp_settings/reserve_20.bin
+0x90e04ae5	32	offset_y	directs	0.038	rtpc_propriete|1 ; settings/worlddecorations.bin
+0x925e9728	32	bone48	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x926544d4	32	bone84	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x939f89b1	32	bone79	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x947164bb	32	bone14	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x95c1fe42	32	bone59	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0x9b9be1bb	32	EMP	directs	0.038	rtpc_propriete|1 ; (sans nom) 1e31f03f
+0x9f5f074f	32	texture_size	paires	0.27	rtpc_propriete|1 ; (sans nom) 244ac773
+0xa09ad900	32	bone72	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xa0c18889	32	outer_radius	directs	0.038	rtpc_propriete|1 ; settings/worlddecorations.bin
+0xa19815aa	32	max_motion_blur	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xa1ce1cbc	32	second_target	paires	0.27	rtpc_propriete|1 ; locations/debug/iberia_climb_test.blo
+0xa5046a59	32	bone35	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xa5edec52	32	load_max	verbes	0.065	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0xa67d2631	32	bone54	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xa6e289ba	32	team	directs	0.038	rtpc_propriete|1 ; settings/player.bin
+0xa782bcdb	32	bone33	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xa798a5c5	32	bone97	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xaabea420	32	max_altitude	directs	0.038	rtpc_propriete|1 ; settings/weathersettings.bin
+0xab78eadc	32	load_min	verbes	0.065	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0xad1ec4f0	32	bone86	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xae110681	32	focal_distance	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xafdd4e96	32	bone25	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xb0c34845	32	dialogue_primary	paires	0.27	rtpc_propriete|1 ; (sans nom) 263cc4c2
+0xb333cf6d	32	load_acc	verbes	0.065	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0xb67d96f7	32	bone47	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xb70395ac	32	bone101	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xb862814f	32	focal_distance_near	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xb868e836	32	effect_filename	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0xbb4fc047	32	animal_range	paires	0.27	rtpc_propriete|1 ; settings/hp_settings/reserve_20.bin
+0xbc3276d2	32	bone43	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xbd54de7b	32	max_dof	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xbe6bbd60	32	motion_blur_factor	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xc21c75df	32	bone34	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc27f7955	32	date	directs	0.038	rtpc_propriete|1 ; settings/build_version.bin
+0xc480bc92	32	bone30	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc4887407	32	bone53	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc616311f	32	bone18	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc6d48db2	32	bone91	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc8784c42	32	bone94	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc8793e32	32	bone24	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc9506e7c	32	bone38	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xc9f3068f	32	bone52	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xca5b3b66	32	bone89	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xcbf08bd7	32	bone65	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xce863746	32	bone64	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xd008faad	32	branch_name	directs	0.038	rtpc_propriete|1 ; settings/build_version.bin
+0xd076b70c	32	dof_smoothness	directs	0.038	rtpc_propriete|1 ; settings/post_effects.bin
+0xd134d35c	32	bone26	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xd1e88637	32	draw_distance	paires	0.27	rtpc_propriete|1 ; settings/weathersettings.bin
+0xd2fa5045	32	bone32	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xd4ee0178	32	rpm_min	paires	0.27	rtpc_propriete|1 ; (sans nom) 6db2aa83
+0xd582967a	32	bone90	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xddb30193	32	min_time	directs	0.038	rtpc_propriete|1 ; animations/hp_statemachine/animals/ibex/beceite_ibex_blinking.asb
+0xde4d5b6f	32	melee_impulse	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0xdee0744e	32	no_board	paires	0.27	rtpc_propriete|1 ; (sans nom) a342fb0e
+0xe3d38cc3	32	ext4	positionnels	0.41	rtpc_propriete|1 ; (sans nom) 6d944dac
+0xe6eee718	32	bone100	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xe7dd6387	32	bone39	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xebb352bc	32	condition_2	positionnels	0.41	rtpc_propriete|1 ; settings/hp_settings/hybrid_mount_recipes.bin
+0xeca92e8d	32	bone58	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xeda0c265	32	disable_frequency	verbes	0.065	rtpc_propriete|1 ; settings/weathersettings.bin
+0xee0ea411	32	ambient_multiplier	paires	0.27	rtpc_propriete|1 ; settings/worlddecorations.bin
+0xf0743b91	32	milestone	directs	0.038	rtpc_propriete|1 ; settings/build_version.bin
+0xf12e6bb9	32	bone82	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xf371fd34	32	water_swim	paires	0.27	rtpc_propriete|1 ; settings/player.bin
+0xf37b4a76	32	Bow	directs	0.038	rtpc_propriete|1 ; (sans nom) 43f5fb2e
+0xf3fa148a	32	threat_threshold	paires	0.27	rtpc_propriete|1 ; editor/entities/hp_characters/animals/jaguar/jaguar_mm21170.epe
+0xf447c609	32	bone73	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xf5f248ff	32	bone98	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xf92211e8	32	bone61	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xf9511e09	32	bone63	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xfa61ab23	32	bone57	positionnels	0.41	rtpc_propriete|1 ; animations/ragdoll/ragdoll_params.brdd
+0xfe4af408	32	dialogue_secondary	paires	0.27	rtpc_propriete|1 ; (sans nom) 263cc4c2
+0x00423e41	32	FilterLeft	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0x054e98b7	32	chaos_status	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x09a19f55	32	damage_effect_file	directs	0.036	rtpc_propriete|10-99 ; (sans nom) 3608bd63
+0x0cdee854	32	default_zoom	affixes	0.00077	rtpc_propriete|10-99 ; global/global_gui.blo
+0x0d586c18	32	max_zoom	affixes	0.00077	rtpc_propriete|10-99 ; global/global_gui.blo
+0x10a27ef4	32	FontName	directs	0.036	rtpc_propriete|10-99 ; settings/ui_fonts.bin
+0x10a91836	32	orientation_always_up	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_equipment/placeables/equipment_bait_feeder_salt_lick_01.epe
+0x10ca8d49	32	render_layer	paires	0.25	rtpc_propriete|10-99 ; settings/road_rendering.bin
+0x14c12eb7	32	force_materials	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x15eb0356	32	exit_teleport	verbes	0.061	rtpc_propriete|10-99 ; editor/entities/hp_placeables/deployable_eurasian_wigeon_male_decoy_01.epe
+0x174da297	32	spawn_seed	verbes	0.061	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x193d7efc	32	max_score	affixes	0.00077	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x196db632	32	select_event	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x1a25ae83	32	reserve_size	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x1a96179a	32	horizontal_offset	directs	0.036	rtpc_propriete|10-99 ; settings/character_pfx_settings.bin
+0x1abe57ce	32	before_mission	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x228521b1	32	multiplayer_event	paires	0.25	rtpc_propriete|10-99 ; worlds/world2/locations/hp_patagonia/hunting_structures/patagonia_hunting_tower02.blo
+0x245db2f7	32	show_rankings	directs	0.036	rtpc_propriete|10-99 ; worlds/world4/locations/hp_delta/hunting_structures/hunting_stand_delta_07.blo
+0x26a874da	32	locomotion	directs	0.036	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x2db735b5	32	spawn_offset	verbes	0.061	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x2e1aa87c	32	region_status	directs	0.036	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x30b9262a	32	feature_location	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x32aa0070	32	entity_path	paires	0.25	rtpc_propriete|10-99 ; (sans nom) e00f53d7
+0x35808ece	32	action_name	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_characters/main_characters/local_player_character.epe
+0x3631a212	32	zoom_speed	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0x38339a1b	32	super_tags	paires	0.25	rtpc_propriete|10-99 ; global/global_animal_types.blo
+0x38ef4c3e	32	chaos_generated	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0x3966a848	32	percentage_lower	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x3d860b2f	32	vision_mode	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_weapons/sights/handgun_illum_iron_re_357m_01/equipment_sight_handgun_illum_...
+0x3e1b4bcd	32	def_limit	paires	0.25	rtpc_propriete|10-99 ; settings/spawn_budget_pools.bin
+0x3eb82dd9	32	min_zoom	affixes	0.00077	rtpc_propriete|10-99 ; global/global_gui.blo
+0x40f96246	32	spawn_check_shape	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_equipment/placeables/equipment_bait_feeder_salt_lick_01.epe
+0x4231f012	32	character_mass	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x426e419d	32	tip_distance	paires	0.25	rtpc_propriete|10-99 ; settings/character_pfx_settings.bin
+0x42b06edf	32	heat_equal	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x42f34ae2	32	attack_distance	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/animals/iberian_wolf/iberian_wolf_female.epe
+0x444b525a	32	max_weight	directs	0.036	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x4565516f	32	animal_types	directs	0.036	rtpc_propriete|10-99 ; worlds/base/global/global.blo
+0x45cab55e	32	amplitude	directs	0.036	rtpc_propriete|10-99 ; (sans nom) 20f1f59f
+0x475d8996	32	state_machine	paires	0.25	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x4a46f1e6	32	roll_default	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0x4b86679f	32	mounted_weapon	directs	0.036	rtpc_propriete|10-99 ; editor/entities/vehicles/01_land/v001_car_atv/v001_car_atv_debug.epe
+0x4ee83c66	32	model_object	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_placeables/deployable_eurasian_wigeon_male_decoy_01.epe
+0x530046b3	32	explosion_radius	directs	0.036	rtpc_propriete|10-99 ; editor/entities/vehicles/01_land/v001_car_atv/v001_car_atv_debug.epe
+0x576e13e2	32	min_spawn_interval	affixes	0.00077	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x5cdedccf	32	chaos_threshold	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0x60bd2ce3	32	unlock_level	verbes	0.061	rtpc_propriete|10-99 ; global/global_dog.blo
+0x63cea8ec	32	tilt_turn	paires	0.25	rtpc_propriete|10-99 ; worlds/world5/locations/hp_nh/nh_express_train.blo
+0x64e2e6b7	32	max_force	directs	0.036	rtpc_propriete|10-99 ; animations/ragdoll/ragdoll_params.brdd
+0x6670fee9	32	heat_level	directs	0.036	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x677def7f	32	right_cam	paires	0.25	rtpc_propriete|10-99 ; settings/gamestaterun.bin
+0x683a83cb	32	province_status	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x6a143fbc	32	cpu_cost	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 74abd68f
+0x6b47b5c3	32	exclude_player	paires	0.25	rtpc_propriete|10-99 ; editor/entities/vehicles/01_land/v001_car_atv/v001_car_atv_debug.epe
+0x6c4cbb4b	32	fade_start	directs	0.036	rtpc_propriete|10-99 ; settings/road_rendering.bin
+0x6d26f6f8	32	status_valid	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0x6f1d59eb	32	mem_cost	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 74abd68f
+0x70155a66	32	tilt_acceleration	paires	0.25	rtpc_propriete|10-99 ; worlds/world5/locations/hp_nh/nh_express_train.blo
+0x718fb06f	32	percentage_upper	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x7405e52e	32	Wrap	directs	0.036	rtpc_propriete|10-99 ; global/skins_rules.blo
+0x74ac0777	32	settlement_status	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x76e0cf6a	32	roughness	directs	0.036	rtpc_propriete|10-99 ; settings/game_materials.bin
+0x7849e9e7	32	restricted_area	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/animals/european_badger/badger_burrow_base.epe
+0x79f580ca	32	max_surface_angle_override	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_equipment/placeables/equipment_bait_feeder_salt_lick_01.epe
+0x7a7a3891	32	dirt_opacity	paires	0.25	rtpc_propriete|10-99 ; settings/game_materials.bin
+0x7ae11f99	32	sleep_time	paires	0.25	rtpc_propriete|10-99 ; worlds/base/locations/hp_germany_farmlands_fall/test_locations/animal_move_on_spline.blo
+0x7d3c231e	32	world_item_data	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_placeables/deployable_eurasian_wigeon_male_decoy_01.epe
+0x7d4e7cf5	32	fly_preset	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x81e9af2b	32	shader_type	directs	0.036	rtpc_propriete|10-99 ; settings/road_rendering.bin
+0x8676ab4e	32	safe_distance	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/animals/black_caiman/black_caiman_male.epe
+0x87e59f91	32	chaos_reward	directs	0.036	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0x897460b8	32	destruction_tag	directs	0.036	rtpc_propriete|10-99 ; global/global_gui.blo
+0x89d007b0	32	inst_limit	paires	0.25	rtpc_propriete|10-99 ; settings/spawn_budget_pools.bin
+0x8c05bab7	32	enable_debug	verbes	0.061	rtpc_propriete|10-99 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x9520c110	32	opcode	directs	0.036	rtpc_propriete|10-99 ; (sans nom) 78a5e94c
+0x9943b1da	32	inverted_area	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x999c8dd0	32	turret_tuning	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_characters/mission/clay_shooting_trap_house/clay_trap_01_character_skeet_hi...
+0x9a2db97e	32	proximity_limit	paires	0.25	rtpc_propriete|10-99 ; settings/spawn_budget_pools.bin
+0x9a7438f0	32	reserve_description	directs	0.036	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x9a972f56	32	definitions	directs	0.036	rtpc_propriete|10-99 ; settings/spawn_budget_pools.bin
+0x9c80b85c	32	bond_reward	paires	0.25	rtpc_propriete|10-99 ; global/global_dog.blo
+0x9e13f67c	32	location_path	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xa1b0daf9	32	explosion_category	paires	0.25	rtpc_propriete|10-99 ; editor/entities/vehicles/01_land/v001_car_atv/v001_car_atv_debug.epe
+0xa3e429d6	32	tilt_velocity	paires	0.25	rtpc_propriete|10-99 ; worlds/world5/locations/hp_nh/nh_express_train.blo
+0xa4fdb9a6	32	Language	directs	0.036	rtpc_propriete|10-99 ; settings/ui_fonts.bin
+0xa6607f4f	32	dirt_height	paires	0.25	rtpc_propriete|10-99 ; settings/game_materials.bin
+0xa7986a30	32	size_tag	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0xa7a13767	32	memory_warning	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 6d944dac
+0xa7eb1237	32	max_spawn_distance	affixes	0.00077	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xa8f9cfa8	32	pitch_default	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0xa94b31c2	32	bond_booster	paires	0.25	rtpc_propriete|10-99 ; global/global_dog.blo
+0xa97e8e92	32	above_cam	paires	0.25	rtpc_propriete|10-99 ; settings/gamestaterun.bin
+0xaa7c6798	32	phase_advance	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 20f1f59f
+0xab421854	32	landing_zone	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/animals/european_badger/badger_burrow_base.epe
+0xabd779e8	32	fade_length	directs	0.036	rtpc_propriete|10-99 ; settings/road_rendering.bin
+0xad49091d	32	constant_recovery_velocity	directs	0.036	rtpc_propriete|10-99 ; animations/ragdoll/ragdoll_params.brdd
+0xaee9b775	32	status_completed	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0xafa6db86	32	animal_cover	directs	0.036	rtpc_propriete|10-99 ; (sans nom) d19f884e
+0xb168d292	32	disable_prone	verbes	0.061	rtpc_propriete|10-99 ; editor/entities/hp_world_items/bait_feeder_hanging_01_world_item.epe
+0xb43fca44	32	min_score	affixes	0.00077	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xb7bc9c30	32	reserve_type	affixes	0.00077	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xb91ca169	32	missions_file	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xbb6e4563	32	FilterFront	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0xbde736f7	32	status_visible	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0xc047628d	32	break_sound	directs	0.036	rtpc_propriete|10-99 ; (sans nom) ecee9369
+0xc08cfbf8	32	sky_occlusion_intensity_modifier	directs	0.036	rtpc_propriete|10-99 ; (sans nom) a7fa32ec
+0xc097e6ef	32	gpu_cost	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 74abd68f
+0xc1dd148b	32	terrain_clip	paires	0.25	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xc322f7b5	32	after_mission	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0xc4ace318	32	province_location	paires	0.25	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0xc98a4c97	32	aabb	directs	0.036	rtpc_propriete|10-99 ; locations/debug/nepal_climb_test.blo
+0xca1670fd	32	preview_image	directs	0.036	rtpc_propriete|10-99 ; settings/hp_settings/hybrid_mount_recipes.bin
+0xccf69841	32	texture_mask	paires	0.25	rtpc_propriete|10-99 ; settings/road_rendering.bin
+0xcd29f8a9	32	spawn_check_shape_multiplier	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_equipment/placeables/equipment_bait_feeder_salt_lick_01.epe
+0xcee03b6f	32	min_weight	affixes	0.00077	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xcef1f7e6	32	interpolation_speed	directs	0.036	rtpc_propriete|10-99 ; global/global_gui.blo
+0xd043bf1b	32	tutorial_description	directs	0.036	rtpc_propriete|10-99 ; settings/hp_settings/codex_tutorial_log.bin
+0xd2c565a5	32	target_override	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/mission/clay_shooting_trap_house/clay_trap_01_character_skeet_hi...
+0xd4f73277	32	memory_max	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 6d944dac
+0xd6847c88	32	status_active	paires	0.25	rtpc_propriete|10-99 ; (sans nom) 0aa98776
+0xdc8ef2b4	32	disable_jump	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_world_items/bait_feeder_hanging_01_world_item.epe
+0xdc96bc01	32	feature_modifiers	directs	0.036	rtpc_propriete|10-99 ; global/global_animal_types.blo
+0xde85b66b	32	load_tags	verbes	0.061	rtpc_propriete|10-99 ; global/global_gui.blo
+0xdf23529d	32	OrganHitSeverity	directs	0.036	rtpc_propriete|10-99 ; animations/hp_statemachine/birds/black_grouse/black_grouse_main_female.afsmb
+0xe04e7fc4	32	maximum_score	paires	0.25	rtpc_propriete|10-99 ; worlds/world2/locations/hp_patagonia/patch_locations/15x47_archery_range.blo
+0xe240d483	32	tau	directs	0.036	rtpc_propriete|10-99 ; animations/ragdoll/ragdoll_params.brdd
+0xe48d35ec	32	Reticle	directs	0.036	rtpc_propriete|10-99 ; global/skins_rules.blo
+0xe547bf67	32	max_spawn_interval	affixes	0.00077	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xea35b7ed	32	pan_speed	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0xee0c1524	32	charge_chance	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_characters/animals/black_caiman/black_caiman_male.epe
+0xf0256bce	32	proportional_recovery_velocity	directs	0.036	rtpc_propriete|10-99 ; animations/ragdoll/ragdoll_params.brdd
+0xf0bafc84	32	preview_model	paires	0.25	rtpc_propriete|10-99 ; editor/entities/hp_equipment/placeables/equipment_bait_feeder_salt_lick_01.epe
+0xf2ff52d7	32	yaw_default	paires	0.25	rtpc_propriete|10-99 ; global/global_gui.blo
+0xf6edf566	32	closed_sound	paires	0.25	rtpc_propriete|10-99 ; worlds/world2/locations/hp_trophyworld/lodges/lodge_type_2.blo
+0xf9e7949a	32	state_bit	directs	0.036	rtpc_propriete|10-99 ; editor/entities/hp_placeables/deployable_water_layoutblind_01.epe
+0xfd7199dc	32	weight_deviation	directs	0.036	rtpc_propriete|10-99 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x00836d1b	32	animal_tags	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x100518e3	32	disable_vision	verbes	0.061	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x11a0298e	32	dot_duration	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0x12771865	32	max_height	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x140687d8	32	score_min	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x14f88d14	32	texture_variation	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0x171c98fe	32	reserve_event	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/raccoon_feeding_trashcans/raccoon_feeding_trashcan_02.blo
+0x19b8918c	32	animal_type_id	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/animal_interest.bin
+0x1b49b94e	32	weapon_has_scope	directs	0.036	rtpc_propriete|100-999 ; editor/entities/hp_equipment/callers/equipment_lure_caller_elk_01.epe
+0x20996e83	32	lane_id	affixes	0.00077	rtpc_propriete|100-999 ; worlds/world5/locations/hp_sh/shooting_ranges/clay_shooting_range_01.blo
+0x275da5ea	32	stuck_behavior	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x2779bc92	32	debug_color	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/animal_clue_types.bin
+0x27808d4a	32	animalweaponclass	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x287b7000	32	is_blinking	directs	0.036	rtpc_propriete|100-999 ; editor/entities/vehicles/01_land/v001_car_atv/v001_car_atv_debug.epe
+0x29f241f4	32	weight_max	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x31473663	32	skip_ragdoll	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x31ce0dd4	32	skin_rule	paires	0.25	rtpc_propriete|100-999 ; settings/hp_settings/equipment_data.bin
+0x34805494	32	score_from	paires	0.25	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x36b063f9	32	initial_variant	paires	0.25	rtpc_propriete|100-999 ; worlds/world2/locations/hp_trophyworld/lodges/lodge_type_1.blo
+0x3933fbec	32	event_disabled	paires	0.25	rtpc_propriete|100-999 ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x3ee0fd24	32	retarget_to	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_tropy_items/antelope_jackrabbit_trophy_male.epe
+0x3f3c7a6f	32	great_one	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/trophy_lodge_settings.bin
+0x3f7c9bf4	32	object_collision	directs	0.036	rtpc_propriete|100-999 ; worlds/world5/locations/hp_finland/outposts/outpost_finland_13.blo
+0x40f85e8e	32	explosive_impulse_modifier	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x414a535e	32	material_index	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 9bfef9c0
+0x4399b719	32	scene	directs	0.036	rtpc_propriete|100-999 ; worlds/base/locations/hp_germany_farmlands_fall/z00/patch_locations/14x46.blo
+0x47c8af6f	32	network_group	paires	0.25	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x49dc02ed	32	collide_effect	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x4c527279	32	break_effect	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x4c834277	32	network_visibility	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_equipment/hunter_mate.epe
+0x50653168	32	generate_rule	paires	0.25	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x50d91974	32	swimming_level	paires	0.25	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x516e17b0	32	spawn_once	verbes	0.061	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0x538f6c0a	32	water_layer	paires	0.25	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x5570c998	32	event_used	paires	0.25	rtpc_propriete|100-999 ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x55d1d1fa	32	is_default	directs	0.036	rtpc_propriete|100-999 ; global/global_player_variations.blo
+0x55f24c5b	32	disable_proximity	verbes	0.061	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x58e4bc63	32	opening_sound	paires	0.25	rtpc_propriete|100-999 ; worlds/world6/locations/hp_alberta/hunting_structures/hunting_structure_alberta_08.blo
+0x5ba1b00e	32	previous_state	paires	0.25	rtpc_propriete|100-999 ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x5c4897de	32	simulation_ragdoll	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x5e0acdda	32	attached_object	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/raccoon_feeding_trashcans/raccoon_feeding_trashcan_02.blo
+0x5e3668d2	32	inherit_position	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_trophyworld_3/global_sound_layers_trophyworld_3.blo
+0x608d4e4d	32	id_tag	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_scotland/z00/mission_locations/sm20120_obj_60.blo
+0x62bf7695	32	spawn_map	verbes	0.061	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x6754f787	32	score_to	paires	0.25	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x6a510b0f	32	stump_file	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x6a9dfd76	32	uid	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 263cc4c2
+0x77d148e2	32	weight_percent	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0x7868ea26	32	outline_intensity	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_placeables/z00_spruce_tree_01_lrg_bare_trunk_02_tree_range_object.epe
+0x79a94deb	32	pose_description	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/hybrid_mount_recipes.bin
+0x7ac504ce	32	durango_name	affixes	0.00077	rtpc_propriete|100-999 ; settings/hp_settings/achievements.bin
+0x8421fc4c	32	look_at_trigger	directs	0.036	rtpc_propriete|100-999 ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x876eb544	32	Toggle	directs	0.036	rtpc_propriete|100-999 ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x87ea42c8	32	weight_min	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x8f6f665f	32	distance_threshold	directs	0.036	rtpc_propriete|100-999 ; worlds/world2/locations/hp_trophyworld/lodges/lodge_type_1.blo
+0x9222a750	32	min_height	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x962a6385	32	skin_tone	directs	0.036	rtpc_propriete|100-999 ; (sans nom) e00f53d7
+0x996bc6f1	32	impulse_threshold	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x999864f0	32	entry_transform	directs	0.036	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/raccoon_feeding_trashcans/raccoon_feeding_trashcan_02.blo
+0x99fcc661	32	angular_limit	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0x9f21768b	32	stuck_distance	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0xa7951eeb	32	inherit_direction	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_trophyworld_3/global_sound_layers_trophyworld_3.blo
+0xa88f6977	32	initial_radius	directs	0.036	rtpc_propriete|100-999 ; settings/hp_settings/animal_interest.bin
+0xac293b2b	32	disable_clues	verbes	0.061	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0xac630743	32	layer_modifier	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/tufted_duck/tufted_duck_male.epe
+0xac99ddc9	32	score_deviation	directs	0.036	rtpc_propriete|100-999 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xafbbbf75	32	listener_offset	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_equipment/callers/equipment_lure_caller_elk_01.epe
+0xb79056f0	32	locator_file	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0xb89694de	32	fast_through_effect	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0xb9a20370	32	ignore_navmesh	paires	0.25	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0xbe267db6	32	min_spawn_distance	affixes	0.00077	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0xc01d3213	32	animalclass	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0xc39a99e9	32	initial_pose	paires	0.25	rtpc_propriete|100-999 ; worlds/world2/locations/hp_trophyworld/lodges/lodge_type_1.blo
+0xc8f5db5c	32	exit_transform	directs	0.036	rtpc_propriete|100-999 ; editor/entities/hp_placeables/deployable_water_layoutblind_01.epe
+0xcc597273	32	model_file	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_tropy_items/equipment_weapon_ba_rifle_22h_02_trophy.epe
+0xcee31181	32	image_index	directs	0.036	rtpc_propriete|100-999 ; global/global_player_variations.blo
+0xcf757e08	32	falling_leaves_effect	directs	0.036	rtpc_propriete|100-999 ; (sans nom) a7fa32ec
+0xd2062894	32	outline_thickness	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_placeables/z00_spruce_tree_01_lrg_bare_trunk_02_tree_range_object.epe
+0xda99daed	32	world_object_data	directs	0.036	rtpc_propriete|100-999 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xe3062a0e	32	score_max	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0xe69c7880	32	lane_type	affixes	0.00077	rtpc_propriete|100-999 ; worlds/world5/locations/hp_sh/shooting_ranges/clay_shooting_range_01.blo
+0xe9450249	32	weight_mean_bias	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0xeaaee535	32	durango_description	paires	0.25	rtpc_propriete|100-999 ; settings/hp_settings/achievements.bin
+0xebb1e998	32	score_deviation_probability	directs	0.036	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0xeca0f73d	32	animal_type	directs	0.036	rtpc_propriete|100-999 ; worlds/world4/locations/hp_delta/z00/mission_locations/mm12320.blo
+0xed505699	32	pass_through_effect	directs	0.036	rtpc_propriete|100-999 ; (sans nom) 0a5be1e1
+0xed89f7df	32	highlight_color	directs	0.036	rtpc_propriete|100-999 ; worlds/world2/locations/hp_trophyworld/lodges/lodge_type_1.blo
+0xf1a81899	32	disable_awareness	verbes	0.061	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0xf211ea98	32	stuck_time	paires	0.25	rtpc_propriete|100-999 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0xf527a7b5	32	orbis_score	paires	0.25	rtpc_propriete|100-999 ; settings/hp_settings/achievements.bin
+0xfe7b9762	32	durango_id	affixes	0.00077	rtpc_propriete|100-999 ; settings/hp_settings/achievements.bin
+0xfeff6aca	32	OnEnter	directs	0.036	rtpc_propriete|100-999 ; animations/hp_statemachine/birds/black_grouse/black_grouse_main_female.afsmb
+0xff558dca	32	disable_scent	verbes	0.061	rtpc_propriete|100-999 ; global/global_animal_types.blo
+0x004f98a9	32	bone7	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x048ecd2c	32	velocity_damping	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x050abce9	32	reset_secondary_job_cost	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/dog_data.bin
+0x077cfb19	32	mask	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0x0e177f8f	32	localization_key	directs	0.031	rtpc_propriete|2-9 ; global/global_animal_types.blo
+0x0e310616	32	ext2	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 6d944dac
+0x0ff60ee4	32	xz	directs	0.031	rtpc_propriete|2-9 ; (sans nom) bf32e8d4
+0x14455a07	32	depth0	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0x1b19ed48	32	large_image	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0x216611f0	32	alpha_blend	directs	0.031	rtpc_propriete|2-9 ; settings/road_rendering.bin
+0x22268de1	32	acceleration_gain	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x24c03ed7	32	position_max_angular_velocity	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x27aa59ac	32	constraint_type	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/birds/northern_bobwhite_quail/northern_bobwhite_quail_male.epe
+0x286f78e2	32	num_square_meters	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0x2b08f0ab	32	vertex_6	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0x3dbc2d48	32	bone13	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x3dea62e7	32	min_duration	affixes	0.00067	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0x40c8f0c8	32	min_chaos	affixes	0.00067	rtpc_propriete|2-9 ; (sans nom) 8a397ab3
+0x423a8370	32	use_rotation	affixes	0.00067	rtpc_propriete|2-9 ; (sans nom) 2dd1ebf4
+0x42ca714a	32	snap_max_angular_velocity	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x44e8f1d8	32	constraint_enabled	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/birds/northern_bobwhite_quail/northern_bobwhite_quail_male.epe
+0x44ffc9da	32	max_duration	affixes	0.00067	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0x45d1f05a	32	snap_max_angular_distance	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x495b4f57	32	vertex_5	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0x4a346f03	32	reserve_index	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0x4aa862b4	32	bone9	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x4bbf0cd0	32	bias2	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0x4c2bbb5f	32	bone6	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x4d3fbede	32	max_coverage	affixes	0.00067	rtpc_propriete|2-9 ; settings/weathersettings.bin
+0x4ee9b816	32	fall	directs	0.031	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0x4f5859f8	32	hierarchy_gain	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x4f642b34	32	position_gain	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x5ca1b678	32	parent_name	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/main_characters/network_player_character.epe
+0x63147f8c	32	vertex_count	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0x6592b215	32	bone3	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x686ed79a	32	repair_cost	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_world_items/bait_feeder_hanging_01_world_item.epe
+0x6fc12bfd	32	snap_gain	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x704a7adb	32	rename_cost	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/dog_data.bin
+0x747af40c	32	position_max_linear_velocity	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x77499da5	32	StepSize	directs	0.031	rtpc_propriete|2-9 ; animations/hp_statemachine/humans/elmer/mb_hunter_male_first_person.afsmb
+0x7b167941	32	bone2	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x7c5e32ef	32	num_plaques	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0x7cc84fd0	32	min_intensity	affixes	0.00067	rtpc_propriete|2-9 ; settings/weathersettings.bin
+0x7ce8c7de	32	depth1	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0x7ec1213c	32	bone10	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x8039c90c	32	ext1	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 6d944dac
+0x84f43522	32	job_name	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/dog_data.bin
+0x854e8046	32	depth2	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0x8d8e26be	32	BaitSiteWorldItemData	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_placeables/placeable_bait_feeder_hanging_01.epe
+0x996c25ab	32	ext3	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 6d944dac
+0x9bc88f90	32	bone1	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x9ec8f021	32	model_grass_clustering	directs	0.031	rtpc_propriete|2-9 ; (sans nom) e9d4b75c
+0xa1c96158	32	Neck	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 7bf5d0e5
+0xa371c179	32	disable_turret	verbes	0.053	rtpc_propriete|2-9 ; editor/entities/hp_characters/mission/clay_shooting_trap_house/clay_trap_01_character_skeet_high...
+0xa4320efd	32	vertex_0	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xa446b6d1	32	bone0	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xa5ab1359	32	vertex_4	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xa6d2b487	32	dialogue	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 263cc4c2
+0xa85604f4	32	default_duration	affixes	0.00067	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0xab871f2c	32	snap_max_linear_distance	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xb1ba4d07	32	bone4	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xb3b8aa9c	32	snap_max_linear_velocity	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xb3e1c779	32	indoor	directs	0.031	rtpc_propriete|2-9 ; settings/landscape_effects.bin
+0xb4093bb3	32	default_value	directs	0.031	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0xb44247ae	32	min_coverage	affixes	0.00067	rtpc_propriete|2-9 ; settings/weathersettings.bin
+0xb498c27d	32	filepath	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/main_characters/local_player_character.epe
+0xb4b39359	32	radius0	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0xb87235b0	32	charge_distance	directs	0.031	rtpc_propriete|2-9 ; editor/entities/hp_characters/animals/black_caiman/black_caiman_male.epe
+0xbb3e8934	32	max_chaos	affixes	0.00067	rtpc_propriete|2-9 ; (sans nom) 8a397ab3
+0xbd6355f2	32	transition_time	directs	0.031	rtpc_propriete|2-9 ; settings/weathersettings.bin
+0xc0968911	32	max_intensity	affixes	0.00067	rtpc_propriete|2-9 ; settings/weathersettings.bin
+0xc285d990	32	vertex_3	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xc7b9972b	32	vertex_2	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xcb25cadb	32	num_stands	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0xcd22e1ed	32	cubemap	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/reserve_11.bin
+0xcd867357	32	filter_type	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 2dd1ebf4
+0xce9c1cd7	32	trigger_radius	verbes	0.053	rtpc_propriete|2-9 ; settings/ammunition.bin
+0xd450a9b1	32	num_gun_displays	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/trophy_lodge_settings.bin
+0xd65d69f7	32	velocity_gain	directs	0.031	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xd7f292c6	32	MaxAmount	directs	0.031	rtpc_propriete|2-9 ; settings/creatures.bin
+0xd8b82ab1	32	Instant	directs	0.031	rtpc_propriete|2-9 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.afsmb
+0xdc01b112	32	animal_id_list	directs	0.031	rtpc_propriete|2-9 ; locations/trophy_lodge/trophy_lodge_object_types.blo
+0xde09ff64	32	bone12	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xde2b65f6	32	bone5	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xe1dd59a5	32	price	directs	0.031	rtpc_propriete|2-9 ; settings/hp_settings/animal_interest.bin
+0xe27b6bcf	32	vertex_7	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xe89a3d35	32	bias0	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0xe89c9128	32	inputs	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 78a5e94c
+0xe89e6ad7	32	vertex_1	positionnels	0.34	rtpc_propriete|2-9 ; (sans nom) 244ac773
+0xea5dcb95	32	bone8	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0xeafb5897	32	character_id	directs	0.031	rtpc_propriete|2-9 ; (sans nom) 675f467e
+0xf1752407	32	bias1	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0xf2ad406d	32	radius2	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0xf99d5926	32	max_rotation	affixes	0.00067	rtpc_propriete|2-9 ; settings/hp_settings/reserve_0.bin
+0xfda41113	32	radius1	positionnels	0.34	rtpc_propriete|2-9 ; settings/gamestaterun.bin
+0xfe4ed70b	32	bone11	positionnels	0.34	rtpc_propriete|2-9 ; animations/ragdoll/ragdoll_params.brdd
+0x04a4c3b7	32	forest_color	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x0869fcdc	32	normal_bend_far	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x13a3a013	32	retarget_from	paires	0.11	rtpc_propriete|>=1000 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0x24fbfd71	32	glow_intensity	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0x25e982d7	32	phase_match_mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x2a7f3b89	32	ValueType	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/birds/black_grouse/black_grouse_main_female.afsmb
+0x2cd26c76	32	from_anim_id	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x2f0780c0	32	ignore_snow	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x371aba7e	32	transition_from_time	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x394307f2	32	climate_zone	directs	0.015	rtpc_propriete|>=1000 ; worlds/world4/locations/hp_trophyworld_3/global_sound_layers_trophyworld_3.blo
+0x39cc0139	32	normal_fade_distance	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x3ae7fcf0	32	pass_location	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x3d9783de	32	on_open	verbes	0.026	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0x3f4777d9	32	mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x442e7325	32	no_traffic	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0x4d6e9b40	32	segment_type	affixes	0.00033	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x50daf1bd	32	model_color_begin	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x57ab7197	32	transition_to_time	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x5955dcde	32	slope_range	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x5f441db3	32	global_illumination	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x6227310a	32	ignore_sand	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x649102b3	32	scalable	directs	0.015	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x686a06ed	32	is_pebble	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x6e1e7549	32	location_reveal_trigger	directs	0.015	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x77c00edc	32	normal_bend_near	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x78cdd396	32	late_start_time	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x78e3325a	32	weight_normalization	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x7e224ff1	32	on_close	verbes	0.026	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0x7f90ec3f	32	clear_color	directs	0.015	rtpc_propriete|>=1000 ; settings/hp_settings/reserve_0.bin
+0x81089bb5	32	collected_event	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x81fb4855	32	pfxfile	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x853892e8	32	height_range	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x87eeb199	32	sway_factor	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x8b544b7e	32	offset_matrix	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0x8cd66e1f	32	to_anim_id	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x904e67b0	32	foliage_density	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0x92890535	32	fade_color	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x96270a00	32	early_finish_time	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x96e79950	32	set_color	verbes	0.026	rtpc_propriete|>=1000 ; settings/hp_settings/reserve_0.bin
+0x9814ff75	32	pass_through_sound_volume	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xa095011d	32	message_handler	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xa0b9dd83	32	model_color_end	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xa3809ad6	32	cluster_radius	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xad1572e6	32	safe_radius	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xae8fce71	32	network_layer	paires	0.11	rtpc_propriete|>=1000 ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0xb1ab9901	32	animation_time	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0xb282def7	32	cluster_density	paires	0.11	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xb4e6cf44	32	is_chaos_object	directs	0.015	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/z00/mission_locations/mm17140_tiger_spawner.blo
+0xb671a698	32	discover_state	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xb7a9d0b3	32	playback_speed	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xbad6e4b8	32	state_reenter_mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xbb65a4e2	32	shadow_cascade_limit	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xbd485dde	32	state_id	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xbd68b4e8	32	segment_id	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xbf2f9447	32	default_score	affixes	0.00033	rtpc_propriete|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xc057b91f	32	discover_event	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xc28b6ce6	32	alpha_multiplier	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xc29bffc6	32	play_mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xc4280bbf	32	no_spawn	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/outposts/outpost_nepal_01.blo
+0xc74c1c32	32	impostor	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xd3999495	32	blend_in_curve	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xd4c0eb68	32	set_value	directs	0.015	rtpc_propriete|>=1000 ; settings/hp_settings/reserve_0.bin
+0xda515849	32	remote_player	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xe288e8c7	32	force_instant	paires	0.11	rtpc_propriete|>=1000 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xe37d91b2	32	blend_out_curve	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0xe4ef2df5	32	height_variation	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
+0xf89dca72	32	inner_spread	paires	0.11	rtpc_propriete|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xfdcf4c12	32	transition_mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
