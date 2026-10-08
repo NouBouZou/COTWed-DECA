@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402
+import familles as FA  # noqa: E402
 import resoudre_hashes as RH  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import Rtpc, k_type_none, k_type_str, k_type_u32  # noqa: E402
@@ -152,9 +153,10 @@ class TestDictionary(unittest.TestCase):
 
 
 def write_audit_csv(path, rows):
-    """inconnus.csv au format d'audit_noms_internes.py : (categorie, largeur, hash, occurrences)."""
-    lines = ['categorie;largeur;hash;occurrences;fichiers;exemple']
-    lines += ['{};{};{:x};{};1;fichier_{}'.format(c, w, h, n, i) for i, (c, w, h, n) in enumerate(rows)]
+    """inconnus.csv au format d'audit_noms_internes.py : (categorie, largeur, hash, occurrences[, familles])."""
+    lines = ['categorie;largeur;hash;occurrences;fichiers;exemple;familles']
+    lines += ['{};{};{:x};{};1;fichier_{};{}'.format(r[0], r[1], r[2], r[3], i, r[4] if len(r) > 4 else '')
+              for i, r in enumerate(rows)]
     Path(path).write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
@@ -253,6 +255,43 @@ class TestTargetsMode(unittest.TestCase):
         (d,) = RH.decide(s, list(real), 0.1, 0.01)
         self.assertEqual(d.mode, 'aucun')
         self.assertFalse(RH.select_names(s, [d]).retained)
+
+    def test_family_rule(self):
+        self.assertEqual(FA.famille('animations/hp_antlers/axis_deer/trophy_feature_data_male.bin'),
+                         'trophy_feature_data.bin')
+        self.assertEqual(FA.famille('settings/hp_settings/reserve_13.bin'), 'reserve_#.bin')
+        self.assertEqual(FA.famille('animations/x/ub_hunter_male_first_person.asb'), '.asb')
+        self.assertEqual(FA.famille('(sans nom) 0a5be1e1'), '(sans nom)')
+        self.assertEqual(FA.mots('CircumferenceBurr'), ['circumference', 'burr'])
+        self.assertEqual(FA.mots('frame_12'), ['frame'])
+
+    def test_family_targets_and_vocabulary(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'inconnus.csv'
+            write_audit_csv(path, [('rtpc_propriete', 32, 0x42, 30, 'a.bin:20|.asb:10'),
+                                   ('rtpc_objid', 48, 0x43, 5, 'a.bin:5'),
+                                   ('rtpc_event', 48, 0x44, 3, '.blo:3')])
+            fams = RH.family_targets_from_csv(path, ['rtpc_propriete', 'rtpc_event', 'rtpc_objid'])
+            self.assertEqual(sorted(fams), ['.asb', '.blo', 'a.bin'])                  # objid : pas de famille
+            self.assertEqual(fams['a.bin']['rtpc_propriete|f:a.bin'].items[(32, 0x42)].count, 20)
+            self.assertIn((32, 0x44), fams['.blo']['rtpc_event|f:.blo'].items)        # evenement sur 32 bits
+            write_audit_csv(path, [('rtpc_propriete', 32, 0x42, 30)])
+            self.assertEqual(RH.family_targets_from_csv(path, ['rtpc_propriete']), {})   # colonne vide
+        vocab = RH.family_vocabulary(['keyframe_index', 'frame_7', 'frame_index'], 'trophy_feature_data.bin',
+                                     ['spread', 'index'])
+        self.assertEqual(vocab, ['frame', 'index', 'keyframe', 'trophy', 'feature', 'data', 'spread'])
+
+    def test_merge_rejects_conflicting_names(self):
+        a = RH.Selection({'rtpc_propriete|1': {(32, 1): ('alpha', 'directs', 0.0), (32, 2): ('beta', 'paires', 0.1)}},
+                         [])
+        b = RH.Selection({'rtpc_propriete|f:x.bin': {(32, 1): ('alpha', 'paires', 0.0),
+                                                       (32, 2): ('gamma', 'paires', 0.0),
+                                                       (32, 3): ('delta', 'triplets', 0.0)}}, [])
+        m = RH.merge_selections([('', a), ('famille-', b)])
+        self.assertEqual(sorted(m.names), [(32, 1), (32, 3)])
+        self.assertEqual(m.names[(32, 1)][2], 'directs')        # premiere selection qui l'a retenu
+        self.assertEqual(m.names[(32, 3)][2], 'famille-triplets')
+        self.assertEqual([(k, n) for _c, k, n in m.ambiguous], [((32, 2), ['beta', 'gamma'])])
 
     def test_two_retained_names_on_one_hash_are_ambiguous(self):
         t = RH.Targets()
@@ -363,7 +402,7 @@ class TestEndToEnd(unittest.TestCase):
         names = {n for ns in _projet.load_dictionary(dictionary).values() for n in ns}
         self.assertEqual(names, {'cotw_cible_fabriquee', 'received_0', 'received_1', 'received_2', 'received_3'})
         self.assertIn('## Bilan', text)
-        self.assertIn('| rtpc_propriete | 1 | 1200 | 1 | 1200 | 100.0% |', text)   # 'name' n'est plus une cible
+        self.assertIn('| rtpc_propriete | 1 | 1200 | 1 | 0 | 1200 | 100.0% |', text)   # 'name' n'est plus une cible
         self.assertIn('| positionnels | 1 | 4 | 4 |', text)
         self.assertNotIn('rtpc_objid', text.split('## Bilan')[1])
         lines = [l for l in dictionary.read_text(encoding='utf-8').splitlines() if 'cotw_cible_fabriquee' in l]
@@ -373,6 +412,37 @@ class TestEndToEnd(unittest.TestCase):
                  str(self.vocab), '--paires', '0', '--triplets', '0', '--dictionnaire', str(dictionary),
                  '--out', str(out)])
         self.assertIn('Aucune cible', out.read_text(encoding='utf-8'))
+
+
+    def test_5_family_passes(self):
+        """Passes par famille : des noms que les passes globales ne trouvent pas (mots du domaine et des noms
+        connus de la famille), ecrits avec la passe famille-*."""
+        csv_path = Path(self.tmp.name) / 'inconnus_familles.csv'
+        fam = 'trophy_feature_data.bin'
+        write_audit_csv(csv_path, [
+            ('rtpc_propriete', 32, h32('circumference_burr'), 300, fam + ':300'),
+            ('rtpc_propriete', 32, h32('antler_offset'), 500, fam + ':500'),
+            ('rtpc_noeud', 32, h32('keyframe_lookup_table'), 200, fam + ':200'),
+            ('rtpc_noeud', 32, h32('ailleurs_inconnu'), 50, 'reserve_#.bin:50'),      # famille trop peu touchee
+        ])
+        Path(self.tmp.name, 'noms_par_famille.tsv').write_text(
+            '# famille\tcategorie\tnom\toccurrences\n'
+            + ''.join('{}\trtpc_propriete\t{}\t10\n'.format(fam, n)
+                      for n in ('keyframe_index', 'lookup_value', 'table_size')), encoding='utf-8')
+        dictionary = Path(self.tmp.name) / 'noms_familles.tsv'
+        out = Path(self.tmp.name) / 'familles.md'
+        RH.main(['chercher', self.project, '--cibles', str(csv_path), '--sources', 'exe', '--vocabulaire',
+                 str(self.vocab), '--paires', '0', '--triplets', '0', '--positionnels', '8', '--temoin',
+                 '--dictionnaire', str(dictionary), '--out', str(out)])
+        text = out.read_text(encoding='utf-8')
+        entries = {cols[2]: cols[3] for cols in (l.split('\t') for l in dictionary.read_text(encoding='utf-8')
+                                                 .splitlines() if not l.startswith('#'))}
+        self.assertEqual(entries, {'circumference_burr': 'famille-paires', 'antler_offset': 'famille-paires',
+                                   'keyframe_lookup_table': 'famille-triplets'})
+        self.assertIn('## Passes par famille', text)
+        self.assertIn('| `trophy_feature_data.bin` | 3 | 1000 | 3 |', text)
+        self.assertNotIn('`reserve_#.bin`', text)
+        self.assertIn('| rtpc_propriete | 2 | 800 | 2 | 2 | 800 | 100.0% |', text)
 
 
 if __name__ == '__main__':

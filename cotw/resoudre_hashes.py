@@ -26,6 +26,9 @@ audit_noms_internes.py (inconnus.csv), sans relire les fichiers. Les categories 
 nombre d'occurrences, une passe supplementaire essaie verbe_objet (show_clues...), et un nom est retenu par
 passe et par classe : en bloc si les faux positifs attendus restent faibles, sinon seulement s'il est
 corrobore par un autre nom de meme racine (frame_0 ... frame_98). --temoin mesure les faux positifs reels.
+Puis, si inconnus.csv a la colonne familles (audit du 2026-10-08 soir), des passes par famille de fichiers
+(familles.py) : le vocabulaire d'une famille (noms_par_famille.tsv, vocabulaire_familles.txt) contre ses seules
+cibles, ce qui rend les paires et les triplets surs sur les petites familles (trophy_feature_data.bin).
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\resoudre_hashes.py chercher D:\\dev\\work\\hp --out D:\\dev\\audits\\noms.md
@@ -49,6 +52,7 @@ from typing import Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402
+import familles as FA  # noqa: E402
 import rtpc_dump as D  # noqa: E402
 
 import deca.ff_rtpc_write as W  # noqa: E402
@@ -883,6 +887,201 @@ def run_target_passes(searcher: CategorySearcher, identifiers: Set[str], words: 
             .replace(',', ' '))
 
 
+# ---------------------------------------------------------------------------------------------------------
+# Passes par famille de fichiers (familles.py) : candidats d'une famille contre les seules cibles de la famille
+# ---------------------------------------------------------------------------------------------------------
+#
+# Les faux positifs attendus d'une passe sont candidats x cibles / 2^32. Les passes globales confrontent tous les
+# candidats a toutes les cibles ; une passe par famille ne confronte que les mots d'une famille (noms deja connus
+# dans ses fichiers, vocabulaire du domaine) aux hashes inconnus de cette famille. Sur les 195 cibles des
+# trophy_feature_data, 2,8 millions de triplets n'attendent que 0,13 coincidence.
+
+FAMILLE = 'f:'
+VOCABULARY_FAMILIES = HERE / 'dictionnaires' / 'vocabulaire_familles.txt'
+CATEGORIES_FAMILLES = ('rtpc_noeud', 'rtpc_propriete', 'rtpc_event')
+
+
+def family_targets_from_csv(path: Path, categories: Iterable[str], min_occurrences: int = 1
+                            ) -> Dict[str, Dict[str, Targets]]:
+    """famille -> {classe 'categorie|f:famille': cibles}, d'apres la colonne familles d'inconnus.csv
+    ('famille:occurrences|...'). Le compte d'une cible est son nombre d'occurrences dans la famille.
+    Vide si le fichier n'a pas cette colonne (audit anterieur au 2026-10-08 soir)."""
+    import csv
+    wanted = set(categories) & set(CATEGORIES_FAMILLES)
+    out: Dict[str, Dict[str, Targets]] = {}
+    with open(path, encoding='utf-8-sig', newline='') as f:
+        reader = csv.DictReader(f, delimiter=';')
+        if 'familles' not in (reader.fieldnames or []):
+            return {}
+        for r in reader:
+            cat = r['categorie']
+            if cat not in wanted or int(r['occurrences']) < min_occurrences or not r.get('familles'):
+                continue
+            value = int(r['hash'], 16)
+            width = width_of(cat, value, int(r['largeur']))
+            for part in r['familles'].split('|'):
+                fam, _sep, n = part.rpartition(':')
+                if not fam:
+                    continue
+                t = out.setdefault(fam, {}).setdefault(cat + SEP + FAMILLE + fam, Targets())
+                t.add(width, value, cat, r.get('exemple', ''))
+                key = (width, value & MASK[width])
+                if key in t.items:
+                    t.items[key].count = int(n)
+    return out
+
+
+def load_family_names(path: Optional[Path]) -> Dict[str, collections.Counter]:
+    """noms_par_famille.tsv (audit_noms_internes.py) : famille -> {nom connu: occurrences}."""
+    out: Dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    if path is None or not Path(path).is_file():
+        return out
+    for line in Path(path).read_text(encoding='utf-8').splitlines():
+        if not line or line.startswith('#'):
+            continue
+        cols = line.split('\t')
+        if len(cols) >= 4 and cols[2]:
+            out[cols[0]][cols[2]] += int(cols[3]) if cols[3].isdigit() else 1
+    return out
+
+
+def family_vocabulary(names: Iterable[str], fam: str, domain: List[str]) -> List[str]:
+    """Mots des noms connus de la famille, du plus repandu (nombre de noms qui le contiennent) au moins repandu,
+    puis les mots du nom de la famille, puis le vocabulaire du domaine."""
+    counter = collections.Counter()
+    for n in names:
+        for m in set(FA.mots(n)):
+            counter[m] += 1
+    ranked = [m for m, _c in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))]
+    stem = '' if fam == FA.SANS_NOM or fam.startswith('.') else fam.rsplit('.', 1)[0]    # trophy_feature_data
+    return list(dict.fromkeys(ranked + FA.mots(stem) + [w for w in domain if w]))
+
+
+@dataclass
+class FamilyRun:
+    famille: str
+    real: Dict[str, Targets]
+    searcher: CategorySearcher
+    decisions: List[Decision]
+    selection: Selection
+    known: int
+    vocab2: int
+    vocab3: int
+    triplets: bool
+
+    @property
+    def occurrences(self) -> int:
+        return sum(x.count for t in self.real.values() for x in t.items.values())
+
+    @property
+    def candidates(self) -> int:
+        return sum(p.candidates for p in self.searcher.passes)
+
+
+def run_family(fam: str, real_f: Dict[str, Targets], names: List[str], domain: List[str], args) -> FamilyRun:
+    """Passes d'une famille : directs (variantes des noms connus), affixes, positionnels, paires, et triplets si
+    au moins une classe de la famille les supporte (faux positifs attendus <= --famille-triplets-fp)."""
+    import zlib
+    vocab = family_vocabulary(names, fam, domain)
+    vocab2 = vocab[:args.famille_paires]
+    vocab3 = vocab[:args.famille_triplets]
+    targets = dict(real_f)
+    if args.temoin:
+        targets.update(fictive_targets(real_f, seed=zlib.crc32(fam.encode('utf-8'))))
+    s = CategorySearcher(targets)
+    s.run('directs', gen_direct(names, vocab2))
+    if args.affixes:
+        s.run('affixes', gen_affixes(snake_forms(names) | set(vocab2)), len(AFFIX_PREFIXES) + len(AFFIX_SUFFIXES), 1)
+    if args.positionnels > 0:
+        s.run('positionnels', gen_positional(vocab2, args.positionnels), args.positionnels + 10, 1)
+    if len(vocab2) > 1:
+        s.run('paires', gen_pairs(vocab2), len(vocab2), 2)
+    n3 = len(vocab3) ** 3
+    triplets = len(vocab3) > 2 and min(n3 * s.rate(c) for c in real_f) <= args.famille_triplets_fp
+    if triplets:
+        s.run('triplets', gen_triples(vocab3), len(vocab3) ** 2, 2)
+    decisions = decide(s, list(real_f), args.seuil_fp_famille, args.seuil_taux, args.tout_ecrire)
+    return FamilyRun(fam, real_f, s, decisions, select_names(s, decisions), len(names), len(vocab2), len(vocab3),
+                     triplets)
+
+
+def run_families(args, real: Dict[str, Targets], found: Selection, log=print) -> List[FamilyRun]:
+    """Toutes les passes par famille : familles triees par occurrences inconnues, au plus --familles-max, au moins
+    --familles-min-occurrences. Une cible deja nommee (audit, dictionnaire) est absente de `real` et ignoree ici."""
+    categories = [c.strip() for c in args.categories.split(',') if c.strip()]
+    by_family = family_targets_from_csv(Path(args.cibles), categories, args.min_occurrences)
+    if not by_family:
+        log('  passes par famille : pas de colonne familles dans {} (audit a relancer)'.format(args.cibles))
+        return []
+    alive = {(categorie(c), k) for c, t in real.items() for k in t.items}
+    for fam, classes in by_family.items():
+        for cls, t in classes.items():
+            for k in [k for k in t.items if (categorie(cls), k) not in alive]:
+                del t.items[k]
+        by_family[fam] = {c: t for c, t in classes.items() if len(t)}
+    weight = {fam: sum(x.count for t in cl.values() for x in t.items.values()) for fam, cl in by_family.items()}
+    chosen = [f for f in sorted(weight, key=lambda f: (-weight[f], f))
+              if weight[f] >= args.familles_min_occurrences][:args.familles_max]
+    names_path = Path(args.familles_noms) if args.familles_noms else Path(args.cibles).parent / 'noms_par_famille.tsv'
+    names_by_family = load_family_names(names_path)
+    domain = load_word_list(Path(args.vocabulaire_familles)) + (
+        load_word_list(Path(args.vocabulaire)) if args.vocabulaire else [])
+    # noms retenus par les passes globales de cette session, rattaches aux familles de leurs cibles
+    session = collections.defaultdict(set)
+    for cls, picks in found.retained.items():
+        for key, (n, _p, _e) in picks.items():
+            for fam, classes in by_family.items():
+                if any(key in t.items for t in classes.values()):
+                    session[fam].add(n)
+    log('  passes par famille : {} familles retenues sur {} ; vocabulaire connu : {}'.format(
+        len(chosen), len(by_family), names_path if names_path.is_file() else 'absent'))
+    runs = []
+    for fam in chosen:
+        names = sorted(set(names_by_family.get(fam, {})) | session[fam])
+        t0 = time.time()
+        run = run_family(fam, by_family[fam], names, domain, args)
+        runs.append(run)
+        log('    {:<40} : {:>6} cibles, {:>4} noms connus, {:>10,} candidats, {:>4} retenus ({:.0f} s)'.format(
+            fam[:40], sum(len(t) for t in run.real.values()), run.known, run.candidates,
+            sum(len(p) for p in run.selection.retained.values()), time.time() - t0).replace(',', ' '))
+    return runs
+
+
+@dataclass
+class Merged:
+    """Noms retenus toutes passes confondues : cle -> (nom, categorie, passe, faux positifs attendus, classe) ;
+    une cle qui recoit deux noms differents (dans une classe, ou entre passes globales et par famille) est
+    ecartee et listee dans ambiguous."""
+    names: Dict[Tuple[int, int], Tuple[str, str, str, float, str]]
+    ambiguous: List[Tuple[str, Tuple[int, int], List[str]]]
+
+
+def merge_selections(selections: List[Tuple[str, Selection]]) -> Merged:
+    """selections : (prefixe de passe, selection). Le prefixe distingue au dictionnaire les passes par famille."""
+    by_key: Dict[Tuple[int, int], Dict[str, Tuple[str, str, float, str]]] = collections.defaultdict(dict)
+    ambiguous: List[Tuple[str, Tuple[int, int], List[str]]] = []
+    for prefix, sel in selections:
+        ambiguous += sel.ambiguous
+        for cls, picks in sel.retained.items():
+            for key, (n, p, e) in picks.items():
+                by_key[key].setdefault(n, (categorie(cls), prefix + p, e, cls))
+    names = {}
+    for key, ns in by_key.items():
+        if len(ns) > 1:
+            ambiguous.append(('/'.join(sorted({v[0] for v in ns.values()})), key, sorted(ns)))
+        else:
+            (n, (cat, p, e, cls)), = ns.items()
+            names[key] = (n, cat, p, e, cls)
+    for _c, key, _n in ambiguous:
+        names.pop(key, None)
+    seen, unique = set(), []
+    for a in ambiguous:
+        if a[1] not in seen:
+            seen.add(a[1])
+            unique.append(a)
+    return Merged(names, unique)
+
+
 def cmd_search_targets(args, vfs) -> int:
     """chercher --cibles : cibles lues dans inconnus.csv, sans relire les fichiers du jeu."""
     categories = [c.strip() for c in args.categories.split(',') if c.strip()]
@@ -924,19 +1123,20 @@ def cmd_search_targets(args, vfs) -> int:
     run_target_passes(searcher, identifiers, words, path_words, args)
     decisions = decide(searcher, list(real), args.seuil_fp, args.seuil_taux, args.tout_ecrire)
     found = select_names(searcher, decisions)
+    family_runs = run_families(args, real, found) if args.familles else []
+    merged = merge_selections([('', found)] + [('famille-', r.selection) for r in family_runs])
 
-    # un meme hash peut etre cible dans deux categories (propriete et noeud) : une seule ligne au dictionnaire
-    entries, seen = [], set()
-    for cls in real:
-        for key, (name, p, expected) in sorted(found.retained.get(cls, {}).items()):
-            if (key, name) not in seen:
-                seen.add((key, name))
-                t = real[cls].items[key]
-                entries.append((key, name, p, expected, '{} ; {}'.format(cls, t.contexts[0] if t.contexts else '')))
+    # une seule ligne au dictionnaire par (hash, nom), meme si le hash est cible dans deux categories
+    contexts = {}
+    for cls, t in real.items():
+        for key, x in t.items.items():
+            contexts.setdefault(key, x.contexts[0] if x.contexts else '')
+    entries = [(key, n, p, e, '{} ; {}'.format(cls, contexts.get(key, '')))
+               for key, (n, _cat, p, e, cls) in sorted(merged.names.items())]
     written = [] if args.sans_ecrire else append_to_dictionary(dict_path, entries)
     print('{} nom(s) ajoute(s) a {}'.format(len(written), dict_path))
 
-    L = report_targets(args, real, searcher, decisions, found, sources, path_words, written, dict_path)
+    L = report_targets(args, real, searcher, decisions, merged, family_runs, sources, path_words, written, dict_path)
     text = '\n'.join(L) + '\n'
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
@@ -947,41 +1147,50 @@ def cmd_search_targets(args, vfs) -> int:
     return 0
 
 
-def report_targets(args, real, searcher: CategorySearcher, decisions: List[Decision], found: Selection,
-                   sources, path_words, written, dict_path) -> List[str]:
+def report_targets(args, real, searcher: CategorySearcher, decisions: List[Decision], merged: Merged,
+                   family_runs: List[FamilyRun], sources, path_words, written, dict_path) -> List[str]:
     written_keys = {(e[0], e[1]) for e in written}
     categories = list(dict.fromkeys(categorie(c) for c in real))
+    occ = {}                                   # (categorie, cle) -> occurrences totales (classes globales)
+    for cls, t in real.items():
+        for key, x in t.items.items():
+            occ[(categorie(cls), key)] = x.count
+    all_decisions = decisions + [d for r in family_runs for d in r.decisions]
     L = ['# Résolution de hashes sur les cibles d\'un audit', '',
          '- Cibles : `{}` (occurrences ≥ {}) ; classes : catégorie × nombre d\'occurrences.'.format(
              args.cibles, args.min_occurrences),
          '- Sources : {} ; mots des chemins : {} ; vocabulaire : `{}`'.format(
              ', '.join('{} ({} identifiants)'.format(s, len(i)) for s, i in sources.items()) or 'aucune',
              len(path_words), args.vocabulaire),
-         '- Passes : ' + ', '.join('{} ({:,} candidats)'.format(p.name, p.candidates).replace(',', ' ')
-                                   for p in searcher.passes),
-         '- Décision par passe et classe : tous les noms si les faux positifs attendus restent ≤ {} ou ≤ {} × '
-         'cibles touchées ; sinon les seuls noms corroborés (racine partagée) si leur estimation passe le même '
-         'test ; sinon aucun. Un hash qui reçoit deux noms retenus n\'est pas écrit.'.format(
-             args.seuil_fp, args.seuil_taux),
+         '- Passes globales : ' + ', '.join('{} ({:,} candidats)'.format(p.name, p.candidates).replace(',', ' ')
+                                            for p in searcher.passes),
+         '- Passes par famille : {}'.format(
+             '{} familles, {:,} candidats ; vocabulaire du domaine `{}`'.format(
+                 len(family_runs), sum(r.candidates for r in family_runs), args.vocabulaire_familles).replace(',', ' ')
+             if family_runs else 'aucune'),
+         '- Décision par passe et classe : tous les noms si les faux positifs attendus restent ≤ {} ({} pour une '
+         'famille) ou ≤ {} × cibles touchées ; sinon les seuls noms corroborés (racine partagée) si leur estimation '
+         'passe le même test ; sinon aucun. Un hash qui reçoit deux noms retenus n\'est pas écrit.'.format(
+             args.seuil_fp, args.seuil_fp_famille, args.seuil_taux),
          '- Témoin : {}'.format('autant de cibles fictives que de vraies par classe ; « témoin retenu » compte '
                                 'celles que les mêmes décisions auraient nommées (faux positifs certains).'
                                 if args.temoin else 'non (option --temoin).'),
          '']
-    total_ret = sum(len(p) for p in found.retained.values())
-    total_exp = sum(d.expected for d in decisions if d.retained)
+    total_exp = sum(d.expected for d in all_decisions if d.retained)
     L += ['## Bilan', '',
-          '| Catégorie | Cibles | Occurrences | Noms retenus | Occurrences nommées | Part |',
-          '|---|---:|---:|---:|---:|---:|']
+          '| Catégorie | Cibles | Occurrences | Noms retenus | dont passes par famille | Occurrences nommées | Part |',
+          '|---|---:|---:|---:|---:|---:|---:|']
     for cat in categories:
-        cls_list = [c for c in real if categorie(c) == cat]
-        n = sum(len(real[c]) for c in cls_list)
-        occ = sum(x.count for c in cls_list for x in real[c].items.values())
-        ret = sum(len(found.retained.get(c, {})) for c in cls_list)
-        occ_ret = sum(real[c].items[k].count for c in cls_list for k in found.retained.get(c, {}))
-        L.append('| {} | {} | {} | {} | {} | {:.1%} |'.format(cat, n, occ, ret, occ_ret, occ_ret / occ if occ else 0))
+        keys = [k for (c, k) in occ if c == cat]
+        total = sum(occ[(cat, k)] for k in keys)
+        named = [k for k in keys if k in merged.names]
+        fam = sum(1 for k in named if merged.names[k][2].startswith('famille-'))
+        occ_ret = sum(occ[(cat, k)] for k in named)
+        L.append('| {} | {} | {} | {} | {} | {} | {:.1%} |'.format(
+            cat, len(keys), total, len(named), fam, occ_ret, occ_ret / total if total else 0))
     L += ['', 'Noms retenus : {}, nouveaux au dictionnaire : {} ; faux positifs attendus parmi eux : {:.2g}{}.'.format(
-        total_ret, len(written), total_exp,
-        ' ; témoin retenu : {}'.format(sum(d.temoin_retained for d in decisions)) if args.temoin else ''), '']
+        len(merged.names), len(written), total_exp,
+        ' ; témoin retenu : {}'.format(sum(d.temoin_retained for d in all_decisions)) if args.temoin else ''), '']
     for cat in categories:
         L += ['## {}'.format(cat), '',
               '| Passe | Classe | Cibles | Touchées | FP attendus | Corroborées | FP attendus (corr.) | Décision | '
@@ -994,18 +1203,42 @@ def report_targets(args, real, searcher: CategorySearcher, decisions: List[Decis
                 d.pass_name, d.cls.split(SEP)[1], len(real[d.cls]), d.touched, d.expected_all, d.corroborated,
                 d.expected_corr, d.mode,
                 '{} / {}'.format(d.temoin_touched, d.temoin_retained) if args.temoin else '-'))
-        rows = sorted(((real[c].items[k].count, k, n, p) for c in real if categorie(c) == cat
-                       for k, (n, p, _e) in found.retained.get(c, {}).items()), reverse=True)
+        rows = sorted(((occ[(cat, k)], k, n, p) for k, (n, c, p, _e, _cls) in merged.names.items()
+                       if (cat, k) in occ), reverse=True)
         if rows:
             L += ['', '{} noms retenus ; les plus fréquents :'.format(len(rows)), '',
                   '| Hash | Nom | Passe | Occurrences | Nouveau |', '|---|---|---|---:|---|']
             L += ['| `{:x}` | `{}` | {} | {} | {} |'.format(k[1], n, p, c, 'oui' if (k, n) in written_keys else 'non')
                   for c, k, n, p in rows[:40]]
         L.append('')
-    if found.ambiguous:
+    if family_runs:
+        L += ['## Passes par famille', '',
+              'Chaque famille confronte son vocabulaire (mots de ses noms connus, de son nom, du domaine) à ses '
+              'seules cibles. Triplets : seulement si une classe de la famille les supporte.', '',
+              '| Famille | Cibles | Occurrences | Noms connus | Vocabulaire (paires / triplets) | Candidats | '
+              'Noms retenus | FP attendus | Témoin touché / retenu |',
+              '|---|---:|---:|---:|---|---:|---:|---:|---:|']
+        for r in family_runs:
+            ds = r.decisions
+            L.append('| `{}` | {} | {} | {} | {} / {} | {:,} | {} | {:.2g} | {} |'.format(
+                r.famille, sum(len(t) for t in r.real.values()), r.occurrences, r.known, r.vocab2,
+                r.vocab3 if r.triplets else '-', r.candidates, sum(len(p) for p in r.selection.retained.values()),
+                sum(d.expected for d in ds if d.retained),
+                '{} / {}'.format(sum(d.temoin_touched for d in ds), sum(d.temoin_retained for d in ds))
+                if args.temoin else '-').replace(',', ' '))
+        rows = sorted(((occ.get((c, k), 0), k, n, p, cls) for k, (n, c, p, _e, cls) in merged.names.items()
+                       if p.startswith('famille-')), reverse=True)
+        if rows:
+            L += ['', 'Noms trouvés par les passes par famille, les plus fréquents :', '',
+                  '| Hash | Nom | Famille | Passe | Occurrences |', '|---|---|---|---|---:|']
+            L += ['| `{:x}` | `{}` | `{}` | {} | {} |'.format(k[1], n, cls.split(SEP + FAMILLE, 1)[-1],
+                                                           p[len('famille-'):], c)
+                  for c, k, n, p, cls in rows[:60]]
+        L.append('')
+    if merged.ambiguous:
         L += ['## Hashes à plusieurs noms retenus (non écrits)', '']
         L += ['- {} `{:x}` : {}'.format(cls, k[1], ', '.join('`{}`'.format(n) for n in names))
-              for cls, k, names in found.ambiguous[:50]]
+              for cls, k, names in merged.ambiguous[:50]]
         L.append('')
     L += ['Dictionnaire : `{}`'.format(dict_path)]
     return L
@@ -1265,6 +1498,22 @@ def main(argv=None):
                         'cette fraction des cibles touchees (defaut 0.01)')
     s.add_argument('--sans-verbes', dest='verbes', action='store_false',
                    help='avec --cibles : sauter la passe verbe_objet (show_x, hide_x...)')
+    s.add_argument('--sans-familles', dest='familles', action='store_false',
+                   help='avec --cibles : sauter les passes par famille de fichiers')
+    s.add_argument('--familles-noms', help='avec --cibles : vocabulaire connu par famille (defaut : '
+                                           'noms_par_famille.tsv a cote de inconnus.csv)')
+    s.add_argument('--vocabulaire-familles', default=str(VOCABULARY_FAMILIES),
+                   help='vocabulaire du domaine des passes par famille (trophees, animation, monde)')
+    s.add_argument('--familles-max', type=int, default=40, help='nombre maximal de familles (les plus touchees)')
+    s.add_argument('--familles-min-occurrences', type=int, default=100,
+                   help='occurrences inconnues minimales d\'une famille pour ses passes')
+    s.add_argument('--seuil-fp-famille', type=float, default=0.02,
+                   help='faux positifs attendus maximum d\'une passe par famille pour retenir tous ses noms')
+    s.add_argument('--famille-paires', type=int, default=400, help='mots combines par deux dans une famille')
+    s.add_argument('--famille-triplets', type=int, default=120, help='mots combines par trois dans une famille')
+    s.add_argument('--famille-triplets-fp', type=float, default=2.0,
+                   help='triplets d\'une famille seulement si une de ses classes en attend au plus ce nombre de '
+                        'faux positifs')
     s.add_argument('--tout-ecrire', action='store_true', help='ecrire tous les noms trouves, quel que soit le seuil')
     s.add_argument('--sans-ecrire', action='store_true', help='ne pas modifier le dictionnaire')
     s.add_argument('--dictionnaire', help='dictionnaire a utiliser (defaut : cotw\\dictionnaires\\hp_noms.tsv)')

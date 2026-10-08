@@ -28,7 +28,9 @@ Les objid ne sont souvent pas des hashes de chaines (identifiants tires au hasar
 taux de resolution est donne a part et ne doit pas etre lu comme un manque de noms.
 
 Sorties : rapport.md, inconnus.csv (les hashes non resolus, du plus frequent au moins frequent : l'entree de
-resoudre_hashes.py) et metrics.json. La base est ouverte en lecture seule.
+resoudre_hashes.py ; colonne familles : ou ils apparaissent, voir familles.py), noms_par_famille.tsv (les noms
+connus des noeuds, proprietes et evenements RTPC, par famille de fichiers : le vocabulaire des passes par famille
+de resoudre_hashes.py) et metrics.json. La base est ouverte en lecture seule.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out D:\\dev\\audits\\02-noms-internes
@@ -50,6 +52,7 @@ from typing import Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402  (installe le substitut de zugbruecke sous Linux)
+import familles as FA  # noqa: E402
 import noms_fichiers as NF  # noqa: E402
 
 TYPES_RTPC = ('rtpc',)
@@ -58,6 +61,10 @@ SENTINELLES = {0, 0xdeadbeef}
 MASK48 = 0xFFFFFFFFFFFF
 CATEGORIES = ('rtpc_noeud', 'rtpc_propriete', 'rtpc_event', 'rtpc_objid',
               'adf_stringhash_32', 'adf_stringhash_48', 'adf_stringhash_64')
+# Categories dont l'audit note les familles de fichiers (colonne familles, noms_par_famille.tsv) : les objid sont
+# des identifiants, et les StringHash ADF sont resolus a 100 %.
+CATEGORIES_FAMILLES = ('rtpc_noeud', 'rtpc_propriete', 'rtpc_event')
+FAMILLES_PAR_HASH = 5
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -76,8 +83,12 @@ class Collecte:
         self.pointeurs = 0
         self.types_manquants = collections.Counter()
         self.familles: Dict[Tuple[str, str], int] = collections.Counter()   # (categorie, extension) -> non resolus sur place
+        # (categorie, hash) -> {famille de fichiers (familles.py): occurrences}, pour CATEGORIES_FAMILLES
+        self.par_famille: Dict[Tuple[str, int], collections.Counter] = {}
+        self.noms_sur_place: Dict[Tuple[str, int], str] = {}     # nom lu dans le fichier lui-meme (chaine RTPC)
 
-    def ajouter(self, cat: str, h: int, chemin: str, sur_place: bool, vus: set):
+    def ajouter(self, cat: str, h: int, chemin: str, sur_place: bool, vus: set, fam: Optional[str] = None,
+                nom: Optional[str] = None):
         key = (cat, h)
         e = self.occ.get(key)
         if e is None:
@@ -88,8 +99,15 @@ class Collecte:
             e[1] += 1
         if sur_place:
             e[3] += 1
+            if nom is not None and key not in self.noms_sur_place:
+                self.noms_sur_place[key] = nom
         else:
             self.familles[(cat, NF.extension_complete(chemin))] += 1
+        if fam is not None:
+            f = self.par_famille.get(key)
+            if f is None:
+                f = self.par_famille[key] = collections.Counter()
+            f[fam] += 1
 
     def fusionner(self, autre: 'Collecte'):
         self.fichiers.update(autre.fichiers)
@@ -109,6 +127,14 @@ class Collecte:
         self.pointeurs += autre.pointeurs
         self.types_manquants.update(autre.types_manquants)
         self.familles.update(autre.familles)
+        for key, f in autre.par_famille.items():
+            mine = self.par_famille.get(key)
+            if mine is None:
+                self.par_famille[key] = f
+            else:
+                mine.update(f)
+        for key, nom in autre.noms_sur_place.items():
+            self.noms_sur_place.setdefault(key, nom)
 
 
 def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
@@ -118,27 +144,31 @@ def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
     rtpc = rtpc_from_bytes(data)
     noeuds = []
     pile = [rtpc.root_node]
-    chaines = set()
+    chaines: Dict[int, str] = {}      # hash32 -> chaine du fichier
     while pile:
         n = pile.pop()
         noeuds.append(n)
         pile.extend(n.child_table)
         for p in n.prop_table:
             if p.type == k_type_str and isinstance(p.data, (bytes, bytearray)):
-                chaines.add(int(hash32_func(bytes(p.data))) & 0xFFFFFFFF)
+                b = bytes(p.data)
+                chaines.setdefault(int(hash32_func(b)) & 0xFFFFFFFF, b.decode('utf-8', errors='replace'))
     vus = set()
+    fam = FA.famille(chemin)
     for i, n in enumerate(noeuds):
         if i and n.name_hash:     # la racine n'a pas de nom
-            c.ajouter('rtpc_noeud', n.name_hash & 0xFFFFFFFF, chemin, (n.name_hash & 0xFFFFFFFF) in chaines, vus)
+            h = n.name_hash & 0xFFFFFFFF
+            c.ajouter('rtpc_noeud', h, chemin, h in chaines, vus, fam, chaines.get(h))
         for p in n.prop_table:
             if p.name_hash:
-                c.ajouter('rtpc_propriete', p.name_hash & 0xFFFFFFFF, chemin, (p.name_hash & 0xFFFFFFFF) in chaines, vus)
+                h = p.name_hash & 0xFFFFFFFF
+                c.ajouter('rtpc_propriete', h, chemin, h in chaines, vus, fam, chaines.get(h))
             if p.type == k_type_objid and p.data:
                 c.ajouter('rtpc_objid', p.data & MASK48, chemin, False, vus)
             elif p.type == k_type_event and p.data:
                 for ev in p.data:
                     if ev:
-                        c.ajouter('rtpc_event', ev & MASK48, chemin, False, vus)
+                        c.ajouter('rtpc_event', ev & MASK48, chemin, False, vus, fam)
 
 
 def collecter_adf(adf, chemin: str, c: Collecte):
@@ -278,6 +308,43 @@ def resoudre(vfs, c: Collecte) -> Dict[Tuple[str, int], str]:
     return statut
 
 
+def noms_connus(vfs, c: Collecte, statut: Dict[Tuple[str, int], str]) -> Dict[Tuple[str, int], List[str]]:
+    """Noms des hashes resolus de CATEGORIES_FAMILLES : chaine du fichier (sur place), sinon core_strings et
+    dictionnaire du fork (hash32 ; evenements : hash48, puis hash32 des 32 bits bas, comme DECA)."""
+    out: Dict[Tuple[str, int], List[str]] = {}
+    a32, a48 = [], []
+    for key, st in statut.items():
+        cat, h = key
+        if cat not in CATEGORIES_FAMILLES or st == 'inconnu':
+            continue
+        if key in c.noms_sur_place:
+            out[key] = [c.noms_sur_place[key]]
+        elif cat == 'rtpc_event' and h >= 1 << 32:
+            a48.append(key)
+        else:
+            a32.append(key)
+    noms32 = _projet.resolve_hash32(vfs, [h & 0xFFFFFFFF for _c, h in a32]) if a32 else {}
+    for cat, h in a32:
+        if noms32.get(h & 0xFFFFFFFF):
+            out[(cat, h)] = noms32[h & 0xFFFFFFFF]
+    dictionnaire = _projet.load_dictionary()
+    for cat, h in a48:
+        rows = vfs.hash_string_match(hash48=h)
+        noms = sorted({_projet.to_text(r[1]) for r in rows} | set(dictionnaire.get((48, h), [])))
+        if not noms:
+            noms = _projet.resolve_hash32(vfs, [h & 0xFFFFFFFF]).get(h & 0xFFFFFFFF, [])
+        if noms:
+            out[(cat, h)] = noms
+    return out
+
+
+def familles_texte(f: Optional[collections.Counter]) -> str:
+    """Colonne familles d'inconnus.csv : 'famille:occurrences|...', les FAMILLES_PAR_HASH plus frequentes."""
+    if not f:
+        return ''
+    return '|'.join('{}:{}'.format(k, n) for k, n in f.most_common(FAMILLES_PAR_HASH))
+
+
 def bilan(c: Collecte, statut: Dict[Tuple[str, int], str]) -> Dict[str, dict]:
     out = {}
     for cat in CATEGORIES:
@@ -327,17 +394,30 @@ def comparer(ancien: Path, b: Dict[str, dict], echantillon: int) -> List[str]:
 
 
 def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select: int, echantillon: int,
-                   limite: int = 40, ancien: Optional[Path] = None):
+                   limite: int = 40, ancien: Optional[Path] = None,
+                   noms: Optional[Dict[Tuple[str, int], List[str]]] = None):
     out_dir.mkdir(parents=True, exist_ok=True)
     inconnus = [((cat, h), v) for (cat, h), v in c.occ.items() if statut[(cat, h)] == 'inconnu']
     inconnus.sort(key=lambda kv: (-kv[1][0], kv[0]))
     with open(out_dir / 'inconnus.csv', 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f, delimiter=';')
-        w.writerow(['categorie', 'largeur', 'hash', 'occurrences', 'fichiers', 'exemple'])
+        w.writerow(['categorie', 'largeur', 'hash', 'occurrences', 'fichiers', 'exemple', 'familles'])
         for (cat, h), (n, nf, ex, _sp) in inconnus:
             largeur = 32 if cat in ('rtpc_noeud', 'rtpc_propriete', 'adf_stringhash_32') else (
                 64 if cat == 'adf_stringhash_64' else 48)
-            w.writerow([cat, largeur, '{:0{}x}'.format(h, largeur // 4), n, nf, ex])
+            w.writerow([cat, largeur, '{:0{}x}'.format(h, largeur // 4), n, nf, ex,
+                        familles_texte(c.par_famille.get((cat, h)))])
+
+    # vocabulaire par famille : un nom connu par ligne et par famille ou il apparait
+    lignes_vocab = 0
+    with open(out_dir / 'noms_par_famille.tsv', 'w', encoding='utf-8', newline='\n') as f:
+        f.write('# famille\tcategorie\tnom\toccurrences (audit_noms_internes.py, vocabulaire de resoudre_hashes.py)\n')
+        for (cat, h), ns in sorted((noms or {}).items()):
+            for fam, n in sorted(c.par_famille.get((cat, h), {}).items()):
+                for nom in ns:
+                    if nom and '\t' not in nom and '\n' not in nom:
+                        f.write('{}\t{}\t{}\t{}\n'.format(fam, cat, nom, n))
+                        lignes_vocab += 1
 
     enums_faux = {t: e for t, e in c.enums.items() if e[2]}
     evolution = comparer(ancien, b, echantillon) if ancien else []
@@ -349,7 +429,9 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
                          'hors_membres': sum(e[1] for e in c.enums.values()),
                          'types_libelle_faux': len(enums_faux),
                          'occurrences_libelle_faux': sum(e[2] for e in enums_faux.values())},
-               'duree_s': round(duree, 1)}
+               'duree_s': round(duree, 1),
+               'familles': len({fam for f in c.par_famille.values() for fam in f}),
+               'noms_par_famille': lignes_vocab}
     (out_dir / 'metrics.json').write_text(json.dumps(metrics, indent=1, ensure_ascii=False), encoding='utf-8')
 
     L = ['# Audit des noms internes (N2)', '',
@@ -383,6 +465,19 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
           '| Categorie | Extension | Occurrences |', '|---|---|---:|']
     for (cat, ext), n in c.familles.most_common(25):
         L.append('| {} | `{}` | {} |'.format(cat, ext or '(sans)', n))
+    par_fam = collections.Counter()
+    cibles_fam = collections.Counter()
+    for (cat, h), _v in inconnus:
+        for fam, n in c.par_famille.get((cat, h), {}).items():
+            par_fam[(cat, fam)] += n
+            cibles_fam[(cat, fam)] += 1
+    if par_fam:
+        L += ['', '## Familles de fichiers (familles.py) : hashes inconnus', '',
+              'Vocabulaire connu par famille : `noms_par_famille.tsv` ({} lignes). Une famille a peu de cibles se '
+              'prete aux passes par famille de `resoudre_hashes.py`.'.format(metrics['noms_par_famille']), '',
+              '| Categorie | Famille | Hashes inconnus | Occurrences |', '|---|---|---:|---:|']
+        for (cat, fam), n in par_fam.most_common(25):
+            L.append('| {} | `{}` | {} | {} |'.format(cat, fam, cibles_fam[(cat, fam)], n))
     L += ['', '## Hashes inconnus les plus frequents (liste complete : `inconnus.csv`)', '',
           '| Categorie | Hash | Occurrences | Fichiers | Exemple |', '|---|---|---:|---:|---|']
     for (cat, h), (n, nf, ex, _sp) in inconnus[:limite]:
@@ -431,8 +526,9 @@ def main(argv=None):
                     print('  {} / {} lots ({:.0f} s)'.format(i + 1, len(lots), time.time() - t0), flush=True)
     statut = resoudre(vfs, total)
     b = bilan(total, statut)
+    noms = noms_connus(vfs, total, statut)
     L = ecrire_sorties(Path(args.out), total, statut, b, time.time() - t0, len(choix), args.echantillon,
-                       ancien=Path(args.compare) if args.compare else None)
+                       ancien=Path(args.compare) if args.compare else None, noms=noms)
     print('\n'.join(L[:L.index('## Enumerations ADF')]))
     print('\nResultats : {}'.format(Path(args.out)))
     return 0

@@ -115,9 +115,26 @@ class TestAuditNomsInternes(unittest.TestCase):
         self.assertIn(('rtpc_objid', '{:012x}'.format(OBJID & A.MASK48)), hashes)
         self.assertEqual(len(inconnus), 5)     # 3 proprietes, 1 objid, 1 StringHash
         self.assertIn('Libelle faux dans DECA', rapport)
+        # familles (familles.py) : settings/test.bin -> test.bin ; pas de famille pour objid et StringHash
+        fams = {(r['categorie'], r['hash']): r['familles'] for r in inconnus}
+        self.assertEqual(fams[('rtpc_propriete', '{:08x}'.format(INCONNU_PROP))], 'test.bin:1')
+        self.assertEqual(fams[('rtpc_objid', '{:012x}'.format(OBJID & A.MASK48))], '')
+        self.assertEqual(metrics['familles'], 1)
+        self.assertIn('| rtpc_propriete | `test.bin` | 3 | 3 |', rapport)
+
+    def check_vocabulary(self, out):
+        lignes = [l.split('\t') for l in Path(out, 'noms_par_famille.tsv').read_text(encoding='utf-8').splitlines()
+                  if not l.startswith('#')]
+        vocab = {(f, c, n) for f, c, n, _o in lignes}
+        self.assertIn(('test.bin', 'rtpc_noeud', 'item_a'), vocab)                  # chaine du fichier
+        self.assertIn(('test.bin', 'rtpc_propriete', 'name'), vocab)                # chaines de DECA
+        self.assertIn(('test.bin', 'rtpc_propriete', 'cash_price'), vocab)          # dictionnaire du fork
+        self.assertIn(('test.bin', 'rtpc_event', EVENT_CONNU), vocab)               # hash48
+        self.assertEqual(len(vocab), 4)
 
     def test_single_process(self):
         self.check(*self.run_audit(1))
+        self.check_vocabulary(os.path.join(self.tmp.name, 'out1'))
 
     def test_pool(self):
         self.check(*self.run_audit(2))
