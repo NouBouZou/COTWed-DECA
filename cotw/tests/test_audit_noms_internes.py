@@ -122,6 +122,23 @@ class TestAuditNomsInternes(unittest.TestCase):
     def test_pool(self):
         self.check(*self.run_audit(2))
 
+    def test_compare_with_previous_audit(self):
+        metrics, _inconnus, _rapport = self.run_audit(1)
+        self.assertIn('date', metrics)
+        # audit precedent fictif : une propriete de moins resolue
+        old = json.loads(json.dumps(metrics))
+        old['categories']['rtpc_propriete']['occ_resolues'] -= 1
+        old['categories']['rtpc_propriete']['distincts_resolus'] -= 1
+        old_path = Path(self.tmp.name, 'ancien_metrics.json')
+        old_path.write_text(json.dumps(old), encoding='utf-8')
+        out = os.path.join(self.tmp.name, 'out_compare')
+        self.assertEqual(A.main([self.project, '--out', out, '--processus', '1', '--compare', str(old_path)]), 0)
+        rapport = Path(out, 'rapport.md').read_text(encoding='utf-8')
+        self.assertIn('## Evolution depuis', rapport)
+        self.assertIn('| rtpc_propriete | 20.0 % | 40.0 % | +20.0 | 20.0 % | 40.0 % | +20.0 | 3 (-1) |', rapport)
+        self.assertIn('| rtpc_noeud | 100.0 % | 100.0 % | +0.0 |', rapport)
+        self.assertNotIn('**Attention**', rapport)
+
 
 if __name__ == '__main__':
     if '--spawn' in sys.argv:

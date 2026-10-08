@@ -40,6 +40,7 @@ import collections
 import csv
 import json
 import os
+import posixpath
 import re
 import sqlite3
 import struct
@@ -91,12 +92,17 @@ LECTEURS = {
     'rtpc': 'RTPC',
     'obc': 'OBC',
 }
+# Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
+# ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc nomme, elle leve EDecaFileMissing ; sans nom du tout, elle
+# lit le fichier comme un .ddsc complet (en-tete AVTX absent : echec). Un tel fichier n'est donc pas lisible.
+TYPES_MIP = {'hmddsc', 'atx'}
 # Conteneurs explores par DECA : leur contenu devient des noeuds de l'arbre (pas de visionneuse propre).
 CONTENEURS = {'gt0c', 'garc', 'gdc'}
 
 # Statut d'un fichier pour la couverture de lecture, du meilleur au pire : un fichier present en plusieurs
 # copies (archives) prend le meilleur statut de ses copies.
-STATUTS = ('lisible', 'conteneur', 'adf_sans_type', 'echec_scan', 'type_sans_visionneuse', 'type_inconnu', 'lien')
+STATUTS = ('lisible', 'conteneur', 'adf_sans_type', 'echec_scan', 'mip_orphelin', 'type_sans_visionneuse',
+           'type_inconnu', 'lien')
 STATUTS_LUS = ('lisible', 'conteneur')
 SEUIL_LU = 99.0        # % de fichiers lisibles au-dessus duquel une famille est "lue"
 
@@ -268,6 +274,7 @@ class Audit:
         self.conn = conn
         self.sample_size = sample_size
         self.m = {}  # metriques scalaires
+        self.ddsc_paths = set()  # chemins .ddsc nommes (scan_coverage) : un .hmddsc/.atxN n'est lisible qu'avec le sien
 
     # -- hierarchie --------------------------------------------------------
 
@@ -498,13 +505,17 @@ class Audit:
 
     # -- couverture de lecture par extension (COTWed DECA) ------------------
 
-    def node_status(self, node_id, flags, file_type):
+    def node_status(self, node_id, flags, file_type, path_txt=None):
         if flags & FLAG_PROCESSING_FAILED:
             return 'echec_scan'
         if file_type in ('adf', 'adf0', 'adf5', 'adfb') and node_id in self.adf_missing_nodes:
             return 'adf_sans_type'
         if file_type == 'symlink':
             return 'lien'
+        if file_type in TYPES_MIP:
+            if path_txt and posixpath.splitext(path_txt)[0] + '.ddsc' in self.ddsc_paths:
+                return 'lisible'
+            return 'mip_orphelin'
         if file_type in LECTEURS:
             return 'lisible'
         if file_type in CONTENEURS:
@@ -525,6 +536,8 @@ class Audit:
         """
         rank = {st: i for i, st in enumerate(STATUTS)}
         fams = {}
+        self.ddsc_paths = {to_text(v) for (v,) in self.conn.execute(
+            "SELECT DISTINCT v_path FROM core_nodes WHERE CAST(v_path AS TEXT) LIKE '%.ddsc'")}
         q = ('SELECT node_id, flags, parent_id, v_hash, v_path, file_type, magic, size_u FROM core_nodes')
         for node_id, flags, parent_id, v_hash, v_path, file_type, magic, size_u in self.conn.execute(q):
             flags = flags or 0
@@ -541,7 +554,7 @@ class Audit:
                 f = fams[key] = {'noeuds': 0, 'fichiers': {}, 'types': collections.Counter(),
                                  'magics': collections.Counter(), 'exemples': [], 'noeuds_exemples': []}
             f['noeuds'] += 1
-            status = self.node_status(node_id, flags, file_type)
+            status = self.node_status(node_id, flags, file_type, path_txt)
             fid = v_hash if v_hash is not None else ('noeud', node_id)
             explored = file_type in TYPES_EXPLORES and v_hash is not None and (file_type, v_hash) in self.explored
             old = f['fichiers'].get(fid)
@@ -608,6 +621,7 @@ class Audit:
         self.m['familles_non_lues'] = sum(1 for r in rows if r['verdict'] == 'non lu')
         self.m['familles_partielles'] = sum(1 for r in rows if r['verdict'] == 'partiel')
         self.m['echecs_scan'] = sum(r['statuts'].get('echec_scan', 0) for r in rows)
+        self.m['mips_orphelins'] = sum(r['statuts'].get('mip_orphelin', 0) for r in rows)
 
     def priorities(self, limit=15):
         """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord."""
@@ -775,13 +789,13 @@ def build_outputs(a, out_dir, sep, log_counts, log_samples, log_paths, db_path, 
                  r['non_lus'], r['octets'], r['noeuds'], fmt_counter(r['lecteurs'], 4), fmt_counter(r['types'], 4),
                  fmt_counter(r['magics'], 3), '{}/{}'.format(r['explores'], r['explorables']),
                  r['statuts'].get('echec_scan', 0), r['statuts'].get('adf_sans_type', 0),
-                 r['statuts'].get('lien', 0), ' | '.join(r['exemples']),
+                 r['statuts'].get('mip_orphelin', 0), r['statuts'].get('lien', 0), ' | '.join(r['exemples']),
                  ' '.join(str(i) for i in r['noeuds_exemples']))
                 for r in a.coverage]
     write_csv(out_dir / 'couverture_extensions.csv',
               ['famille', 'verdict', 'fichiers_uniques', 'lisibles', 'pct_lisibles', 'non_lisibles', 'octets',
                'noeuds', 'visionneuses', 'types_detectes', 'magics', 'explores_par_deca', 'echecs_scan',
-               'adf_sans_type', 'liens', 'exemples_non_lisibles', 'noeuds_exemples'],
+               'adf_sans_type', 'mips_orphelins', 'liens', 'exemples_non_lisibles', 'noeuds_exemples'],
               cov_rows, sep)
     prio = a.priorities()
     n_cmds = write_sample_script(out_dir / 'extraire_echantillons.bat', prio, project_dir or db_path.parent.parent,
@@ -824,6 +838,7 @@ SCALAIRES_COMPARES = [
     ('couverture_lisibles', 'Fichiers lisibles par une visionneuse', False),
     ('familles_non_lues', 'Familles (extensions) non lues', True),
     ('echecs_scan', 'Fichiers en echec au scan', True),
+    ('mips_orphelins', 'Niveaux de mip sans leur .ddsc', True),
     ('chaines_connues', 'Chaines connues (dictionnaire)', False),
     ('virtuels', 'Fichiers virtuels total', False),
 ]
@@ -932,10 +947,11 @@ def write_report(path, a, arch_rows, magic_rows, unexp_rows, log_counts, log_sam
     L.append('')
     L.append('Fichiers uniques lisibles par une visionneuse de l\'interface (RTPC, ADF, Strings, Sheet, SARC, '
              'Image, Text, OBC) ou ranges par DECA dans l\'arbre (conteneurs) : **{} / {} ({:.1f} %)**. '
-             'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}.'.format(
+             'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}. Niveaux de mip sans leur '
+             '`.ddsc` (illisibles : la visionneuse ouvre la texture par son `.ddsc`) : {}.'.format(
                  m.get('couverture_lisibles', 0), m.get('couverture_fichiers', 0), m.get('couverture_pct', 0.0),
                  m.get('familles', 0), m.get('familles_non_lues', 0), m.get('familles_partielles', 0),
-                 m.get('echecs_scan', 0)))
+                 m.get('echecs_scan', 0), m.get('mips_orphelins', 0)))
     L.append('')
     L.append('Famille = extension pour un fichier nomme (a partir du premier point : `.nl.mdic`), '
              '`(sans nom) <type>` sinon. Verdict : *lu* a partir de {:.0f} % de fichiers lisibles. Detail de '
@@ -1014,6 +1030,8 @@ def print_summary(m, out_dir, comparison, log_samples):
         m.get('familles_non_lues', 0), m.get('familles_partielles', 0)))
     if m.get('echecs_scan', 0):
         p('Fichiers en echec au scan    : {}  (journal : loop_over_uid_wrapper: failed for)'.format(m['echecs_scan']))
+    if m.get('mips_orphelins', 0):
+        p('Mips sans leur .ddsc         : {}  (.hmddsc/.atxN illisibles)'.format(m['mips_orphelins']))
     if comparison:
         p('')
         p('--- Evolution depuis {} ---'.format(comparison['date_reference']))

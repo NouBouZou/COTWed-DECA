@@ -66,7 +66,9 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
 - **Nommer sans rescanner** (`cotw/renommer.py`) : DECA n'appliquait de nouveaux noms qu'en recréant le projet (64 min). `renommer.py ajouter` donne leur nom aux seuls fichiers sans nom, avec le code du scan de DECA, après un contrôle de type ; tout est journalisé, et `renommer.py annuler` remet la base dans son état précédent.
 - **Proposer des noms** (`cotw/generer_noms.py`) : variantes des noms connus (numéros, suffixes, dossiers frères, chaînes de l'exécutable). Un nom n'est gardé que si le type détecté dans le fichier est attendu pour son extension. `--temoin` mesure les faux positifs sur des cibles fictives. Sur les données du 08/10 (hors ligne) : 4 993 noms (48,8 %), environ 10 faux.
 - **Chaînes de l'exécutable** : le scan lit les chaînes en forme de chemin de l'exécutable installé (`deca/exe_strings.py`), et plus seulement la liste figée `ghidra_strings`.
-- **Noms internes** (`cotw/audit_noms_internes.py`) : part des hashes résolus dans les RTPC et ADF (propriétés, nœuds, StringHash, événements), énumérations mal affichées par DECA, hashes inconnus classés par fréquence.
+- **Noms internes** (`cotw/audit_noms_internes.py`) : part des hashes résolus dans les RTPC et ADF (propriétés, nœuds, StringHash, événements), énumérations mal affichées par DECA, hashes inconnus classés par fréquence ; `--compare` donne l'évolution depuis un audit précédent.
+- **Retrouver les noms internes** (`resoudre_hashes.py chercher --cibles inconnus.csv`) : cherche d'un coup tous les hashes inconnus relevés par l'audit. Les cibles sont classées par nombre d'occurrences : les 303 propriétés vues 1 000 fois ou plus portent 96 % des occurrences de propriétés inconnues, et sur si peu de cibles une coïncidence est très improbable. Un nom n'est écrit que si les faux positifs attendus restent faibles pour sa passe et sa classe, ou s'il est confirmé par un autre nom de même racine (`frame_0` … `frame_98`, `show_clues` et `hide_clues`, `segment_type` par `segment_id`) ; `--temoin` mesure les faux positifs réels. Estimation hors ligne sur l'audit du 08/10, sans les chaînes de l'exécutable : 1 085 noms, 39 % des occurrences de propriétés inconnues, 50 % de celles de nœuds, 3 faux positifs attendus (témoin : 2).
+- **Textures** : `deca_audit.py` ne compte plus un `.hmddsc` ou un `.atxN` comme lisible si son `.ddsc` n'est pas nommé : la visionneuse ouvre la texture par son `.ddsc` (nouveau statut `mip_orphelin`).
 
 ## Contenu
 
@@ -125,14 +127,14 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
 | `rtpc_dump.py`, `adf_dump.py`, `sarc_dump.py` | affichage lisible des formats, noms résolus |
 | `comparer_objets.py`, `separateurs.py`, `liste_objets.py` | comparaison d'objets d'`equipment_data` |
 | `indexer_refs.py`, `differentiel.py`, `deca_refs.py`, `citations.py` | qui cite quoi, dans tout le jeu |
-| `resoudre_hashes.py` | retrouve les noms en clair des hashes (dictionnaire `cotw/dictionnaires/hp_noms.tsv`) |
+| `resoudre_hashes.py` | retrouve les noms en clair des hashes (dictionnaire `cotw/dictionnaires/hp_noms.tsv`) : hashes de fichiers choisis, ou tous les inconnus d'un audit (`--cibles`, par classe, avec corroboration et témoin) |
 | `rtpc_roundtrip.py`, `sarc_roundtrip.py`, `adf_ecriture_controle.py` | validation des écrivains sur les fichiers réels |
 | `sauvegarde.py` | lit une sauvegarde (conteneur SAVE/COMP/zlib, ADF) et en fait un rapport nommé ; `--charge` écrit l'ADF décompressé |
 | `noms.py` | noms en clair des hashes pour l'affichage (projet, dictionnaire du fork, noms d'un mod) |
 | `extraire.py` | copie octet pour octet de fichiers du jeu, pour étude : par chemin, motif, extension (`--echantillons N` : quelques fichiers répartis par taille) ou numéro de nœud (fichiers sans nom) |
 | `generer_noms.py` | propose des noms pour les fichiers sans nom (variantes des noms connus, chaînes de l'exécutable), avec contrôle de type et mesure des faux positifs (`--temoin`) ; `--hors-ligne` travaille sur les sorties d'un audit, sans la base |
 | `renommer.py`, `noms_fichiers.py` | applique des noms à un projet déjà scanné, sans rescanner ; journal et annulation ; contrôle de type appris dans le projet |
-| `audit_noms_internes.py` | part des noms internes résolus (RTPC, ADF), énumérations mal affichées, hashes inconnus par fréquence |
+| `audit_noms_internes.py` | part des noms internes résolus (RTPC, ADF), énumérations mal affichées, hashes inconnus par fréquence ; `--compare` avec un audit précédent |
 | `deca_audit.py` | audit en lecture seule d'un projet DECA : fichiers sans nom, formats non lus, **couverture de lecture par extension** et commandes d'extraction d'échantillons |
 
 ## Utilisation (Windows, Invite de commandes)
@@ -154,6 +156,7 @@ pip install -e python\deca -e python\deca_gui
 - **Sauvegarde** : **File → Open Save…** dans DECA, ou `python cotw\sauvegarde.py <fichier> --projet ..\work\hp --langue fr`.
 - **Audit de lecture** : `python cotw\deca_audit.py ..\work\hp` (DECA fermé). Le dossier de sortie (`..\work\audits\…`) contient `rapport.md` (section 3 : couverture par extension et priorités), `couverture_extensions.csv` et `extraire_echantillons.bat`, qui copie quelques fichiers de chaque format non lu dans `echantillons\`. `--compare <ancien metrics.json>` montre l'évolution.
 - **Nommer les fichiers sans nom** (DECA fermé) : `python cotw\generer_noms.py ..\work\hp --sortie noms.txt --temoin`, puis `python cotw\renommer.py ajouter ..\work\hp --noms noms.txt --exe` ; `python cotw\renommer.py annuler ..\work\hp` revient en arrière.
+- **Noms internes** (DECA fermé) : `python cotw\audit_noms_internes.py ..\work\hp --out ..\work\audits\noms-internes`, puis `python cotw\resoudre_hashes.py chercher ..\work\hp --cibles ..\work\audits\noms-internes\inconnus.csv --temoin --out resoudre.md` (écrit `cotw\dictionnaires\hp_noms.tsv`, que les visionneuses RTPC et ADF lisent directement ; `resoudre_hashes.py injecter ..\work\hp` les ajoute aussi à la base, pour la vue texte d'origine de DECA).
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam

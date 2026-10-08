@@ -21,10 +21,19 @@ nombre : si elle trouve beaucoup plus de noms, ses trouvailles sont presque tout
 seules les passes ou ce nombre est sous --seuil-fp alimentent le dictionnaire (cotw/dictionnaires/hp_noms.tsv).
 Le mode --aveugle mesure la precision reelle : il cherche aussi les hashes deja nommes par DECA et compare.
 
+Mode --cibles (2026-10-08) : les cibles sont les hashes inconnus releves dans TOUS les RTPC et ADF par
+audit_noms_internes.py (inconnus.csv), sans relire les fichiers. Les categories sont decoupees en classes par
+nombre d'occurrences, une passe supplementaire essaie verbe_objet (show_clues...), et un nom est retenu par
+passe et par classe : en bloc si les faux positifs attendus restent faibles, sinon seulement s'il est
+corrobore par un autre nom de meme racine (frame_0 ... frame_98). --temoin mesure les faux positifs reels.
+
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\resoudre_hashes.py chercher D:\\dev\\work\\hp --out D:\\dev\\audits\\noms.md
     python cotw\\resoudre_hashes.py chercher D:\\dev\\work\\hp --aveugle --out D:\\dev\\audits\\noms_aveugle.md
     python cotw\\resoudre_hashes.py chercher D:\\dev\\work\\hp --motif "settings/hp_settings/%.bin" --out ...
+    python cotw\\resoudre_hashes.py chercher D:\\dev\\work\\hp --cibles D:\\dev\\audits\\02-noms-internes\\inconnus.csv ^
+        --out D:\\dev\\audits\\03-noms-internes\\resoudre.md
+        (cibles : les hashes inconnus releves par audit_noms_internes.py dans tous les RTPC, par categorie)
     python cotw\\resoudre_hashes.py injecter D:\\dev\\work\\hp   (noms du dictionnaire -> interface DECA)
     python cotw\\resoudre_hashes.py annuler D:\\dev\\work\\hp    (retire exactement ce qui a ete injecte)
 """
@@ -510,11 +519,506 @@ def append_to_dictionary(path: Path, entries) -> list:
 
 
 # ---------------------------------------------------------------------------------------------------------
+# Cibles tirees d'un audit (audit_noms_internes.py) : recherche par classe, corroboration, temoin
+# ---------------------------------------------------------------------------------------------------------
+#
+# Un nom trouve n'est ecrit que si le nombre de faux positifs attendus parmi les noms ecrits reste faible.
+# Trois leviers rendent ce calcul moins pessimiste que "candidats x toutes les cibles / 2^32" :
+#   - les classes : chaque categorie est decoupee par nombre d'occurrences. Un candidat quelconque tombe sur
+#     l'une des 150 cibles de noeuds vues 1000 fois ou plus avec une probabilite 150 / 2^32, pas 78 909 / 2^32 ;
+#     or ces 150 hashes portent 76 % des occurrences de noeuds inconnus (96 % pour les proprietes, 303 cibles) ;
+#   - le taux : une passe qui touche 178 cibles quand 0,15 coincidence est attendue est fiable a 99,9 % ;
+#     elle est retenue si ses faux positifs attendus restent sous --seuil-fp OU sous --seuil-taux x touchees ;
+#   - la corroboration : les noms d'une meme racine se confirment entre eux (frame_0 ... frame_98, show_clues
+#     et hide_clues). Deux coincidences sur une meme racine sont tres improbables ; quand une passe est trop
+#     bruitee pour etre retenue en bloc, ses noms corrobores peuvent l'etre, avec leur propre estimation.
+# Le temoin (--temoin) cherche en meme temps autant de cibles fictives, de memes largeurs, par classe, et leur
+# applique les memes decisions : ce qu'il retient est une mesure directe des faux positifs.
+
+STRATES = ((1000, '>=1000'), (100, '100-999'), (10, '10-99'), (2, '2-9'), (1, '1'))
+SEP = '|'
+TEMOIN = 'temoin:'
+VERBES = ['show', 'hide', 'enable', 'disable', 'start', 'stop', 'spawn', 'despawn', 'activate', 'deactivate',
+          'open', 'close', 'play', 'pause', 'resume', 'reset', 'set', 'unset', 'begin', 'end', 'on', 'trigger',
+          'toggle', 'add', 'remove', 'lock', 'unlock', 'load', 'unload', 'init', 'update', 'fade_in', 'fade_out',
+          'turn_on', 'turn_off', 'complete', 'fail', 'enter', 'exit', 'use', 'kill', 'clear']
+
+
+def strate(occurrences: int) -> str:
+    for low, label in STRATES:
+        if occurrences >= low:
+            return label
+    return STRATES[-1][1]
+
+
+def classe(category: str, occurrences: int) -> str:
+    return category + SEP + strate(occurrences)
+
+
+def categorie(cls: str) -> str:
+    return cls[len(TEMOIN):].split(SEP)[0] if cls.startswith(TEMOIN) else cls.split(SEP)[0]
+
+
+def width_of(category: str, value: int, largeur: int) -> int:
+    """Largeur sous laquelle chercher une valeur. Les evenements RTPC sont des u64 dont DECA essaie le hash48
+    puis le hash32 des 32 bits bas ; sur COTW, 70 450 des 73 918 evenements inconnus tiennent sur 32 bits :
+    ce sont des hash32."""
+    if category in ('rtpc_event', 'rtpc_objid') and value < (1 << 32):
+        return 32
+    return largeur
+
+
+def targets_from_csv(path: Path, categories: Iterable[str], min_occurrences: int = 1) -> Dict[str, Targets]:
+    """Cibles par classe (categorie|strate), lues dans inconnus.csv (categorie;largeur;hash;occurrences;...)."""
+    import csv
+    wanted = set(categories)
+    out: Dict[str, Targets] = {}
+    with open(path, encoding='utf-8-sig', newline='') as f:
+        for r in csv.DictReader(f, delimiter=';'):
+            cat = r['categorie']
+            occurrences = int(r['occurrences'])
+            if cat not in wanted or occurrences < min_occurrences:
+                continue
+            value = int(r['hash'], 16)
+            width = width_of(cat, value, int(r['largeur']))
+            t = out.setdefault(classe(cat, occurrences), Targets())
+            t.add(width, value, cat, r.get('exemple', ''))
+            key = (width, value & MASK[width])
+            if key in t.items:
+                t.items[key].count = occurrences
+    return out
+
+
+def fictive_targets(real: Dict[str, Targets], seed: int = 20261008) -> Dict[str, Targets]:
+    """Pour chaque classe, autant de valeurs tirees au hasard, de memes largeurs, qu'aucune cible reelle."""
+    import random
+    rng = random.Random(seed)
+    taken = {k for t in real.values() for k in t.items}
+    out = {}
+    for cls, t in real.items():
+        f = Targets()
+        for (width, _v) in t.items:
+            while True:
+                v = rng.getrandbits(width)
+                if v and (width, v) not in taken:
+                    taken.add((width, v))
+                    break
+            f.add(width, v, TEMOIN + cls, '')
+        out[TEMOIN + cls] = f
+    return out
+
+
+def source_apex() -> Set[str]:
+    """Chaines des autres jeux APEX (Ghidra) et noms de champs communs : les memes noms de proprietes RTPC
+    reviennent d'un jeu a l'autre (from_anim_id, segment_id...)."""
+    base = REPO / 'resources' / 'deca'
+    files = [f for f in sorted((base / 'ghidra_strings').glob('*.txt')) if f.name != GHIDRA_HP.name]
+    files += sorted((base / 'field_strings').glob('*.txt')) + [base / 'strings.txt']
+    out = set()
+    for f in files:
+        out |= source_ghidra(f)
+    return out
+
+
+def source_chemins(vfs) -> List[str]:
+    """Mots des chemins de fichiers connus, du plus frequent au moins frequent. Les noms de champs reprennent
+    souvent ces mots (reserve, spawn, trophy, vegetation...)."""
+    counter = collections.Counter()
+    for (v,) in vfs.db_query_all('SELECT DISTINCT v_path FROM core_nodes WHERE v_path IS NOT NULL', [],
+                                 dbg='cotw_resolve_paths'):
+        for t in re.split(r'[/._\\-]+', (_projet.to_text(v) or '').lower()):
+            if 2 <= len(t) <= 30 and not t.isdigit():
+                counter[t] += 1
+    return [t for t, _n in counter.most_common()]
+
+
+def gen_verbs(objects: Iterable[str]) -> Iterator[str]:
+    """verbe_objet : la forme des evenements RTPC (show_clues, hide_clues, start_muted...)."""
+    for o in objects:
+        for v in VERBES:
+            yield v + '_' + o
+
+
+def racines(pass_name: str, name: str) -> Tuple[str, ...]:
+    """Racines d'un nom pour la corroboration : deux noms d'une meme passe qui partagent une racine se
+    confirment. Vide pour les passes sans structure (directs)."""
+    if pass_name == 'positionnels':
+        m = re.fullmatch(r'(.*\D)\d+', name)
+        return (m.group(1),) if m else ()
+    if pass_name == 'affixes':
+        return tuple(sorted({name[len(p):] for p in AFFIX_PREFIXES if name.startswith(p)} |
+                            {name[:-len(s)] for s in AFFIX_SUFFIXES if name.endswith(s)}))
+    if pass_name == 'verbes':
+        return tuple(sorted({name[len(v) + 1:] for v in VERBES if name.startswith(v + '_')}))
+    if pass_name in ('paires', 'triplets'):
+        parts = name.split('_')
+        return ('1:' + parts[0], '9:' + parts[-1]) if len(parts) > 1 else ()
+    return ()
+
+
+@dataclass
+class PassInfo:
+    name: str
+    candidates: int
+    seconds: float
+    group_size: int = 0        # candidats par racine (0 : pas de corroboration)
+    keys_per_candidate: int = 1
+
+    @property
+    def groups(self) -> int:
+        if not self.group_size:
+            return 0
+        return -(-self.candidates * self.keys_per_candidate // self.group_size)
+
+
+@dataclass
+class Decision:
+    pass_name: str
+    cls: str
+    touched: int               # cibles touchees par un nom de la passe
+    expected_all: float        # faux positifs attendus parmi elles
+    corroborated: int          # cibles dont un nom partage une racine avec une autre cible touchee
+    expected_corr: float       # faux positifs attendus parmi les corroborees
+    mode: str                  # tous, corrobores, aucun
+    retained: Set[Tuple[int, int]]
+    temoin_touched: int = 0
+    temoin_retained: int = 0
+
+    @property
+    def expected(self) -> float:
+        return {'tous': self.expected_all, 'corrobores': self.expected_corr}.get(self.mode, 0.0)
+
+
+class CategorySearcher:
+    """Une seule enumeration des candidats pour toutes les classes ; statistiques par (passe, classe)."""
+
+    def __init__(self, targets: Dict[str, Targets]):
+        self.targets = targets
+        self.index: Dict[int, Dict[int, List[str]]] = {32: {}, 48: {}, 64: {}}
+        for cls, t in targets.items():
+            for (width, value) in t.items:
+                self.index[width].setdefault(value, []).append(cls)
+        self.hits: Dict[str, Dict[Tuple[int, int], Dict[str, str]]] = {c: {} for c in targets}
+        self.passes: List[PassInfo] = []
+
+    def rate(self, cls: str) -> float:
+        return sum(1.0 / (1 << w) for (w, _v) in self.targets[cls].items)
+
+    def run(self, pass_name: str, candidates: Iterable[str], group_size: int = 0, keys_per_candidate: int = 1):
+        import mmh3
+        i32, i48, i64 = self.index[32], self.index[48], self.index[64]
+        wide = bool(i48 or i64)
+        n = 0
+        t0 = time.time()
+        for s in candidates:
+            b = s.encode('utf-8')
+            n += 1
+            h = int(hash32_func_bytes(b))
+            if h in i32:
+                self._record(32, h, s, pass_name)
+            if wide:
+                v = mmh3.hash128(b, x64arch=True)
+                h48 = (v >> 16) & MASK[48]
+                if h48 in i48:
+                    self._record(48, h48, s, pass_name)
+                if (v & MASK[64]) in i64:
+                    self._record(64, v & MASK[64], s, pass_name)
+        info = PassInfo(pass_name, n, time.time() - t0, group_size, keys_per_candidate)
+        self.passes.append(info)
+        return info
+
+    def _record(self, width, value, name, pass_name):
+        for cls in self.index[width][value]:
+            names = self.hits[cls].setdefault((width, value), {})
+            if name not in names:
+                names[name] = pass_name
+
+    def touched(self, pass_name: str, cls: str) -> Dict[Tuple[int, int], List[str]]:
+        out = {}
+        for key, names in self.hits.get(cls, {}).items():
+            mine = [n for n, p in names.items() if p == pass_name]
+            if mine:
+                out[key] = mine
+        return out
+
+
+def decide(searcher: CategorySearcher, classes: Iterable[str], threshold: float, rate_threshold: float,
+           write_all: bool = False) -> List[Decision]:
+    """Decision par (passe, classe), passes dans l'ordre ou elles ont tourne.
+
+    Corroboration : un nom touche est corrobore si l'une de ses racines (racines()) est partagee avec une autre
+    cible de la meme categorie, touchee par la meme passe (toutes classes confondues) ou deja retenue par une
+    passe precedente (segment_type est corrobore par segment_id, retenu en passe directe).
+
+    Faux positifs attendus parmi les corrobores d'une classe C, pour des racines de g candidats, lambda_C = g x r_C
+    (r = somme des 1/2^largeur des cibles) et lambda_cat = g x r de toute la categorie :
+      - un faux nom tombe dans une racine deja peuplee : (racines peuplees) x lambda_C ;
+      - deux faux noms dans une meme racine vide : (nombre de racines) x lambda_C x lambda_cat.
+    Le temoin passe par les memes regles : ses cibles fictives sont corroborees par les racines peuplees (vraies
+    ou fictives), ce qui mesure les deux termes."""
+    by_cat: Dict[str, List[str]] = collections.defaultdict(list)
+    for cls in classes:
+        by_cat[categorie(cls)].append(cls)
+    retained_by_cat: Dict[str, Dict[Tuple[str, Tuple[int, int]], Set[str]]] = collections.defaultdict(dict)
+    out = []
+    for info in searcher.passes:
+        for cat, cls_list in by_cat.items():
+            touched = {c: searcher.touched(info.name, c) for c in cls_list}
+            fake = {c: searcher.touched(info.name, TEMOIN + c) if (TEMOIN + c) in searcher.targets else {}
+                    for c in cls_list}
+            roots: Dict[str, Set] = collections.defaultdict(set)
+            fake_roots: Dict[str, Set] = collections.defaultdict(set)
+            if info.group_size:
+                for c, t in touched.items():
+                    for key, names in t.items():
+                        for n in names:
+                            for r in racines(info.name, n):
+                                roots[r].add((c, key))
+                for member, names in retained_by_cat[cat].items():
+                    for n in names:
+                        for r in racines(info.name, n):
+                            roots[r].add(member)
+                for c, t in fake.items():
+                    for key, names in t.items():
+                        for n in names:
+                            for r in racines(info.name, n):
+                                fake_roots[r].add((TEMOIN + c, key))
+            lam_cat = info.group_size * sum(searcher.rate(c) for c in cls_list)
+            for cls in cls_list:
+                t = touched[cls]
+                r = searcher.rate(cls)
+                e_all = info.candidates * r
+                corr = {key for key, names in t.items()
+                        if any(len(roots[x]) >= 2 for n in names for x in racines(info.name, n))}
+                lam = info.group_size * r
+                e_corr = len(roots) * lam + info.groups * lam * lam_cat
+                if t and (write_all or e_all <= max(threshold, rate_threshold * len(t))):
+                    mode, retained = 'tous', set(t)
+                elif corr and e_corr <= max(threshold, rate_threshold * len(corr)):
+                    mode, retained = 'corrobores', corr
+                else:
+                    mode, retained = 'aucun', set()
+                d = Decision(info.name, cls, len(t), e_all, len(corr), e_corr, mode, retained)
+                d.temoin_touched = len(fake[cls])
+                if mode == 'tous':
+                    d.temoin_retained = len(fake[cls])
+                elif mode == 'corrobores':
+                    d.temoin_retained = sum(
+                        1 for key, names in fake[cls].items()
+                        if any(len(roots[x] | fake_roots[x]) >= 2 for n in names for x in racines(info.name, n)))
+                out.append(d)
+            for d in out[-len(cls_list):]:
+                for key in d.retained:
+                    retained_by_cat[cat].setdefault((d.cls, key), set()).update(touched[d.cls][key])
+    return out
+
+
+@dataclass
+class Selection:
+    """Noms retenus par classe : {cle: (nom, passe, faux positifs attendus de la decision)} ; hashes ecartes
+    parce que plusieurs noms retenus y tombent (a trancher a la main)."""
+    retained: Dict[str, Dict[Tuple[int, int], Tuple[str, str, float]]]
+    ambiguous: List[Tuple[str, Tuple[int, int], List[str]]]
+
+
+def select_names(searcher: CategorySearcher, decisions: List[Decision]) -> Selection:
+    by_class: Dict[str, Dict[Tuple[int, int], Dict[str, Tuple[str, float]]]] = collections.defaultdict(dict)
+    for d in decisions:
+        for key in d.retained:
+            for n, p in searcher.hits[d.cls][key].items():
+                if p == d.pass_name:
+                    by_class[d.cls].setdefault(key, {})[n] = (p, d.expected)
+    retained, ambiguous = {}, []
+    for cls, keys in by_class.items():
+        picks = retained[cls] = {}
+        for key, names in sorted(keys.items()):
+            if len(names) > 1:
+                ambiguous.append((cls, key, sorted(names)))
+            else:
+                (n, (p, e)), = names.items()
+                picks[key] = (n, p, e)
+    return Selection(retained, ambiguous)
+
+
+def load_sources(spec: str, vfs) -> Dict[str, Set[str]]:
+    sources: Dict[str, Set[str]] = {}
+    for src in [x.strip() for x in spec.split(',') if x.strip()]:
+        if src == 'ghidra':
+            sources[src] = source_ghidra()
+        elif src == 'apex':
+            sources[src] = source_apex()
+        elif src == 'exe':
+            sources[src] = source_exe(vfs)
+        elif src == 'adf-types':
+            sources[src] = source_adf_types(vfs)
+        elif src.startswith('fichier:'):
+            sources[src] = identifiers_from_lines(load_word_list(Path(src[len('fichier:'):])))
+        else:
+            raise SystemExit('ERREUR : source inconnue "{}" (ghidra, apex, exe, adf-types, fichier:CHEMIN)'.format(src))
+    return sources
+
+
+def run_target_passes(searcher: CategorySearcher, identifiers: Set[str], words: List[str], path_words: List[str],
+                      args, log=print):
+    """Les passes du mode --cibles, dans l'ordre : un nom garde la premiere passe qui l'a produit."""
+    counter = tokens_of(identifiers)
+    vocab = build_vocab(counter, args.paires or 3000, words + path_words)
+    passes = [('directs', lambda: gen_direct(identifiers, words + path_words), 0, 1)]
+    if args.affixes:
+        forms = snake_forms(identifiers) | set(words) | set(path_words)
+        passes.append(('affixes', lambda: gen_affixes(forms), len(AFFIX_PREFIXES) + len(AFFIX_SUFFIXES), 1))
+    if args.verbes:
+        passes.append(('verbes', lambda: gen_verbs(vocab), len(VERBES), 1))
+    if args.positionnels > 0:
+        passes.append(('positionnels', lambda: gen_positional(vocab, args.positionnels), args.positionnels + 10, 1))
+    if args.paires > 0:
+        vocab2 = build_vocab(counter, args.paires, words)
+        passes.append(('paires', lambda: gen_pairs(vocab2), len(vocab2), 2))
+    if args.triplets > 0:
+        vocab3 = build_vocab(counter, args.triplets, words)
+        passes.append(('triplets', lambda: gen_triples(vocab3), len(vocab3) ** 2, 2))
+    for pass_name, make, group_size, keys in passes:
+        info = searcher.run(pass_name, make(), group_size, keys)
+        log('  passe {:<12} : {:>11,} candidats ({:.0f} s)'.format(pass_name, info.candidates, info.seconds)
+            .replace(',', ' '))
+
+
+def cmd_search_targets(args, vfs) -> int:
+    """chercher --cibles : cibles lues dans inconnus.csv, sans relire les fichiers du jeu."""
+    categories = [c.strip() for c in args.categories.split(',') if c.strip()]
+    real = targets_from_csv(Path(args.cibles), categories, args.min_occurrences)
+    dict_path = Path(args.dictionnaire) if args.dictionnaire else _projet.DICTIONARY_PATH
+    dictionary = _projet.load_dictionary(dict_path)
+    # un hash nomme depuis l'audit (dictionnaire, chaine ajoutee a DECA) n'est plus une cible
+    already = collections.Counter()
+    for cls, t in real.items():
+        known = set(known_names(vfs, t, use_dictionary=False)) | {k for k in t.items if k in dictionary}
+        for k in known:
+            del t.items[k]
+        already[categorie(cls)] += len(known)
+    real = {c: t for c, t in sorted(real.items()) if len(t)}
+    for cat in categories:
+        n = sum(len(t) for c, t in real.items() if categorie(c) == cat)
+        print('  {:<18} : {} cibles ({} nommees depuis l\'audit)'.format(cat, n, already[cat]))
+    if not real:
+        text = '# Résolution de hashes sur les cibles d\'un audit\n\nAucune cible : tous les hashes de `{}` ' \
+               '(catégories {}) sont déjà nommés.\n'.format(args.cibles, args.categories)
+        print('Aucune cible.')
+        if args.out:
+            Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.out).write_text(text, encoding='utf-8')
+        return 0
+    targets = dict(real)
+    if args.temoin:
+        targets.update(fictive_targets(real))
+
+    sources = load_sources(args.sources or 'ghidra,apex,exe,adf-types', vfs)
+    identifiers = set().union(*sources.values()) if sources else set()
+    words = load_word_list(Path(args.vocabulaire)) if args.vocabulaire else []
+    path_words = source_chemins(vfs) if args.mots_chemins else []
+    for src, ids in sources.items():
+        print('  source {} : {} identifiants'.format(src, len(ids)))
+    print('  mots des chemins : {}'.format(len(path_words)))
+
+    searcher = CategorySearcher(targets)
+    run_target_passes(searcher, identifiers, words, path_words, args)
+    decisions = decide(searcher, list(real), args.seuil_fp, args.seuil_taux, args.tout_ecrire)
+    found = select_names(searcher, decisions)
+
+    # un meme hash peut etre cible dans deux categories (propriete et noeud) : une seule ligne au dictionnaire
+    entries, seen = [], set()
+    for cls in real:
+        for key, (name, p, expected) in sorted(found.retained.get(cls, {}).items()):
+            if (key, name) not in seen:
+                seen.add((key, name))
+                t = real[cls].items[key]
+                entries.append((key, name, p, expected, '{} ; {}'.format(cls, t.contexts[0] if t.contexts else '')))
+    written = [] if args.sans_ecrire else append_to_dictionary(dict_path, entries)
+    print('{} nom(s) ajoute(s) a {}'.format(len(written), dict_path))
+
+    L = report_targets(args, real, searcher, decisions, found, sources, path_words, written, dict_path)
+    text = '\n'.join(L) + '\n'
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(text, encoding='utf-8')
+        print('Ecrit : {}'.format(args.out))
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def report_targets(args, real, searcher: CategorySearcher, decisions: List[Decision], found: Selection,
+                   sources, path_words, written, dict_path) -> List[str]:
+    written_keys = {(e[0], e[1]) for e in written}
+    categories = list(dict.fromkeys(categorie(c) for c in real))
+    L = ['# Résolution de hashes sur les cibles d\'un audit', '',
+         '- Cibles : `{}` (occurrences ≥ {}) ; classes : catégorie × nombre d\'occurrences.'.format(
+             args.cibles, args.min_occurrences),
+         '- Sources : {} ; mots des chemins : {} ; vocabulaire : `{}`'.format(
+             ', '.join('{} ({} identifiants)'.format(s, len(i)) for s, i in sources.items()) or 'aucune',
+             len(path_words), args.vocabulaire),
+         '- Passes : ' + ', '.join('{} ({:,} candidats)'.format(p.name, p.candidates).replace(',', ' ')
+                                   for p in searcher.passes),
+         '- Décision par passe et classe : tous les noms si les faux positifs attendus restent ≤ {} ou ≤ {} × '
+         'cibles touchées ; sinon les seuls noms corroborés (racine partagée) si leur estimation passe le même '
+         'test ; sinon aucun. Un hash qui reçoit deux noms retenus n\'est pas écrit.'.format(
+             args.seuil_fp, args.seuil_taux),
+         '- Témoin : {}'.format('autant de cibles fictives que de vraies par classe ; « témoin retenu » compte '
+                                'celles que les mêmes décisions auraient nommées (faux positifs certains).'
+                                if args.temoin else 'non (option --temoin).'),
+         '']
+    total_ret = sum(len(p) for p in found.retained.values())
+    total_exp = sum(d.expected for d in decisions if d.retained)
+    L += ['## Bilan', '',
+          '| Catégorie | Cibles | Occurrences | Noms retenus | Occurrences nommées | Part |',
+          '|---|---:|---:|---:|---:|---:|']
+    for cat in categories:
+        cls_list = [c for c in real if categorie(c) == cat]
+        n = sum(len(real[c]) for c in cls_list)
+        occ = sum(x.count for c in cls_list for x in real[c].items.values())
+        ret = sum(len(found.retained.get(c, {})) for c in cls_list)
+        occ_ret = sum(real[c].items[k].count for c in cls_list for k in found.retained.get(c, {}))
+        L.append('| {} | {} | {} | {} | {} | {:.1%} |'.format(cat, n, occ, ret, occ_ret, occ_ret / occ if occ else 0))
+    L += ['', 'Noms retenus : {}, nouveaux au dictionnaire : {} ; faux positifs attendus parmi eux : {:.2g}{}.'.format(
+        total_ret, len(written), total_exp,
+        ' ; témoin retenu : {}'.format(sum(d.temoin_retained for d in decisions)) if args.temoin else ''), '']
+    for cat in categories:
+        L += ['## {}'.format(cat), '',
+              '| Passe | Classe | Cibles | Touchées | FP attendus | Corroborées | FP attendus (corr.) | Décision | '
+              'Témoin touché / retenu |',
+              '|---|---|---:|---:|---:|---:|---:|---|---:|']
+        for d in decisions:
+            if categorie(d.cls) != cat or not (d.touched or d.temoin_touched):
+                continue
+            L.append('| {} | {} | {} | {} | {:.3g} | {} | {:.3g} | {} | {} |'.format(
+                d.pass_name, d.cls.split(SEP)[1], len(real[d.cls]), d.touched, d.expected_all, d.corroborated,
+                d.expected_corr, d.mode,
+                '{} / {}'.format(d.temoin_touched, d.temoin_retained) if args.temoin else '-'))
+        rows = sorted(((real[c].items[k].count, k, n, p) for c in real if categorie(c) == cat
+                       for k, (n, p, _e) in found.retained.get(c, {}).items()), reverse=True)
+        if rows:
+            L += ['', '{} noms retenus ; les plus fréquents :'.format(len(rows)), '',
+                  '| Hash | Nom | Passe | Occurrences | Nouveau |', '|---|---|---|---:|---|']
+            L += ['| `{:x}` | `{}` | {} | {} | {} |'.format(k[1], n, p, c, 'oui' if (k, n) in written_keys else 'non')
+                  for c, k, n, p in rows[:40]]
+        L.append('')
+    if found.ambiguous:
+        L += ['## Hashes à plusieurs noms retenus (non écrits)', '']
+        L += ['- {} `{:x}` : {}'.format(cls, k[1], ', '.join('`{}`'.format(n) for n in names))
+              for cls, k, names in found.ambiguous[:50]]
+        L.append('')
+    L += ['Dictionnaire : `{}`'.format(dict_path)]
+    return L
+
+
+# ---------------------------------------------------------------------------------------------------------
 # Commande "chercher"
 # ---------------------------------------------------------------------------------------------------------
 
 def cmd_search(args) -> int:
     vfs = _projet.open_project(args.projet)
+    if args.cibles:
+        return cmd_search_targets(args, vfs)
     reader = FileReader(vfs)
     targets = Targets()
     read_report = []
@@ -542,18 +1046,7 @@ def cmd_search(args) -> int:
     print('{} cibles ({} deja nommees par DECA, {} par le dictionnaire du fork){}'.format(
         len(search_targets), len(known_db), len(known_dict), ' : mode aveugle' if args.aveugle else ''))
 
-    sources: Dict[str, Set[str]] = {}
-    for src in [s.strip() for s in args.sources.split(',') if s.strip()]:
-        if src == 'ghidra':
-            sources[src] = source_ghidra()
-        elif src == 'exe':
-            sources[src] = source_exe(vfs)
-        elif src == 'adf-types':
-            sources[src] = source_adf_types(vfs)
-        elif src.startswith('fichier:'):
-            sources[src] = identifiers_from_lines(load_word_list(Path(src[len('fichier:'):])))
-        else:
-            raise SystemExit('ERREUR : source inconnue "{}" (ghidra, exe, adf-types, fichier:CHEMIN)'.format(src))
+    sources = load_sources(args.sources or 'ghidra,exe,adf-types', vfs)
     identifiers = set().union(*sources.values()) if sources else set()
     words = load_word_list(Path(args.vocabulaire)) if args.vocabulaire else []
     counter = tokens_of(identifiers)
@@ -755,8 +1248,10 @@ def main(argv=None):
     s.add_argument('fichiers', nargs='*', help='chemins virtuels ou fichiers locaux (defaut : equipment_data, '
                                                'equipment_tuning, equipment_stats_ui, spawn defs munitions et armes)')
     s.add_argument('--motif', action='append', default=[], help='motif SQL LIKE de chemins virtuels, ex : "settings/%%.bin"')
-    s.add_argument('--sources', default='ghidra,exe,adf-types',
-                   help='sources d\'identifiants : ghidra, exe, adf-types, fichier:CHEMIN (defaut : ghidra,exe,adf-types)')
+    s.add_argument('--sources', default=None,
+                   help='sources d\'identifiants : ghidra (chaines de HP), apex (autres jeux APEX, noms de champs '
+                        'communs), exe, adf-types, fichier:CHEMIN (defaut : ghidra,exe,adf-types ; avec --cibles : '
+                        'ghidra,apex,exe,adf-types)')
     s.add_argument('--vocabulaire', default=str(VOCABULARY), help='mots du domaine ajoutes aux paires et triplets')
     s.add_argument('--paires', type=int, default=3000, help='nombre de mots les plus frequents combines par deux (0 = passe sautee)')
     s.add_argument('--triplets', type=int, default=250, help='nombre de mots les plus frequents combines par trois (0 = passe sautee)')
@@ -765,10 +1260,24 @@ def main(argv=None):
     s.add_argument('--sans-enfants', action='store_true', help='ne chercher que les noms de proprietes RTPC')
     s.add_argument('--aveugle', action='store_true', help='chercher aussi les hashes deja nommes, pour mesurer la precision')
     s.add_argument('--seuil-fp', type=float, default=0.1, help='faux positifs attendus maximum d\'une passe pour ecrire ses noms (defaut 0.1)')
+    s.add_argument('--seuil-taux', type=float, default=0.01,
+                   help='avec --cibles : une passe est aussi retenue si ses faux positifs attendus restent sous '
+                        'cette fraction des cibles touchees (defaut 0.01)')
+    s.add_argument('--sans-verbes', dest='verbes', action='store_false',
+                   help='avec --cibles : sauter la passe verbe_objet (show_x, hide_x...)')
     s.add_argument('--tout-ecrire', action='store_true', help='ecrire tous les noms trouves, quel que soit le seuil')
     s.add_argument('--sans-ecrire', action='store_true', help='ne pas modifier le dictionnaire')
     s.add_argument('--dictionnaire', help='dictionnaire a utiliser (defaut : cotw\\dictionnaires\\hp_noms.tsv)')
     s.add_argument('--max-inconnus', type=int, default=200, help='nombre de hashes inconnus listes dans le rapport')
+    s.add_argument('--cibles', help='inconnus.csv d\'audit_noms_internes.py : chercher ces hashes (par categorie) '
+                                    'au lieu de relire des fichiers')
+    s.add_argument('--categories', default='rtpc_propriete,rtpc_noeud,rtpc_event,adf_stringhash_32',
+                   help='avec --cibles : categories cherchees (defaut : toutes sauf rtpc_objid, identifiants aleatoires)')
+    s.add_argument('--min-occurrences', type=int, default=1, help='avec --cibles : occurrences minimales d\'une cible')
+    s.add_argument('--temoin', action='store_true',
+                   help='avec --cibles : chercher aussi autant de cibles fictives, pour mesurer les faux positifs')
+    s.add_argument('--sans-mots-chemins', dest='mots_chemins', action='store_false',
+                   help='avec --cibles : ne pas ajouter les mots des chemins de fichiers aux candidats')
     s.add_argument('--out', help='rapport markdown (sinon : affichage a l\'ecran)')
     s.set_defaults(func=cmd_search)
 

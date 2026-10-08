@@ -77,6 +77,45 @@ def run_audit(conn):
     return a
 
 
+def texture_db():
+    """Textures : un .ddsc et ses niveaux de mip (lisibles), des mips sans .ddsc nomme (illisibles)."""
+    conn = synthetic_db()
+    rows = [
+        (30, 0, 2, 0x301, b'textures/a.ddsc', 0x58545641, 'avtx', 100),
+        (31, 0, 2, 0x302, b'textures/a.hmddsc', None, 'hmddsc', 400),      # son .ddsc existe : lisible
+        (32, 0, 2, 0x303, b'textures/a.atx1', None, 'atx', 200),           # idem
+        (33, 0, 2, 0x304, b'textures/b.hmddsc', None, 'hmddsc', 400),      # pas de textures/b.ddsc
+        (34, 0, 3, 0x304, b'textures/b.hmddsc', None, 'hmddsc', 400),      # copie : compte une fois
+        (35, 0, 2, 0x305, b'textures/c.atx2', None, 'atx', 50),
+        (36, 0, 2, 0x306, None, None, 'hmddsc', 300),                       # sans nom : pas de .ddsc a trouver
+    ]
+    conn.executemany('INSERT INTO core_nodes (node_id, flags, parent_id, v_hash, v_path, magic, file_type, size_u) '
+                     'VALUES (?, ?, ?, ?, ?, ?, ?, ?)', rows)
+    return conn
+
+
+class TestMipLevels(unittest.TestCase):
+    """deca_audit compte un .hmddsc / .atxN comme lisible seulement si son .ddsc est nomme (ff_avtx.image_load)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.a = run_audit(texture_db())
+        cls.rows = {r['famille']: r for r in cls.a.coverage}
+
+    def test_statuses(self):
+        self.assertEqual(self.rows['.ddsc']['statuts'], {'lisible': 1})
+        self.assertEqual(self.rows['.hmddsc']['statuts'], {'lisible': 1, 'mip_orphelin': 1})
+        self.assertEqual(self.rows['.hmddsc']['exemples'], ['textures/b.hmddsc'])
+        self.assertEqual(self.rows['.atx1']['statuts'], {'lisible': 1})
+        self.assertEqual(self.rows['.atx2']['statuts'], {'mip_orphelin': 1})
+        self.assertEqual(self.rows['(sans nom) hmddsc']['statuts'], {'mip_orphelin': 1})
+
+    def test_metric_and_comparison(self):
+        self.assertEqual(self.a.m['mips_orphelins'], 3)
+        labels = [label for _k, label, _l in DA.SCALAIRES_COMPARES]
+        self.assertIn('Niveaux de mip sans leur .ddsc', labels)
+
+
 class TestCoverageSynthetic(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

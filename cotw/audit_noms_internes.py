@@ -33,6 +33,8 @@ resoudre_hashes.py) et metrics.json. La base est ouverte en lecture seule.
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out D:\\dev\\audits\\02-noms-internes
     python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out ... --echantillon 2000      (essai rapide)
+    python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out D:\\dev\\audits\\03-noms-internes ^
+        --compare D:\\dev\\audits\\02-noms-internes\\metrics.json     (evolution par categorie)
 """
 import argparse
 import collections
@@ -301,8 +303,31 @@ def pct(a, b):
     return '{:.1f} %'.format(100.0 * a / b) if b else '-'
 
 
+def comparer(ancien: Path, b: Dict[str, dict], echantillon: int) -> List[str]:
+    """Evolution par categorie depuis un metrics.json precedent : occurrences et hashes distincts resolus."""
+    old = json.loads(Path(ancien).read_text(encoding='utf-8'))
+    oc = old.get('categories', {})
+    L = ['## Evolution depuis `{}`{}'.format(ancien, ' ({})'.format(old['date']) if old.get('date') else ''), '']
+    if old.get('echantillon', 0) != echantillon or echantillon:
+        L += ['**Attention** : echantillon {} avant, {} maintenant ; les ecarts ne sont comparables que sur deux '
+              'audits complets (echantillon 0).'.format(old.get('echantillon', 0), echantillon), '']
+    L += ['| Categorie | Occ. resolues avant | apres | ecart | Distincts resolus avant | apres | ecart | '
+          'Distincts restants |', '|---|---:|---:|---:|---:|---:|---:|---:|']
+    for cat in CATEGORIES:
+        o, n = oc.get(cat, {}), b[cat]
+        po = 100.0 * o.get('occ_resolues', 0) / o['occurrences'] if o.get('occurrences') else 0.0
+        pn = 100.0 * n['occ_resolues'] / n['occurrences'] if n['occurrences'] else 0.0
+        do = 100.0 * o.get('distincts_resolus', 0) / o['distincts'] if o.get('distincts') else 0.0
+        dn = 100.0 * n['distincts_resolus'] / n['distincts'] if n['distincts'] else 0.0
+        L.append('| {} | {:.1f} % | {:.1f} % | {:+.1f} | {:.1f} % | {:.1f} % | {:+.1f} | {} ({:+d}) |'.format(
+            cat, po, pn, pn - po, do, dn, dn - do, n['distincts'] - n['distincts_resolus'],
+            (n['distincts'] - n['distincts_resolus']) - (o.get('distincts', 0) - o.get('distincts_resolus', 0))))
+    L.append('')
+    return L
+
+
 def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select: int, echantillon: int,
-                   limite: int = 40):
+                   limite: int = 40, ancien: Optional[Path] = None):
     out_dir.mkdir(parents=True, exist_ok=True)
     inconnus = [((cat, h), v) for (cat, h), v in c.occ.items() if statut[(cat, h)] == 'inconnu']
     inconnus.sort(key=lambda kv: (-kv[1][0], kv[0]))
@@ -315,7 +340,9 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
             w.writerow([cat, largeur, '{:0{}x}'.format(h, largeur // 4), n, nf, ex])
 
     enums_faux = {t: e for t, e in c.enums.items() if e[2]}
-    metrics = {'fichiers': dict(c.fichiers), 'selectionnes': n_select, 'echantillon': echantillon,
+    evolution = comparer(ancien, b, echantillon) if ancien else []
+    metrics = {'date': time.strftime('%Y-%m-%dT%H:%M:%S'),
+               'fichiers': dict(c.fichiers), 'selectionnes': n_select, 'echantillon': echantillon,
                'echecs': len(c.echecs), 'categories': b, 'pointeurs_adf': c.pointeurs,
                'types_manquants': dict(c.types_manquants),
                'enums': {'types': len(c.enums), 'occurrences': sum(e[0] for e in c.enums.values()),
@@ -338,6 +365,7 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
             pct(d['distincts_resolus'], d['distincts']), d['occ_sur_place']))
     L += ['', '*Sur place* : resolu par les noms du fichier lui-meme (table StringHash de l\'ADF, chaines du RTPC). '
           'Les `rtpc_objid` sont souvent des identifiants tires au hasard, pas des hashes de chaines.', '']
+    L += evolution
     m = metrics['enums']
     L += ['## Enumerations ADF', '',
           '- {} types d\'enumeration rencontres, {} valeurs lues ; {} hors des valeurs des membres.'.format(
@@ -377,6 +405,7 @@ def main(argv=None):
     ap.add_argument('--processus', type=int, default=max(1, (os.cpu_count() or 2) * 3 // 4),
                     help='processus de lecture (defaut : 3/4 des coeurs, comme DECA)')
     ap.add_argument('--lot', type=int, default=200, help='fichiers par lot envoye a un processus')
+    ap.add_argument('--compare', help='metrics.json d\'un audit precedent : evolution par categorie dans le rapport')
     args = ap.parse_args(argv)
 
     types = []
@@ -402,8 +431,9 @@ def main(argv=None):
                     print('  {} / {} lots ({:.0f} s)'.format(i + 1, len(lots), time.time() - t0), flush=True)
     statut = resoudre(vfs, total)
     b = bilan(total, statut)
-    L = ecrire_sorties(Path(args.out), total, statut, b, time.time() - t0, len(choix), args.echantillon)
-    print('\n'.join(L[:20]))
+    L = ecrire_sorties(Path(args.out), total, statut, b, time.time() - t0, len(choix), args.echantillon,
+                       ancien=Path(args.compare) if args.compare else None)
+    print('\n'.join(L[:L.index('## Enumerations ADF')]))
     print('\nResultats : {}'.format(Path(args.out)))
     return 0
 
