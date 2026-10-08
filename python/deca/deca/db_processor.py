@@ -15,6 +15,7 @@ from .ff_types import *
 from .ff_adf import AdfDatabase
 from .util import Logger, make_dir_for_file, deca_root, system_sleep_prevent, system_sleep_allow
 from .digest import process_translation_adf
+from .exe_strings import exe_path_strings
 
 
 STATUS_UPDATE_TIME_S = 5.0
@@ -758,6 +759,17 @@ class VfsProcessor(VfsDatabase):
                     self.logger.log('STRINGS FROM RESOURCES: {}: Loaded {} strings'.format(fn, len(custom_strings)))
                     for s in custom_strings:
                         db.propose_string(s.strip(), None, used_at_runtime=used_at_runtime)
+
+            # COTWed DECA: path-like strings of the installed executable. ghidra_strings/<game>.txt is a list
+            # extracted once from an old build; the current build may load other paths by name.
+            exe_path = UniPath.join(self.game_info.game_dir, self.game_info.exe_name)
+            if UniPath.isfile(exe_path):
+                exe_paths, exe_patterns = exe_path_strings(exe_path)
+                string_count += len(exe_paths)
+                self.logger.log('STRINGS FROM EXE: {}: Loaded {} path strings ({} printf patterns left aside)'.format(
+                    exe_path, len(exe_paths), len(exe_patterns)))
+                for s in exe_paths:
+                    db.propose_string(s, None)
 
         self.logger.log('STRINGS FROM RESOURCES: Total {} strings'.format(string_count))
 

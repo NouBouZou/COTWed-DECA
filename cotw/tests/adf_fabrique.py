@@ -67,6 +67,13 @@ class Types:
         self.name(name)
         self.specs.append((9, size, size, type_hash, name, 0x48c5294d, None, 0))
 
+    def enum(self, name, type_hash, members):
+        """Enumeration (metatype 8, 4 octets) ; members : (nom, valeur), dans l'ordre du fichier."""
+        self.name(name)
+        for m in members:
+            self.name(m[0])
+        self.specs.append((8, 4, 4, type_hash, name, 0, list(members), 0))
+
     def blob(self) -> bytes:
         out = b''
         for metatype, size, align, type_hash, name, element, members, length in self.specs:
@@ -76,6 +83,10 @@ class Types:
                 out += struct.pack('<I', 0)
                 continue
             out += struct.pack('<I', len(members))
+            if metatype == 8:
+                for mname, value in members:
+                    out += struct.pack('<Q', self.names.index(mname)) + struct.pack('<I', value)
+                continue
             for mname, mtype, msize, moff in members:
                 out += struct.pack('<Q', self.names.index(mname)) + struct.pack('<IIII', mtype, msize, moff, 0)
                 out += struct.pack('<Q', 0)

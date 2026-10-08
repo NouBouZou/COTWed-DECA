@@ -59,6 +59,15 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
 - **Visionneuses** de l'interface pour les formats que le fork a documentés : RTPC et ADF en arbres (noms résolus, notes tirées du journal de recherche), tables de traduction (**Strings**), feuilles XLSBook (**Sheet**), archives SARC (**SARC**), sauvegardes (**File → Open Save…**).
 - **Mesure de ce qui reste à lire** : `deca_audit.py` donne, par extension, la part des fichiers qu'une visionneuse sait afficher, et prépare l'extraction d'échantillons des formats encore illisibles, à étudier ensuite.
 
+## Nommage des fichiers (2026-10-08)
+
+Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
+
+- **Nommer sans rescanner** (`cotw/renommer.py`) : DECA n'appliquait de nouveaux noms qu'en recréant le projet (64 min). `renommer.py ajouter` donne leur nom aux seuls fichiers sans nom, avec le code du scan de DECA, après un contrôle de type ; tout est journalisé, et `renommer.py annuler` remet la base dans son état précédent.
+- **Proposer des noms** (`cotw/generer_noms.py`) : variantes des noms connus (numéros, suffixes, dossiers frères, chaînes de l'exécutable). Un nom n'est gardé que si le type détecté dans le fichier est attendu pour son extension. `--temoin` mesure les faux positifs sur des cibles fictives. Sur les données du 08/10 (hors ligne) : 4 993 noms (48,8 %), environ 10 faux.
+- **Chaînes de l'exécutable** : le scan lit les chaînes en forme de chemin de l'exécutable installé (`deca/exe_strings.py`), et plus seulement la liste figée `ghidra_strings`.
+- **Noms internes** (`cotw/audit_noms_internes.py`) : part des hashes résolus dans les RTPC et ADF (propriétés, nœuds, StringHash, événements), énumérations mal affichées par DECA, hashes inconnus classés par fréquence.
+
 ## Contenu
 
 ### Modifications du cœur DECA (`python/deca`)
@@ -68,7 +77,8 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
   - le gestionnaire du scan n'occupe plus un cœur à 100 % pendant tout le scan (attente bloquante au lieu d'une attente active).
   - un fichier dont le traitement lève une exception n'arrête plus le scan : ses écritures en base sont annulées, il reçoit le drapeau `node_flag_processing_failed` (affiché dans l'onglet Info, jamais retenté), et le journal donne une ligne `loop_over_uid_wrapper: failed for` avec la cause et ses archives parentes ;
   - les dictionnaires de noms (`ghidra_strings`, `field_strings`) sont trouvés quel que soit le dossier courant, et `cotw/dictionnaires/<jeu>_noms.tsv` est chargé au scan ;
-  - les entrées de taille 0 des `.tab` sont gardées (liens), au lieu d'être perdues.
+  - les entrées de taille 0 des `.tab` sont gardées (liens), au lieu d'être perdues ;
+  - les chaînes en forme de chemin de l'exécutable installé sont proposées comme noms (`deca/exe_strings.py`, ligne `STRINGS FROM EXE` du journal).
 - **Écriture RTPC** (`deca/ff_rtpc_write.py`) : versions 1 et 2, identique à l'octet près sur les 6 348 RTPC du jeu.
 - **Vues** (`db_view.py`, `db_types.py`) : le filtre est appliqué par SQLite. Les chemins non ASCII sont acceptés. La table `core_nodes` a un index sur `parent_id`, créé à la première ouverture d'un projet existant.
 
@@ -120,6 +130,9 @@ L'autre moitié du projet : **lire tout ce que le jeu contient**, là où DECA s
 | `sauvegarde.py` | lit une sauvegarde (conteneur SAVE/COMP/zlib, ADF) et en fait un rapport nommé ; `--charge` écrit l'ADF décompressé |
 | `noms.py` | noms en clair des hashes pour l'affichage (projet, dictionnaire du fork, noms d'un mod) |
 | `extraire.py` | copie octet pour octet de fichiers du jeu, pour étude : par chemin, motif, extension (`--echantillons N` : quelques fichiers répartis par taille) ou numéro de nœud (fichiers sans nom) |
+| `generer_noms.py` | propose des noms pour les fichiers sans nom (variantes des noms connus, chaînes de l'exécutable), avec contrôle de type et mesure des faux positifs (`--temoin`) ; `--hors-ligne` travaille sur les sorties d'un audit, sans la base |
+| `renommer.py`, `noms_fichiers.py` | applique des noms à un projet déjà scanné, sans rescanner ; journal et annulation ; contrôle de type appris dans le projet |
+| `audit_noms_internes.py` | part des noms internes résolus (RTPC, ADF), énumérations mal affichées, hashes inconnus par fréquence |
 | `deca_audit.py` | audit en lecture seule d'un projet DECA : fichiers sans nom, formats non lus, **couverture de lecture par extension** et commandes d'extraction d'échantillons |
 
 ## Utilisation (Windows, Invite de commandes)
@@ -140,6 +153,7 @@ pip install -e python\deca -e python\deca_gui
 - **Mod en ligne de commande** : `python cotw\construire_mod.py ..\work\hp cotw\mods\test14.cotwmod.json --sortie ..\mods\test14`.
 - **Sauvegarde** : **File → Open Save…** dans DECA, ou `python cotw\sauvegarde.py <fichier> --projet ..\work\hp --langue fr`.
 - **Audit de lecture** : `python cotw\deca_audit.py ..\work\hp` (DECA fermé). Le dossier de sortie (`..\work\audits\…`) contient `rapport.md` (section 3 : couverture par extension et priorités), `couverture_extensions.csv` et `extraire_echantillons.bat`, qui copie quelques fichiers de chaque format non lu dans `echantillons\`. `--compare <ancien metrics.json>` montre l'évolution.
+- **Nommer les fichiers sans nom** (DECA fermé) : `python cotw\generer_noms.py ..\work\hp --sortie noms.txt --temoin`, puis `python cotw\renommer.py ajouter ..\work\hp --noms noms.txt --exe` ; `python cotw\renommer.py annuler ..\work\hp` revient en arrière.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam
