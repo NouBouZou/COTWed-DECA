@@ -252,6 +252,7 @@ class TestDemoProject(unittest.TestCase):
         self.assertTrue(bat.startswith('@echo off'))
         line = [x for x in bat.splitlines() if '--extension .fmod_guids' in x][0]
         self.assertIn('--echantillons 2', line)
+        self.assertIn('--a-plat', line)
         # meme selection que la commande, executee ici
         target = self.root / 'ech'
         EX.main([str(self.project), '--extension', '.fmod_guids', '--echantillons', '2', '--sortie', str(target)])
@@ -264,7 +265,7 @@ class TestDemoProject(unittest.TestCase):
                          sorted('__'.join(p.relative_to(target).parts) for p in written))
         unnamed = [x for x in bat.splitlines() if '--noeuds' in x]
         if unnamed:
-            ids = [int(t) for t in unnamed[0].split('--noeuds', 1)[1].split('--sortie')[0].split()]
+            ids = [int(t) for t in unnamed[0].split('--noeuds', 1)[1].split('--sortie')[0].split() if t.isdigit()]
             EX.main([str(self.project), '--noeuds', str(ids[0]), '--sortie', str(target)])
             self.assertTrue(list((target / '_noeuds').glob('{}_*'.format(ids[0]))))
 

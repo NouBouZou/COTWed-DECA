@@ -1,16 +1,17 @@
-"""Structure viewer (COTWed DECA): text description of small formats decoded by the fork (fmod_guids, TrueType)."""
-from typing import List
+"""Structure viewer (COTWed DECA): text description of formats decoded by the fork (fmod_guids, TrueType, btc, FMOD
+banks)."""
+from typing import Dict, List, Optional
 
 from .viewer_text import DataViewerText
 from .viewer import VfsNode, VfsProcessor
-from .reading import node_bytes, noms_for
-from deca.ff_types import FTYPE_BTC, FTYPE_FMOD_GUIDS, FTYPE_TTF
+from .reading import fmod_names_for, node_bytes, noms_for
+from deca.ff_types import FTYPE_BTC, FTYPE_FMOD_GUIDS, FTYPE_RIFF, FTYPE_TTF
 
 
-def structure_lines(file_type: str, data: bytes, noms=None) -> List[str]:
+def structure_lines(file_type: str, data: bytes, noms=None, fmod_names: Optional[Dict] = None) -> List[str]:
     if file_type == FTYPE_FMOD_GUIDS:
         from deca.ff_fmod_guids import dump_lines
-        return dump_lines(data)
+        return dump_lines(data, fmod_names)
     if file_type == FTYPE_TTF:
         from deca.ff_ttf import dump_lines
         return dump_lines(data)
@@ -22,9 +23,19 @@ def structure_lines(file_type: str, data: bytes, noms=None) -> List[str]:
             noms.prefetch([p['hash'] for p in btc.params])
             names = {p['hash']: noms.get(p['hash']) for p in btc.params}
         return btc.dump_lines(names)
+    if file_type == FTYPE_RIFF:
+        from deca.ff_fmod_bank import dump_lines
+        return dump_lines(data)
     raise ValueError('no structure view for type {}'.format(file_type))
 
 
 class DataViewerStructure(DataViewerText):
     def vnode_process(self, vfs: VfsProcessor, vnode: VfsNode):
-        self.content_set(structure_lines(vnode.file_type, node_bytes(vfs, vnode), noms_for(vfs)))
+        if vnode.file_type == FTYPE_RIFF:
+            # FMOD banks reach 100 MB: only the chunk headers (and the string table) are read
+            from deca.ff_fmod_bank import dump_lines_from
+            with vfs.file_obj_from(vnode) as f:
+                self.content_set(dump_lines_from(f, vnode.size_u))
+            return
+        fmod_names = fmod_names_for(vfs) if vnode.file_type == FTYPE_FMOD_GUIDS else None
+        self.content_set(structure_lines(vnode.file_type, node_bytes(vfs, vnode), noms_for(vfs), fmod_names))

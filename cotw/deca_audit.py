@@ -94,6 +94,7 @@ LECTEURS = {
     'rawc': 'Image',                                   # tableaux bruts du terrain (disposition devinee)
     'fmodguids': 'Structure', 'ttf': 'Structure',      # GUID d'evenements FMOD, police TrueType
     'btc': 'Structure',                                # arbres de comportement : en-tete, parametres (code opaque)
+    'riff': 'Structure',                               # banques FMOD : chunks ; noms FMOD de la banque de chaines
     'h2014': 'Havok',                                  # packfiles Havok 2014 : objets et membres (2026-10-09)
 }
 # Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
@@ -712,7 +713,8 @@ def sample_command(row, project_dir, out_dir, n):
         sel = ' '.join('"{}"'.format(x) for x in row['exemples'])
     else:
         sel = '--extension {} --echantillons {}'.format(row['famille'], n)
-    return '{} {} --sortie "{}"'.format(base, sel, target)
+    # --a-plat : le pont du bureau ne copie pas au-dela de 7 sous-dossiers (chemins virtuels profonds)
+    return '{} {} --a-plat --sortie "{}"'.format(base, sel, target)
 
 
 def write_sample_script(path, rows, project_dir, out_dir, n):

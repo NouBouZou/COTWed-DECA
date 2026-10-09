@@ -3,8 +3,9 @@
 Tests des formats de COTW lus par le fork depuis le 2026-10-09 (lot L2) : RTPC en ligne (world.bin, .smodc),
 OBC version 1, .fmod_guids, police TrueType (.ttfc), tableaux bruts .rawc ; leur detection (ff_determine) ;
 retyper.py sur un faux projet (vrai scan) ; le routage de l'interface vers leurs visionneuses. Le faux projet
-contient aussi un squelette Havok (.bsk) et un arbre de comportement (.btc) : leurs lecteurs sont testes dans
-test_havok_btc.py, leur routage (onglets Havok et Structure) et leur retypage ici.
+contient aussi un squelette Havok (.bsk), un arbre de comportement (.btc) et une banque de chaines FMOD : leurs
+lecteurs sont testes dans test_havok_btc.py et test_fmod.py, leur routage (onglets Havok et Structure) et leur
+retypage ici.
 
 Les fichiers sont fabriques ici avec les dispositions etablies sur les echantillons du jeu (journal de recherche,
 2026-10-09) : aucun fichier du jeu n'est versionne.
@@ -34,6 +35,7 @@ sys.path.insert(0, str(HERE))
 import _projet  # noqa: E402,F401  (substitut de zugbruecke hors Windows ; niveau module pour "spawn")
 import retyper as RT  # noqa: E402
 import havok_fabrique as HF  # noqa: E402
+import fmod_fabrique as FF  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -242,6 +244,7 @@ FILES = [
     ('worlds/world4/terrain/global_heightfield.rawc', heightfield_bytes()),
     ('animations/test/rig_test.bsk', HF.skeleton_and_animation()),
     ('ai/bts/animals/test_flee.btc', HF.btc_bytes()),
+    ('sound/fmod_banks/master_strings.fmod_bankc', FF.strings_bank()),
     ('settings/opaque_test.bin', b'\xfa\xce' * 64),
 ]
 EXPECTED = {'sound/sound_module_framework/test_root.smodc': 'rtpci',
@@ -251,7 +254,8 @@ EXPECTED = {'sound/sound_module_framework/test_root.smodc': 'rtpci',
             'textures/qui/test_font.ttfc': 'ttf',
             'worlds/world4/terrain/global_heightfield.rawc': 'rawc',
             'animations/test/rig_test.bsk': 'h2014',
-            'ai/bts/animals/test_flee.btc': 'btc'}
+            'ai/bts/animals/test_flee.btc': 'btc',
+            'sound/fmod_banks/master_strings.fmod_bankc': 'riff'}
 
 
 def text_paths(project):
@@ -391,6 +395,8 @@ class TestViewers(unittest.TestCase):
 
         self.assertEqual(self.show('editor/entities/test/weapon_test.fmod_guids'), 'Structure')
         self.assertEqual(self.lines(dv.tab_structure)[0], 'FMOD event GUIDs: 2 (version 2)')
+        self.assertEqual(self.lines(dv.tab_structure)[1], '[  0] {e4be7f4e-866d-4c89-974c-b1ab00c66efe}  '
+                         'event:/weapons/bullet_impact/plr_bullet_impact_gravel')    # banque de chaines du projet
         self.assertEqual(self.show('textures/qui/test_font.ttfc'), 'Structure')
         self.assertIn('family', ' '.join(self.lines(dv.tab_structure)))
 
@@ -401,6 +407,8 @@ class TestViewers(unittest.TestCase):
         top = dv.tab_havok.tree.model.root.children()
         self.assertTrue(top[0].cols[0].startswith('Havok packfile hk_2014.1.0-r1'), top[0].cols)
         self.assertIn('hkaSkeleton', [t.cols[0] for t in top])
+        self.assertEqual(self.show('sound/fmod_banks/master_strings.fmod_bankc'), 'Structure')
+        self.assertTrue(self.lines(dv.tab_structure)[0].startswith('FMOD Studio bank (RIFF FEV )'))
         self.assertEqual(self.show('ai/bts/animals/test_flee.btc'), 'Structure')
         self.assertEqual(self.lines(dv.tab_structure)[0],
                          'Behaviour tree (btc version 18): intermediate/ai/bts/animals/test_flee.bts')

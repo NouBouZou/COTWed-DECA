@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Tests de cotw/renommer.py et cotw/noms_fichiers.py : nommer les fichiers sans nom d'un projet deja scanne,
-controle de type, associations, simulation, annulation ; et chaines de l'executable lues au scan.
+controle de type, associations, simulation, annulation ; chaines de l'executable lues au scan ; banques FMOD
+nommees par la banque de chaines, au scan et par --fmod.
 
 Un faux jeu est scanne par DECA (vrai pipeline). Quelques fichiers sont nommes directement dans la base (ils
 servent a apprendre les types attendus par extension) ; les autres restent sans nom, comme les orphelins du jeu.
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402,F401  (niveau module : les processus spawn reimportent ce fichier)
 import noms_fichiers as NF  # noqa: E402
 import renommer as RN  # noqa: E402
+import fmod_fabrique as FF  # noqa: E402
 import deca.ff_rtpc_write as W  # noqa: E402
 from deca.ff_rtpc import Rtpc, k_type_u32  # noqa: E402
 from deca.hashes import hash32_func  # noqa: E402
@@ -61,6 +63,10 @@ FICHIERS = {
     'misc/thing.yyy': (texte(5), False),          # extension jamais vue : sans controle
     'misc/from_exe.zzz': (texte(6), False),       # nomme par le scan : chaine de l'executable
     'misc/later_exe.zzz': (texte(7), False),      # nomme par renommer.py --exe (exe remplace apres le scan)
+    # banque de chaines FMOD : cite bank:/master/master et bank:/animals/specific/animal_test
+    'sound/fmod_banks/master_strings.fmod_bankc': (FF.strings_bank(), True),
+    'sound/fmod_banks/master.fmod_bankc': (FF.sound_bank(1), False),             # nomme par le scan
+    'sound/fmod_banks/animal_test.fmod_bankc': (FF.sound_bank(2), False),        # idem ; puis par --fmod
 }
 EXE = b'MZ' + b'\0' * 62 + b'\0misc/from_exe.zzz\0version 1.25\0%d items\0ui/zoom%d/%02d.ddsc\0' + b'\0' * 64
 EXE_APRES = EXE + b'\0Misc\\Later_Exe.zzz\0'
@@ -236,6 +242,30 @@ class TestRenommer(unittest.TestCase):
         self.assertEqual(instantane(self.db), avant)
         self.assertFalse((Path(self.project) / RN.JOURNAL).exists())
         self.assertEqual(len(list(Path(self.project).glob(RN.JOURNAL + '.annule-*'))), 1)
+
+    def test_4_fmod_banks(self):
+        noms = self.noms()
+        bank = 'sound/fmod_banks/animal_test.fmod_bankc'
+        self.assertEqual(noms.get(bank), 'riff')                    # nomme au scan par la banque de chaines
+        self.assertEqual(noms.get('sound/fmod_banks/master.fmod_bankc'), 'riff')
+
+        # projet scanne avant le fork : la banque n'avait pas de nom
+        conn = sqlite3.connect(self.db)
+        conn.execute('UPDATE core_nodes SET v_path = NULL WHERE v_hash = ?', (h32(bank),))
+        conn.commit()
+        conn.close()
+        self.assertNotIn(bank, self.noms())
+        avant = instantane(self.db)
+        vfs = _projet.open_project(self.project)
+        try:
+            self.assertEqual(RN.noms_des_banques_fmod(vfs), ['sound/fmod_banks/animal_test.fmod_bankc',
+                                                             'sound/fmod_banks/master.fmod_bankc'])
+        finally:
+            vfs.db_conn.close()
+        self.assertEqual(RN.main(['ajouter', self.project, '--fmod']), 0)
+        self.assertEqual(self.noms().get(bank), 'riff')
+        self.assertEqual(RN.main(['annuler', self.project]), 0)
+        self.assertEqual(instantane(self.db), avant)
 
     def sans_nom(self):
         vfs = _projet.open_project(self.project)

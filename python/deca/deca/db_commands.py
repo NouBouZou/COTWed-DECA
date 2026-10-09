@@ -328,6 +328,7 @@ class Processor:
             'process_rtpc_initial': lambda idxs: self.loop_over_uid_wrapper(idxs, self.process_rtpc_initial),
             'process_gfx_initial': lambda idxs: self.loop_over_uid_wrapper(idxs, self.process_gfx_initial),
             'process_txt_initial': lambda idxs: self.loop_over_uid_wrapper(idxs, self.process_txt_initial),
+            'process_riff_initial': lambda idxs: self.loop_over_uid_wrapper(idxs, self.process_riff_initial),
             'process_vhash_final': lambda idxs: self.loop_over_vhash_wrapper(idxs, self.process_vhash_final),
         }
 
@@ -872,6 +873,27 @@ class Processor:
             for k, v in json.items():
                 for item in v:
                     db.propose_string(item, node)
+
+        node.flags_set(node_flag_processed_file_type)
+        db.node_update(node)
+        return True
+
+    def process_riff_initial(self, node: VfsNode, db: DbWrap):
+        """COTWed DECA: an FMOD strings bank (master_strings.fmod_bankc) lists every bank of the game by its FMOD
+        path ('bank:/weapons/weapons'); the game's file is sound/fmod_banks/<last part>.fmod_bankc (ff_fmod_bank).
+        Only the chunk headers and the STDT chunk are read: the sound banks (up to 1.9 GB in all) are skipped."""
+        self._comm.trace('Processing RIFF Initial: {} {} {}'.format(node.uid, node.v_hash_to_str(), node.v_path))
+        from .ff_fmod_bank import string_table_from, bank_file_name, EFmodBank
+
+        with db.db().file_obj_from(node) as f:
+            try:
+                table = string_table_from(f, node.size_u)
+            except EFmodBank as e:
+                self._comm.trace('RIFF {}: no string table read: {}'.format(node.uid, e))
+                table = None
+        if table is not None:
+            for bank in table.bank_paths():
+                db.propose_string(bank_file_name(bank), node, possible_file_types=[FTYPE_RIFF])
 
         node.flags_set(node_flag_processed_file_type)
         db.node_update(node)

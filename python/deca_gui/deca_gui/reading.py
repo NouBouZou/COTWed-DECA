@@ -9,6 +9,8 @@ from typing import List, Optional
 from . import cotw_tools
 
 _noms_by_vfs = weakref.WeakKeyDictionary()
+_fmod_names_by_vfs = weakref.WeakKeyDictionary()
+FMOD_STRINGS_BANK = 'sound/fmod_banks/master_strings.fmod_bankc'
 
 # ADF instance types with a dedicated viewer (research log: string_ids 2026-10-03, XLSBook 2026-10-02)
 STRINGLOOKUP_TYPE = 0xc7254276
@@ -35,6 +37,34 @@ def noms_for(vfs):
         except TypeError:
             pass
     return n
+
+
+def fmod_names_for(vfs) -> dict:
+    """FMOD path of every GUID (event:/..., bus:/...) from the project's strings bank (deca.ff_fmod_bank), read
+    once per project; empty when the bank is missing or not readable."""
+    try:
+        names = _fmod_names_by_vfs.get(vfs)
+    except TypeError:
+        names = None
+    if names is None:
+        names = {}
+        from deca.ff_fmod_bank import string_table_from, EFmodBank
+        for node in vfs.nodes_where_match(v_path=FMOD_STRINGS_BANK):
+            if node.offset is None:
+                continue
+            try:
+                with vfs.file_obj_from(node) as f:
+                    table = string_table_from(f, node.size_u)
+            except EFmodBank:
+                continue
+            if table is not None:
+                names = table.by_guid()
+                break
+        try:
+            _fmod_names_by_vfs[vfs] = names
+        except TypeError:
+            pass
+    return names
 
 
 def node_bytes(vfs, vnode) -> bytes:

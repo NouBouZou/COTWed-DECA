@@ -291,6 +291,8 @@ class VfsProcessor(VfsDatabase):
             [self.process_by_ftype_match, (FTYPE_RTPC, 'process_rtpc_initial')],
             [self.process_by_ftype_match, (FTYPE_GFX, 'process_gfx_initial')],
             [self.process_by_ftype_match, (FTYPE_TXT, 'process_txt_initial')],
+            # COTWed DECA: FMOD strings bank -> names of the banks (sound/fmod_banks/<name>.fmod_bankc)
+            [self.process_by_ftype_match, (FTYPE_RIFF, 'process_riff_initial')],
             [self.process_by_ftype_match, (FTYPE_SYMLINK, 'process_symlink')],
         ]
 

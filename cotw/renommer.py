@@ -19,7 +19,7 @@ Tout ce qui est ecrit est journalise dans <projet>\\cotw_renommages.tsv ; "annul
 precedent (noms retires, chaines et references ajoutees supprimees). DECA doit etre ferme (base verrouillee).
 
 Usage, depuis la racine du depot, environnement virtuel active :
-    python cotw\\renommer.py ajouter D:\\dev\\work\\hp --noms noms.txt [--noms autres.txt] [--exe] [--simulation]
+    python cotw\\renommer.py ajouter D:\\dev\\work\\hp --noms noms.txt [--noms autres.txt] [--exe] [--fmod] [--simulation]
     python cotw\\renommer.py annuler D:\\dev\\work\\hp
 Un fichier de noms contient un chemin virtuel par ligne ; les lignes vides ou commencant par '#' sont ignorees,
 et seule la premiere colonne d'une ligne a tabulations est lue (format de vpaths.txt).
@@ -63,6 +63,27 @@ def noms_de_l_exe(vfs) -> List[str]:
         raise SystemExit('ERREUR : executable du jeu introuvable : {}'.format(exe))
     paths, _patterns = exe_path_strings(str(exe))
     return sorted(p.decode('ascii') for p in paths)
+
+
+def noms_des_banques_fmod(vfs) -> List[str]:
+    """Fichiers des banques FMOD cites par la banque de chaines (master_strings.fmod_bankc, chunk STDT) :
+    'bank:/weapons/weapons' -> sound/fmod_banks/weapons.fmod_bankc (deca.ff_fmod_bank). Lit tous les fichiers RIFF
+    du projet, nommes ou non (seuls leurs en-tetes de chunks et leur STDT sont lus)."""
+    from deca.ff_fmod_bank import string_table_from, bank_file_name, EFmodBank
+    from deca.ff_types import FTYPE_RIFF
+    noms, vus = set(), set()
+    for node in vfs.nodes_where_match(file_type=FTYPE_RIFF):
+        if node.v_hash in vus or node.temporary_file_get():
+            continue
+        vus.add(node.v_hash)
+        try:
+            with vfs.file_obj_from(node) as f:
+                table = string_table_from(f, node.size_u)
+        except EFmodBank:
+            continue
+        if table is not None:
+            noms.update(bank_file_name(b) for b in table.bank_paths())
+    return sorted(noms)
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -387,8 +408,12 @@ def cmd_ajouter(args) -> int:
     noms = lire_noms(args.noms)
     if args.exe:
         noms += noms_de_l_exe(vfs)
+    if args.fmod:
+        fmod = noms_des_banques_fmod(vfs)
+        print('banques FMOD citees par la banque de chaines : {}'.format(len(fmod)))
+        noms += fmod
     if not noms:
-        raise SystemExit('ERREUR : aucun nom candidat (--noms ou --exe)')
+        raise SystemExit('ERREUR : aucun nom candidat (--noms, --exe ou --fmod)')
     etat = NF.Etat.depuis_base(vfs)
     file_assoc = vfs.game_info.file_assoc()
     modele = NF.ModeleTypes(etat, file_assoc)
@@ -430,6 +455,8 @@ def main(argv=None):
     a.add_argument('projet', help='projet DECA (dossier contenant db\\core.db)')
     a.add_argument('--noms', action='append', default=[], help='fichier de noms (un chemin virtuel par ligne)')
     a.add_argument('--exe', action='store_true', help='ajouter les chaines en forme de chemin de l\'executable du jeu')
+    a.add_argument('--fmod', action='store_true',
+                   help='ajouter les fichiers des banques FMOD cites par la banque de chaines (sound/fmod_banks)')
     a.add_argument('--strict', action='store_true', help='refuser les noms dont l\'extension n\'a jamais ete vue')
     a.add_argument('--simulation', action='store_true', help='rapport seulement, rien n\'est ecrit')
     a.add_argument('--rapport', help='ecrire aussi le rapport dans ce fichier (markdown)')
