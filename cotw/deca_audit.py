@@ -721,9 +721,10 @@ def write_sample_script(path, rows, project_dir, out_dir, n):
     repo = Path(__file__).resolve().parent.parent
     lines = ['@echo off',
              'rem Echantillons des familles de fichiers que COTWed DECA ne sait pas encore lire (deca_audit.py,',
-             'rem {}). A lancer dans l\'invite ou l\'environnement virtuel est active, DECA ferme.'.format(
+             'rem {}). DECA ferme ; l\'environnement virtuel (venv\\ du depot) est active par ce script.'.format(
                  datetime.now().isoformat(timespec='seconds')),
-             'cd /d "{}"'.format(repo)]
+             'cd /d "{}"'.format(repo),
+             'if exist venv\\Scripts\\activate.bat (call venv\\Scripts\\activate.bat) else (echo venv introuvable dans %CD% & exit /b 1)']
     count = 0
     for r in rows:
         cmd = sample_command(r, project_dir, out_dir, n)

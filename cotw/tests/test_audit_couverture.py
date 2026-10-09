@@ -250,6 +250,10 @@ class TestDemoProject(unittest.TestCase):
     def test_sample_script_runs(self):
         bat = (self.out / 'extraire_echantillons.bat').read_text(encoding='utf-8')
         self.assertTrue(bat.startswith('@echo off'))
+        rows = bat.splitlines()
+        i_venv = [i for i, x in enumerate(rows) if 'venv\\Scripts\\activate.bat' in x]
+        i_first = [i for i, x in enumerate(rows) if 'extraire.py' in x][0]
+        self.assertTrue(i_venv and i_venv[0] < i_first)       # le script active lui-meme le venv (pas de "No module named deca")
         line = [x for x in bat.splitlines() if '--extension .fmod_guids' in x][0]
         self.assertIn('--echantillons 2', line)
         self.assertIn('--a-plat', line)
