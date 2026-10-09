@@ -258,6 +258,10 @@ class TestDemoProject(unittest.TestCase):
         written = sorted(p for p in target.rglob('*') if p.is_file())
         self.assertEqual(len(written), 2)
         self.assertTrue(all(p.name.endswith('.fmod_guids') for p in written))
+        flat = self.root / 'ech_plat'
+        EX.main([str(self.project), '--extension', '.fmod_guids', '--echantillons', '2', '--a-plat', '--sortie', str(flat)])
+        self.assertEqual(sorted(p.name for p in flat.iterdir()),
+                         sorted('__'.join(p.relative_to(target).parts) for p in written))
         unnamed = [x for x in bat.splitlines() if '--noeuds' in x]
         if unnamed:
             ids = [int(t) for t in unnamed[0].split('--noeuds', 1)[1].split('--sortie')[0].split()]

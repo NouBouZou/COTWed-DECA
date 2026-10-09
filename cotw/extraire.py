@@ -15,6 +15,8 @@ Selection :
 Avec --motif ou --extension, --echantillons N prend N fichiers repartis par taille (le plus petit, le plus grand
 et des intermediaires : des cas varies pour etudier un format) au lieu de refuser au-dela de --max.
 Un chemin present dans plusieurs archives avec des contenus differents est signale (_projet.read_by_path).
+--a-plat ecrit chaque fichier directement dans SORTIE, son chemin virtuel aplati ("/" -> "__") : le pont du
+bureau Claude ne copie pas un fichier a plus de 7 dossiers sous un dossier connecte.
 
 Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\extraire.py D:\\dev\\work\\hp ui/ui_localization.stringlookup settings/hp_settings/string_ids.stringlookup ^
@@ -22,6 +24,7 @@ Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\extraire.py D:\\dev\\work\\hp --motif "settings/hp_settings/%.stringlookup" --sortie D:\\dev\\audits\\loc
     python cotw\\extraire.py D:\\dev\\work\\hp --extension .ban --echantillons 5 --sortie D:\\dev\\audits\\echantillons\\ban
     python cotw\\extraire.py D:\\dev\\work\\hp --noeuds 123456 123789 --sortie D:\\dev\\audits\\echantillons\\sans_nom
+    python cotw\\extraire.py D:\\dev\\work\\hp --extension .btc --echantillons 4 --a-plat --sortie D:\\dev\\audits\\echantillons\\btc
 """
 import argparse
 import sys
@@ -97,7 +100,13 @@ def extension_paths(vfs, ext: str, limit: int, samples: int = 0) -> List[str]:
     return select(with_extension(candidates(vfs, '%' + ext), ext), 'l\'extension {}'.format(ext), limit, samples)
 
 
-def write_node(vfs, uid: int, out_root: Path) -> Path:
+def target_of(out_root: Path, v_path: str, flat: bool) -> Path:
+    """Fichier a ecrire : sous son chemin virtuel, ou a plat ('a/b/c.obc' -> 'a__b__c.obc')."""
+    v_path = v_path.replace('\\', '/')
+    return out_root / (v_path.replace('/', '__') if flat else Path(v_path))
+
+
+def write_node(vfs, uid: int, out_root: Path, flat: bool = False) -> Path:
     node = vfs.node_where_uid(uid)
     if node is None:
         raise SystemExit('ERREUR : aucun noeud {} dans le projet'.format(uid))
@@ -106,7 +115,7 @@ def write_node(vfs, uid: int, out_root: Path) -> Path:
     data = _projet.read_node(vfs, node)
     path = _projet.to_text(node.v_path)
     if path:
-        target = out_root / Path(path)
+        target = target_of(out_root, path, flat)
     else:
         kind = kind_of(data)
         target = out_root / '_noeuds' / '{}_{:08x}{}'.format(uid, (node.v_hash or 0) & 0xFFFFFFFFFFFFFFFF,
@@ -130,6 +139,8 @@ def main(argv=None):
                     help='avec --motif / --extension : N fichiers repartis par taille')
     ap.add_argument('--max', type=int, default=MAX_DEFAULT, help='nombre maximal de fichiers pour --motif')
     ap.add_argument('--sortie', required=True, help='dossier ou ecrire les fichiers, sous leur chemin virtuel')
+    ap.add_argument('--a-plat', dest='a_plat', action='store_true',
+                    help='ecrire les fichiers directement dans --sortie, chemin aplati ("/" -> "__")')
     args = ap.parse_args(argv)
     if not args.chemins and not args.motif and not args.extension and not args.noeuds:
         raise SystemExit('ERREUR : donner des chemins virtuels, --motif, --extension ou --noeuds')
@@ -146,12 +157,12 @@ def main(argv=None):
     out_root = Path(args.sortie).expanduser().resolve()
     for v_path in paths:
         data = _projet.read_by_path(vfs, v_path)
-        target = out_root / Path(v_path)
+        target = target_of(out_root, v_path, args.a_plat)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(data)
         print('{} : {} octets, {} -> {}'.format(v_path, len(data), kind_of(data), target))
     for uid in args.noeuds:
-        write_node(vfs, uid, out_root)
+        write_node(vfs, uid, out_root, args.a_plat)
     print('{} fichier(s) ecrit(s) dans {}'.format(len(paths) + len(args.noeuds), out_root))
     return 0
 
