@@ -27,6 +27,8 @@ def determine_file_type_by_name(vfs: VfsDatabase, node: VfsNode):
                     node.file_type = FTYPE_ATX
                 elif ext == b'.hmddsc':
                     node.file_type = FTYPE_HMDDSC
+                elif ext == b'.rawc':
+                    node.file_type = FTYPE_RAWC     # COTW raw terrain arrays: no header to recognise them by
 
             if node.file_type is None:
                 hash32 = None

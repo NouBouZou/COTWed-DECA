@@ -4,6 +4,12 @@ from deca.file import ArchiveFile
 from deca.ff_aaf import load_aaf_header
 from deca.ff_avtx import DdImageHeader
 from deca.ff_types import *
+from deca.ff_obc import obc_version
+from deca.ff_fmod_guids import is_fmod_guids
+from deca.ff_ttf import is_ttf_header
+from deca.ff_rtpc_inline import is_inline_rtpc
+
+INLINE_RTPC_MAX_SIZE = 64 * 1024 * 1024   # the whole file is parsed to recognise it (world.bin: 1.5 MB, 0.3 s)
 
 # guess type
 raw_image_size = {
@@ -34,7 +40,9 @@ def file_stats(f, file_size):
     return counts
 
 
-def determine_file_type_and_size(f, file_size0):
+def determine_file_type_and_size(f, file_size0, check_text=True):
+    """(file_type, file_size, magic_int, file_sub_type). check_text=False skips the text test, which reads the
+    whole file: cotw/retyper.py re-examines files the scan already found not to be text."""
     file_type = None
     file_sub_type = None
     file_size = file_size0
@@ -100,20 +108,30 @@ def determine_file_type_and_size(f, file_size0):
             file_type = FTYPE_BINK_BIK
         elif magic.startswith(b'GT0C'):
             file_type = FTYPE_GT0C
+        elif is_ttf_header(file_size0, magic):
+            file_type = FTYPE_TTF
 
     # need to inspect file structure
 
     fm = ArchiveFile(f)
 
-    if file_type is None:
-        # OBC files with (u32)4, (u32)count , 80 * count bytes, something to do with areas on the map? object placement?
-        fm.seek(start_pos)
-        ver = fm.read_u32()
-        cnt = fm.read_u32()
-        if ver == 4 and cnt * 80 + 8 == file_size0:
+    if file_type is None and file_size0 >= 8:
+        # OBC files: (u32) version, (u32) count, count fixed-size records: version 4, 80 bytes (DECA);
+        # version 1, 76 bytes (COTW occluder boxes, COTWed DECA 2026-10-09)
+        if obc_version(file_size0, magic[:8]) is not None:
             file_type = FTYPE_OBC
+        # COTW *.fmod_guids: (u32) 2, (u16) 0, (u16) count, count GUIDs; 3 518 of them are 8-byte empty lists
+        elif is_fmod_guids(file_size0, magic[:8]):
+            file_type = FTYPE_FMOD_GUIDS
 
-    if file_type is None:  # text file only contains text bytes, json, xml, ...
+    if file_type is None and len(magic) >= 5 and magic[0] != 0 and magic[1:3] in (b'\x04\x00', b'\x05\x00') \
+            and file_size0 <= INLINE_RTPC_MAX_SIZE:
+        # COTW inline RTPC (world.bin, *.smodc): no magic, the structure is checked to the last byte
+        fm.seek(start_pos)
+        if is_inline_rtpc(fm.read(file_size0)):
+            file_type = FTYPE_RTPC_INLINE
+
+    if file_type is None and check_text:  # text file only contains text bytes, json, xml, ...
         fm.seek(start_pos)
         counts = file_stats(fm, file_size0)
         all_sum = np.sum(counts)

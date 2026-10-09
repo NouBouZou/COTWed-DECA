@@ -127,6 +127,32 @@ class Window(QWidget):
             self.editPixInfo.setText('%d, %d' % (pos.x(), pos.y()))
 
 
+class _RawMip:
+    """What update_image() needs from a ddsc mip, for a raw array (COTW *.rawc)."""
+    def __init__(self, data, label):
+        self.data = data
+        self.size_y, self.size_x = data.shape[0], data.shape[1]
+        self.depth_idx = self.depth_cnt = None
+        self.itype = label
+
+
+class _RawImage:
+    def __init__(self, mips):
+        self.mips = mips
+
+
+def rawc_image(vfs, vnode):
+    """*.rawc (raw terrain arrays): layout guessed by deca.ff_rawc (no header), shown in grey levels."""
+    import deca.ff_rawc as R
+    with vfs.file_obj_from(vnode) as f:
+        data = f.read(vnode.size_u)
+    name = vnode.v_path.decode('utf-8', 'replace') if isinstance(vnode.v_path, bytes) else (vnode.v_path or '')
+    layout = R.guess_layout(data, name)
+    if layout is None:
+        raise ValueError('rawc: no square layout for {} bytes'.format(len(data)))
+    return _RawImage([_RawMip(R.to_rgba8(layout), 'rawc ' + R.describe(layout))])
+
+
 class DataViewerImage(DataViewer):
     def __init__(self):
         DataViewer.__init__(self)
@@ -226,6 +252,8 @@ class DataViewerImage(DataViewer):
 
         if vnode.file_type in {FTYPE_BMP, FTYPE_DDS, FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC}:
             self.ddsc = deca.ff_avtx.image_load(vfs, vnode)
+        elif vnode.file_type == FTYPE_RAWC:
+            self.ddsc = rawc_image(vfs, vnode)
 
         if self.ddsc is not None and self.ddsc.mips is not None:
             first_valid = None

@@ -186,7 +186,8 @@ def rtpc_tree(rtpc, noms) -> TreeItem:
         return TreeItem([name or '0x{:08x}'.format(p.name_hash), D.type_name(p.type), value,
                          '0x{:08x} @0x{:x}'.format(p.name_hash, p.pos or 0)], tooltip=value, payload=p)
 
-    return root(lambda: [node_item(rtpc.root_node, 'RTPC v{}: '.format(rtpc.version))])
+    label = 'RTPC v{}: '.format(rtpc.version) if isinstance(rtpc.version, int) else 'RTPC ({}): '.format(rtpc.version)
+    return root(lambda: [node_item(rtpc.root_node, label)])
 
 
 # ---------------------------------------------------------------------------

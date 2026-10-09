@@ -69,6 +69,7 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
 - **Noms internes** (`cotw/audit_noms_internes.py`) : part des hashes résolus dans les RTPC et ADF (propriétés, nœuds, StringHash, événements), énumérations mal affichées par DECA, hashes inconnus classés par fréquence ; `--compare` donne l'évolution depuis un audit précédent.
 - **Retrouver les noms internes** (`resoudre_hashes.py chercher --cibles inconnus.csv`) : cherche d'un coup tous les hashes inconnus relevés par l'audit. Les cibles sont classées par nombre d'occurrences : les 303 propriétés vues 1 000 fois ou plus portent 96 % des occurrences de propriétés inconnues, et sur si peu de cibles une coïncidence est très improbable. Un nom n'est écrit que si les faux positifs attendus restent faibles pour sa passe et sa classe, ou s'il est confirmé par un autre nom de même racine (`frame_0` … `frame_98`, `show_clues` et `hide_clues`, `segment_type` par `segment_id`) ; `--temoin` mesure les faux positifs réels. Mesuré sur le PC le 08/10 : 1 117 noms ; propriétés RTPC résolues de 60,1 % à **75,8 %** des occurrences, nœuds de 14,9 % à **57,8 %**.
 - **Passes par famille de fichiers** (`cotw/familles.py`) : chaque famille (`trophy_feature_data.bin`, `.asb`, `.blo`…) confronte son propre vocabulaire (noms déjà connus dans ses fichiers, `noms_par_famille.tsv` de l'audit, et `dictionnaires/vocabulaire_familles.txt`) à ses seules cibles. Contre 108 cibles, 2 millions de candidats n'attendent que 0,05 coïncidence : `antler_offset`, `keyframe_index`, `tines_length`, `circumference_upper_beam`… Estimation hors ligne : 29 % des occurrences de propriétés encore inconnues, 0,15 faux positif attendu.
+- **Petits formats de COTW (2026-10-09)** : RTPC en ligne (`locations/world.bin`, `.smodc` : lecture et écriture identiques à l'octet, onglet RTPC), OBC version 1 (boîtes d'occultation), `.fmod_guids` (GUID des événements FMOD) et police `.ttfc` (nouvel onglet **Structure**), tableaux bruts `.rawc` du terrain (onglet Image, disposition devinée). `cotw/retyper.py` donne leur type aux fichiers d'un projet déjà scanné, sans rescan (environ 5 800 fichiers de plus lisibles).
 - **Textures** : `deca_audit.py` ne compte plus un `.hmddsc` ou un `.atxN` comme lisible si son `.ddsc` n'est pas nommé : la visionneuse ouvre la texture par son `.ddsc` (nouveau statut `mip_orphelin`).
 
 ## Contenu
@@ -83,6 +84,7 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
   - les entrées de taille 0 des `.tab` sont gardées (liens), au lieu d'être perdues ;
   - les chaînes en forme de chemin de l'exécutable installé sont proposées comme noms (`deca/exe_strings.py`, ligne `STRINGS FROM EXE` du journal).
 - **Écriture RTPC** (`deca/ff_rtpc_write.py`) : versions 1 et 2, identique à l'octet près sur les 6 348 RTPC du jeu.
+- **Formats ajoutés** (`deca/ff_rtpc_inline.py`, `ff_fmod_guids.py`, `ff_ttf.py`, `ff_rawc.py`, `ff_obc.py`) : nouveaux types `rtpci`, `fmodguids`, `ttf`, `rawc`, OBC version 1, reconnus au scan (`ff_determine`).
 - **Vues** (`db_view.py`, `db_types.py`) : le filtre est appliqué par SQLite. Les chemins non ASCII sont acceptés. La table `core_nodes` a un index sur `parent_id`, créé à la première ouverture d'un projet existant.
 
 ### Interface (`python/deca_gui`, en anglais)
@@ -100,7 +102,8 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
   - **RTPC** et **ADF** : arbres chargés au fur et à mesure (les grands tableaux sont découpés en tranches de 256), noms résolus par lots (`cotw/noms.py`) ou tirés des chaînes du fichier, hashes annotés, notes du journal (`secondary_ids` : jeu de base ou DLC ; `locked` 5 : caché du magasin), recherche, **Export text…**, et la vue texte d'origine de DECA à la demande (**DECA text dump**) ;
   - **Strings** (`*.stringlookup`) : clé, hash et texte dans les 10 langues, filtre ; lu directement sur les octets, sans l'arbre ADF générique (17 s pour `string_ids`, 38,8 Mo) ;
   - **Sheet** (XLSBook, `equipment_stats_ui.bin`) : une grille par feuille, cases vides en blanc, lignes après la première ligne vide grisées (le jeu n'y lit plus les stats, test12) ;
-  - **SARC** : table des entrées (offset, taille, type détecté, lien) ; double-clic pour ouvrir une entrée.
+  - **SARC** : table des entrées (offset, taille, type détecté, lien) ; double-clic pour ouvrir une entrée ;
+  - **Structure** : GUID des événements FMOD (`.fmod_guids`), description d'une police (`.ttfc`) ; **OBC** : boîtes d'occultation de la version 1 ; **Image** : tableaux bruts `.rawc` ; **RTPC** : aussi le RTPC en ligne (`world.bin`, `.smodc`).
 - **Sauvegardes** (**File → Open Save…**, `deca_gui/save_viewer.py`) : objets possédés et quantités, sac, objets débloqués, emplacements d'inventaire, loadouts, données d'armes, et l'arbre ADF complet. Les objets sont nommés avec le projet ouvert, dans la langue choisie, et avec les mods ajoutés (**Add mod file…**) ; un hash que rien ne nomme est signalé.
 - **Projet de démonstration** (`cotw/demo_projet.py`, `cotw/lancer_demo.bat`) : un faux COTW scanné par DECA, pour travailler sur l'interface sans le jeu. Il contient tout ce que demande l'atelier : entités avec `.ammotunec`, `string_ids` en 10 langues, feuille de stats terminée par deux lignes vides.
 - **Ammo Workshop** (**Tools → Ammo Workshop…**, `deca_gui/ammo_workshop.py`) :
@@ -134,6 +137,7 @@ Référence du 08/10 : 78,7 % des fichiers lisibles, 10 222 fichiers sans nom.
 | `noms.py` | noms en clair des hashes pour l'affichage (projet, dictionnaire du fork, noms d'un mod) |
 | `extraire.py` | copie octet pour octet de fichiers du jeu, pour étude : par chemin, motif, extension (`--echantillons N` : quelques fichiers répartis par taille) ou numéro de nœud (fichiers sans nom) |
 | `generer_noms.py` | propose des noms pour les fichiers sans nom (variantes des noms connus, chaînes de l'exécutable), avec contrôle de type et mesure des faux positifs (`--temoin`) ; `--hors-ligne` travaille sur les sorties d'un audit, sans la base |
+| `retyper.py` | donne leur type aux fichiers sans type d'un projet déjà scanné, avec la détection actuelle (journal, annulation) |
 | `renommer.py`, `noms_fichiers.py` | applique des noms à un projet déjà scanné, sans rescanner ; journal et annulation ; contrôle de type appris dans le projet |
 | `audit_noms_internes.py` | part des noms internes résolus (RTPC, ADF), énumérations mal affichées, hashes inconnus par fréquence et par famille de fichiers, vocabulaire connu par famille ; `--compare` avec un audit précédent |
 | `deca_audit.py` | audit en lecture seule d'un projet DECA : fichiers sans nom, formats non lus, **couverture de lecture par extension** et commandes d'extraction d'échantillons |
@@ -158,6 +162,7 @@ pip install -e python\deca -e python\deca_gui
 - **Audit de lecture** : `python cotw\deca_audit.py ..\work\hp` (DECA fermé). Le dossier de sortie (`..\work\audits\…`) contient `rapport.md` (section 3 : couverture par extension et priorités), `couverture_extensions.csv` et `extraire_echantillons.bat`, qui copie quelques fichiers de chaque format non lu dans `echantillons\`. `--compare <ancien metrics.json>` montre l'évolution.
 - **Nommer les fichiers sans nom** (DECA fermé) : `python cotw\generer_noms.py ..\work\hp --sortie noms.txt --temoin`, puis `python cotw\renommer.py ajouter ..\work\hp --noms noms.txt --exe` ; `python cotw\renommer.py annuler ..\work\hp` revient en arrière.
 - **Noms internes** (DECA fermé) : `python cotw\audit_noms_internes.py ..\work\hp --out ..\work\audits\noms-internes`, puis `python cotw\resoudre_hashes.py chercher ..\work\hp --cibles ..\work\audits\noms-internes\inconnus.csv --temoin --out resoudre.md` (écrit `cotw\dictionnaires\hp_noms.tsv`, que les visionneuses RTPC et ADF lisent directement ; `resoudre_hashes.py injecter ..\work\hp` les ajoute aussi à la base, pour la vue texte d'origine de DECA).
+- **Typer sans rescanner** (DECA fermé) : `python cotw\retyper.py ajouter ..\work\hp` ; `python cotw\retyper.py annuler ..\work\hp` revient en arrière.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam

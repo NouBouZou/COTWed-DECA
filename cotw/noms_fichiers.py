@@ -16,7 +16,7 @@ from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 # Types que DECA attribue d'apres le nom, et non d'apres le contenu : avant d'etre nomme, un tel fichier n'a
 # aucun type (process_vhash_final pose FTYPE_HMDDSC / FTYPE_ATX en meme temps que le nom).
-TYPES_PAR_NOM = {'hmddsc', 'atx'}
+TYPES_PAR_NOM = {'hmddsc', 'atx', 'rawc'}
 # Un lien (entree de SARC ou de TAB sans contenu) peut porter n'importe quel nom.
 TYPE_LIEN = 'symlink'
 # Part minimale d'un type parmi les fichiers nommes d'une extension pour qu'il soit attendu. En dessous :

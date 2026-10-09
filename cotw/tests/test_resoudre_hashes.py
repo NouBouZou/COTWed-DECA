@@ -420,8 +420,8 @@ class TestEndToEnd(unittest.TestCase):
         csv_path = Path(self.tmp.name) / 'inconnus_familles.csv'
         fam = 'trophy_feature_data.bin'
         write_audit_csv(csv_path, [
-            ('rtpc_propriete', 32, h32('circumference_burr'), 300, fam + ':300'),
-            ('rtpc_propriete', 32, h32('antler_offset'), 500, fam + ':500'),
+            ('rtpc_propriete', 32, h32('skull_width'), 300, fam + ':300'),
+            ('rtpc_propriete', 32, h32('boss_height'), 500, fam + ':500'),
             ('rtpc_noeud', 32, h32('keyframe_lookup_table'), 200, fam + ':200'),
             ('rtpc_noeud', 32, h32('ailleurs_inconnu'), 50, 'reserve_#.bin:50'),      # famille trop peu touchee
         ])
@@ -437,7 +437,8 @@ class TestEndToEnd(unittest.TestCase):
         text = out.read_text(encoding='utf-8')
         entries = {cols[2]: cols[3] for cols in (l.split('\t') for l in dictionary.read_text(encoding='utf-8')
                                                  .splitlines() if not l.startswith('#'))}
-        self.assertEqual(entries, {'circumference_burr': 'famille-paires', 'antler_offset': 'famille-paires',
+        # noms absents du dictionnaire du depot (le faux projet le charge au scan : un nom deja connu n'est plus cible)
+        self.assertEqual(entries, {'skull_width': 'famille-paires', 'boss_height': 'famille-paires',
                                    'keyframe_lookup_table': 'famille-triplets'})
         self.assertIn('## Passes par famille', text)
         self.assertIn('| `trophy_feature_data.bin` | 3 | 1000 | 3 |', text)

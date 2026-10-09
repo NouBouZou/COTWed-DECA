@@ -1014,6 +1014,9 @@ class Processor:
                         elif ext == b'.hmddsc':
                             node.file_type = FTYPE_HMDDSC
                             updated = True
+                        elif ext == b'.rawc':
+                            node.file_type = FTYPE_RAWC
+                            updated = True
 
                     missed_vpaths.discard(node.v_path)
 
