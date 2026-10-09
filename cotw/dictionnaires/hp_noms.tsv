@@ -1275,3 +1275,134 @@
 0xe4ef2df5	32	height_variation	directs	0.015	rtpc_propriete|>=1000 ; (sans nom) 0a5be1e1
 0xf89dca72	32	inner_spread	paires	0.11	rtpc_propriete|>=1000 ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
 0xfdcf4c12	32	transition_mode	directs	0.015	rtpc_propriete|>=1000 ; animations/hp_statemachine/humans/elmer/ub_hunter_male_first_person.asb
+0x03797b89	32	circumference_mid	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/northern_red_muntjac/trophy_feature_data_male.bin
+0x064990f5	32	event_enabled	famille-affixes	0.029	rtpc_propriete|f:.blo ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x064ab094	32	prone_multiplier	paires	0.049	rtpc_propriete|2-9 ; settings/hp_settings/animal_patience_settings.bin
+0x06e6c969	32	102	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0x088efd1d	32	set_50	famille-positionnels	0.00012	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0x08f4a58d	32	slope_gain	paires	0.049	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0x0b101937	32	111	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cd85cdcc
+0x0f8d0b31	32	66	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cadaaff4
+0x0fc32b07	32	max_cpu_cost	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) 74abd68f
+0x1363fc3b	32	gray_fox_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x175e13d3	32	max_players	paires	0.049	rtpc_propriete|2-9 ; settings/hp_settings/world_object_types.bin
+0x19fe11d3	32	123	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cadaaff4
+0x1bd280af	32	max_gpu_cost	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) 74abd68f
+0x1c217c47	32	thresholds	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 3a614426
+0x1c754052	32	forbidden_layer	famille-paires	0.004	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x1cc6bfc7	32	126	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0x1eec8b29	32	61	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0x1f25dd24	32	default_preset_name	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0x2196c6a9	32	58	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0x2643859d	32	show_object	famille-affixes	0.0038	rtpc_event|f:.blo ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20180_mission_items.blo
+0x2a439c8a	32	total_males	famille-paires	0.004	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x2c7a1dc8	32	104	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0x2ff58884	32	max_mem_cost	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) 74abd68f
+0x33eac7d8	32	67	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cadaaff4
+0x33f72d79	32	stand_multiplier	paires	0.049	rtpc_propriete|2-9 ; settings/hp_settings/animal_patience_settings.bin
+0x3595fb0d	32	forbidden_map	famille-paires	0.004	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x37ea7d36	32	hybrid_mount_recipes	famille-triplets	0.014	rtpc_noeud|f:hybrid_mount_recipes.bin ; settings/hp_settings/hybrid_mount_recipes.bin
+0x398ecac1	32	113	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cd85cdcc
+0x3aee59a7	32	red_grouse_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x3d5bdb9b	32	right_offset	paires	0.049	rtpc_propriete|2-9 ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0x40400421	32	game_materials	famille-paires	3.7e-05	rtpc_noeud|f:game_materials.bin ; settings/game_materials.bin
+0x437dfa6c	32	red_grouse_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x446545dd	32	51	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0x44cb953d	32	hide_object	famille-affixes	0.0038	rtpc_event|f:.blo ; worlds/world4/locations/hp_scotland/z00/mission_locations/mm20180_mission_items.blo
+0x474ca825	32	crouch_multiplier	paires	0.049	rtpc_propriete|2-9 ; settings/hp_settings/animal_patience_settings.bin
+0x4a991f20	32	abnormal_tines_length	famille-triplets	0.01	rtpc_propriete|f:trophy_great_one_feature_data.bin ; animations/hp_antlers/mule_deer/trophy_great_one_feature_data_ma...
+0x4cbb1cc1	32	effects	famille-directs	2.2e-06	rtpc_noeud|f:player.bin ; settings/player.bin
+0x4e77463e	32	leaf_type	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) 0a5be1e1
+0x501f9076	32	prong_length	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/prong_horn/trophy_feature_data_female.bin
+0x53ed725a	32	direction_random	famille-paires	0.026	rtpc_propriete|f:.epe ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0x5401d231	32	player_trigger_type	famille-affixes	0.029	rtpc_propriete|f:.blo ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x58925075	32	bighorn_sheep_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x59178eba	32	object_impulse	paires	0.049	rtpc_propriete|2-9 ; settings/player.bin
+0x5c18641b	32	115	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cd85cdcc
+0x5c9e4a6b	32	caribou_male	famille-paires	0.0077	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x5caf25a5	32	fixed_damage	paires	0.049	rtpc_propriete|2-9 ; editor/entities/hp_characters/animals/european_badger/european_badger_female.epe
+0x6045e315	32	clear_value	famille-affixes	0.00079	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x610d0b2c	32	103	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0x619ccad5	32	109	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) aa70d613
+0x61dec0ff	32	average_score	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x628e69ba	32	european_hare	famille-paires	0.00026	rtpc_noeud|f:animal_interest.bin ; settings/hp_settings/animal_interest.bin
+0x63f5f198	32	num_males	famille-affixes	0.00079	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x677343bb	32	circumference_lower_beam	famille-triplets	0.01	rtpc_propriete|f:trophy_great_one_feature_data.bin ; animations/hp_antlers/barasingha/trophy_feature_data_male.bin
+0x67c6756f	32	circumference	famille-directs	4.8e-05	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x67d26543	32	roads	famille-directs	1.8e-07	rtpc_noeud|f:road_rendering.bin ; settings/road_rendering.bin
+0x6a10ebf7	32	western_capercaillie_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x6c5d7a42	32	module_index	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_weapons/weapon_rifles_01/equipment_weapon_caplock_muzzleloader_03.epe
+0x712b6cd3	32	attack_damage	paires	0.049	rtpc_propriete|2-9 ; editor/entities/hp_characters/animals/eastern_grey_kangaroo/eastern_grey_kangaroo_male.epe
+0x72d63250	32	red_fox_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x77b96769	32	show_order	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) 6d944dac
+0x782ef711	32	sidestriped_jackal_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x7bc886d9	32	brow_tine_length	famille-triplets	0.01	rtpc_propriete|f:trophy_great_one_feature_data.bin ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0x7dde9bad	32	112	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cd85cdcc
+0x7fe0119e	32	red_fox_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x7fee6c43	32	106	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) aa70d613
+0x811e7545	32	127	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0x86de6bd3	32	tines_length	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/blacktail_deer/trophy_feature_data_male.bin
+0x89453554	32	layer_count	famille-affixes	0.00018	rtpc_propriete|f:road_rendering.bin ; settings/road_rendering.bin
+0x89d64f35	32	brown_bear_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x8c3077e0	32	eu_rabbit_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x8e51e9e6	32	sound_id	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; settings/ammunition.bin
+0x8e7ca9f7	32	flee_map	famille-paires	0.004	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x8eb4f892	32	budget	famille-directs	1.2e-06	rtpc_noeud|f:spawn_budget_pools.bin ; settings/spawn_budget_pools.bin
+0x9008e35a	32	is_water	famille-affixes	0.00079	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x922b367c	32	default_max_num	famille-affixes	0.00079	rtpc_propriete|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0x933242a5	32	whitetail_female	famille-paires	0.0077	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0x93c3efff	32	constraint_weight	famille-paires	0.026	rtpc_propriete|f:.epe ; editor/entities/hp_characters/birds/northern_bobwhite_quail/northern_bobwhite_quail_male.epe
+0x95ceca29	32	color_setting	famille-paires	0.026	rtpc_propriete|f:.epe ; worlds/world3/locations/hp_iberia/z00/mission_locations/mm8140.blo
+0x97050620	32	circumference_joint	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/blacktail_deer/trophy_feature_data_male.bin
+0x9b6c890e	32	civilian_health	famille-paires	0.0079	rtpc_propriete|f:(sans nom) ; (sans nom) bf32e8d4
+0x9f58b79b	32	state_bits	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_characters/dogs/bloodhound/bloodhound_female.epe
+0xa092c76e	32	orbis_id	famille-affixes	1.4e-05	rtpc_propriete|f:achievements.bin ; settings/hp_settings/achievements.bin
+0xa0ba6e2c	32	107	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) aa70d613
+0xa8bd43db	32	fur_variation_name	famille-triplets	0.0064	rtpc_propriete|f:dog_data.bin ; settings/hp_settings/dog_data.bin
+0xac1269ac	32	circumference_burr	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/red_deer/trophy_feature_data_male.bin
+0xb079723b	32	premium_defs	famille-paires	0.00045	rtpc_propriete|f:spawn_budget_pools.bin ; settings/spawn_budget_pools.bin
+0xb2d35e33	32	use_fixed_damage	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_characters/animals/european_badger/european_badger_female.epe
+0xb5be2b7b	32	105	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0xb6565323	32	roe_deer_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xb7a59e77	32	break_effect_id	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) f49b5ed9
+0xba20cbd7	32	puma_female	famille-paires	0.0077	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xbc5e4924	32	eu_rabbit_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xbd7076ff	32	sidestriped_jackal_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xbd8abdfb	32	woodland_caribou_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xbe1b6622	32	set_80	famille-positionnels	0.00012	rtpc_noeud|f:(sans nom) ; (sans nom) 2edcd441
+0xbf3a5a61	32	101	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 195ab6a0
+0xc09cffcb	32	show_skeleton	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_characters/birds/red_grouse/red_grouse_male.epe
+0xc123c541	32	puma_male	famille-paires	0.0077	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xc2f63caa	32	set_20	famille-positionnels	0.00012	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0xc35e026c	32	ferruginous_duck_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xc5bb8359	32	81	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0xc6cc5b68	32	falloff_type	famille-affixes	0.029	rtpc_propriete|f:.blo ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xc7a669fd	32	character_impulse	paires	0.049	rtpc_propriete|2-9 ; settings/player.bin
+0xc7f6fb30	32	gray_wolf_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xc8f2ee72	32	slope_offset	paires	0.049	rtpc_propriete|2-9 ; settings/turn_taker.bin
+0xca628570	32	need_schedule	famille-paires	0.0064	rtpc_noeud|f:reserve_#.bin ; settings/hp_settings/reserve_0.bin
+0xca691a0f	32	show_health	famille-affixes	0.029	rtpc_propriete|f:.blo ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xcbd36523	32	min_dt	paires	0.049	rtpc_propriete|2-9 ; settings/ammunition.bin
+0xd04b6eb1	32	124	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) cadaaff4
+0xd315cd46	32	brown_bear_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xd41d99b2	32	use_texture_mask	famille-affixes	0.00018	rtpc_propriete|f:road_rendering.bin ; settings/road_rendering.bin
+0xd7129cff	32	trophy_items	famille-paires	0.00026	rtpc_noeud|f:spawn_budget_pools.bin ; settings/spawn_budget_pools.bin
+0xd7c4cef8	32	default_speed	famille-affixes	0.0033	rtpc_propriete|f:(sans nom) ; (sans nom) bf32e8d4
+0xda2a8848	32	effect_ids	famille-affixes	3.2e-05	rtpc_noeud|f:player.bin ; settings/player.bin
+0xda78ccd6	32	treestands	famille-directs	6.2e-05	rtpc_noeud|f:reserve_#.bin ; settings/hp_settings/reserve_2.bin
+0xdaf248f9	32	59	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) 6258a109
+0xdb83a2d0	32	circumference_upper_beam	famille-triplets	0.01	rtpc_propriete|f:trophy_great_one_feature_data.bin ; animations/hp_antlers/barasingha/trophy_feature_data_male.bin
+0xdb841d6c	32	black_grouse_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xde15191c	32	108	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) aa70d613
+0xe089f812	32	max_dt	paires	0.049	rtpc_propriete|2-9 ; (sans nom) 263cc4c2
+0xe098dec2	32	mule_deer_male	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xe880be02	32	keyframe_index	famille-affixes	0.0012	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xeba4d71d	32	melee	famille-directs	2.2e-06	rtpc_noeud|f:player.bin ; settings/player.bin
+0xed4f6c9b	32	european_rabbit	famille-paires	0.00026	rtpc_noeud|f:animal_interest.bin ; settings/hp_settings/animal_interest.bin
+0xeeef3363	32	gray_fox_female	famille-triplets	0.083	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xef466432	32	antler_offset	famille-paires	0.0017	rtpc_propriete|f:trophy_feature_data.bin ; animations/hp_antlers/axis_deer/trophy_feature_data_male.bin
+0xef7278ca	32	whitetail_male	famille-paires	0.0077	rtpc_noeud|f:spawn_animals_defs.bin ; settings/spawn_animals_defs.bin
+0xf3c79ad3	32	cloud_count	famille-affixes	4.5e-05	rtpc_propriete|f:weathersettings.bin ; settings/weathersettings.bin
+0xf7fbdcfc	32	is_networked	famille-affixes	0.029	rtpc_propriete|f:.blo ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0xf8e326d4	32	settlements	famille-directs	0.0027	rtpc_noeud|f:(sans nom) ; (sans nom) a3f8559d
+0xf9dcf6ab	32	base_model	famille-affixes	0.0095	rtpc_propriete|f:.epe ; editor/entities/hp_equipment/callers/equipment_lure_caller_elk_01.epe
