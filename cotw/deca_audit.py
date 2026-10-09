@@ -93,6 +93,8 @@ LECTEURS = {
     'obc': 'OBC',                                      # versions 4 (DECA) et 1 (COTW, 2026-10-09)
     'rawc': 'Image',                                   # tableaux bruts du terrain (disposition devinee)
     'fmodguids': 'Structure', 'ttf': 'Structure',      # GUID d'evenements FMOD, police TrueType
+    'btc': 'Structure',                                # arbres de comportement : en-tete, parametres (code opaque)
+    'h2014': 'Havok',                                  # packfiles Havok 2014 : objets et membres (2026-10-09)
 }
 # Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
 # ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc nomme, elle leve EDecaFileMissing ; sans nom du tout, elle
@@ -948,7 +950,7 @@ def write_report(path, a, arch_rows, magic_rows, unexp_rows, log_counts, log_sam
     L.append('## 3. Couverture de lecture par extension (COTWed DECA)')
     L.append('')
     L.append('Fichiers uniques lisibles par une visionneuse de l\'interface (RTPC, ADF, Strings, Sheet, SARC, '
-             'Image, Text, OBC, Structure) ou ranges par DECA dans l\'arbre (conteneurs) : **{} / {} ({:.1f} %)**. '
+             'Image, Text, OBC, Structure, Havok) ou ranges par DECA dans l\'arbre (conteneurs) : **{} / {} ({:.1f} %)**. '
              'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}. Niveaux de mip sans leur '
              '`.ddsc` (illisibles : la visionneuse ouvre la texture par son `.ddsc`) : {}.'.format(
                  m.get('couverture_lisibles', 0), m.get('couverture_fichiers', 0), m.get('couverture_pct', 0.0),

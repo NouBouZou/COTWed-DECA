@@ -8,6 +8,7 @@ from deca.ff_obc import obc_version
 from deca.ff_fmod_guids import is_fmod_guids
 from deca.ff_ttf import is_ttf_header
 from deca.ff_rtpc_inline import is_inline_rtpc
+from deca.ff_btc import is_btc
 
 INLINE_RTPC_MAX_SIZE = 64 * 1024 * 1024   # the whole file is parsed to recognise it (world.bin: 1.5 MB, 0.3 s)
 
@@ -123,6 +124,9 @@ def determine_file_type_and_size(f, file_size0, check_text=True):
         # COTW *.fmod_guids: (u32) 2, (u16) 0, (u16) count, count GUIDs; 3 518 of them are 8-byte empty lists
         elif is_fmod_guids(file_size0, magic[:8]):
             file_type = FTYPE_FMOD_GUIDS
+        # COTW *.btc (compiled behaviour trees): (u32) 0x12, (u32) 0x30, offsets; the source name ends the file
+        elif is_btc(file_size0, magic[:48]):
+            file_type = FTYPE_BTC
 
     if file_type is None and len(magic) >= 5 and magic[0] != 0 and magic[1:3] in (b'\x04\x00', b'\x05\x00') \
             and file_size0 <= INLINE_RTPC_MAX_SIZE:

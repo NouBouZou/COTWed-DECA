@@ -301,3 +301,89 @@ def adf_tree(adf, noms, file_label: str = '') -> TreeItem:
 
     return root(lambda: [TreeItem(['ADF {}'.format(file_label).strip(), '{} instances'.format(len(adf.table_instance)),
                                    '{} types'.format(len(adf.table_typedef))], load=instances)])
+
+
+# ---------------------------------------------------------------------------
+# Havok packfiles (deca.ff_havok): objects, decoded members, bones, track -> bone names
+# ---------------------------------------------------------------------------
+
+def _hk_value(v) -> str:
+    from deca.ff_havok import HkObject
+    if v is None:
+        return '(null)'
+    if isinstance(v, HkObject):
+        return '-> {} @0x{:x}'.format(v.class_name, v.offset)
+    if isinstance(v, float):
+        return '{:.6g}'.format(v)
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    return str(v)
+
+
+def _hk_item(name: str, v, loc: str = '') -> TreeItem:
+    from deca.ff_havok import HkObject
+    if isinstance(v, list):
+        if v and all(isinstance(x, (int, float)) and not isinstance(x, bool) for x in v):
+            preview = ', '.join(_hk_value(x) for x in v[:PREVIEW]) + (' ...' if len(v) > PREVIEW else '')
+            return TreeItem([name, 'array[{}]'.format(len(v)), preview, loc],
+                            load=(lambda v=v: ranges(len(v), lambda i: TreeItem(['[{}]'.format(i), '', _hk_value(v[i])])))
+                            if len(v) > PREVIEW else None)
+        return TreeItem([name, 'array[{}]'.format(len(v)), '', loc],
+                        load=(lambda v=v: ranges(len(v), lambda i: _hk_item('[{}]'.format(i), v[i])))) if v else \
+            TreeItem([name, 'array[0]', '', loc])
+    if isinstance(v, dict):
+        label = v.get('name') if isinstance(v.get('name'), str) else ''
+        return TreeItem([name, 'struct', label, loc],
+                        load=lambda v=v: [_hk_item(k, x) for k, x in v.items()])
+    t = 'ref' if isinstance(v, HkObject) else type(v).__name__
+    return TreeItem([name, t, _hk_value(v), loc], tooltip=_hk_value(v))
+
+
+def _hk_bone_items(bones) -> List[TreeItem]:
+    def leaf(i):
+        b = bones[i]
+        parent = bones[b['parent']]['name'] if isinstance(b.get('parent'), int) and 0 <= b['parent'] < len(bones) else '-'
+        value = 'parent {}'.format(parent)
+        if 'translation' in b:
+            value += ' | t {} | r {} | s {}'.format(*(' '.join('{:.4g}'.format(x) for x in b[k])
+                                                     for k in ('translation', 'rotation', 'scale')))
+        return TreeItem(['[{}] {}'.format(i, b['name']), 'bone', value])
+    return ranges(len(bones), leaf, label='bones ')
+
+
+def havok_tree(pf, label: str = '') -> TreeItem:
+    """Tree of a Havok packfile: header, then every object with its decoded members (deca.ff_havok.decode)."""
+    from deca.ff_havok import decode, summary_lines
+
+    def object_item(o):
+        def members():
+            d = decode(pf, o)
+            items = []
+            for k, v in d.items():
+                if k == 'bones' and isinstance(v, list):
+                    items.append(TreeItem([k, 'array[{}]'.format(len(v)), 'name, parent, reference pose'],
+                                          load=(lambda v=v: _hk_bone_items(v)) if v else None))
+                elif k == 'trackBones':
+                    continue
+                elif k == 'transformTrackToBoneIndices' and 'trackBones' in d:
+                    names = d['trackBones']
+                    items.append(TreeItem(
+                        [k, 'array[{}]'.format(len(v)), 'APEX: hash16 of the bone name ({} resolved)'.format(
+                            sum(1 for n in names if n))],
+                        load=(lambda v=v, names=names: ranges(len(v), lambda i: TreeItem(
+                            ['[{}]'.format(i), 'u16', '0x{:04x}  {}'.format(v[i], names[i] or '?')]))) if v else None))
+                else:
+                    items.append(_hk_item(k, v))
+            return items
+        return TreeItem([o.class_name, 'object', '{} bytes'.format(o.size), '@0x{:x}'.format(o.offset)],
+                        load=members, payload=o)
+
+    def top():
+        head = summary_lines(pf)
+        info = TreeItem(['{}{}'.format(label, head[0]), 'packfile', '{} objects'.format(len(pf.objects))],
+                        load=lambda: [TreeItem([line.strip(), '', '']) for line in head[1:]] +
+                        [TreeItem(['section {}'.format(s.name), '', 'start 0x{:x}, {} local / {} global / {} virtual '
+                                   'fixups'.format(s.start, len(s.local), len(s.glob), len(s.virtual))])
+                         for s in pf.sections])
+        return [info] + [object_item(o) for o in pf.objects]
+    return root(top)

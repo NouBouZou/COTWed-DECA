@@ -12,6 +12,7 @@ from .viewer_text import DataViewerText
 from .viewer_sarc import DataViewerSarc
 from .viewer_obc import DataViewerObc
 from .viewer_structure import DataViewerStructure
+from .viewer_havok import DataViewerHavok
 from .viewer_stringlookup import DataViewerStringLookup
 from .viewer_xlsbook import DataViewerXlsBook
 from .reading import STRINGLOOKUP_TYPE, XLSBOOK_TYPE, adf_instance_types, node_bytes
@@ -26,10 +27,12 @@ SARC_TYPES = {FTYPE_SARC}
 IMAGE_TYPES = {FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC, FTYPE_DDS, FTYPE_BMP, FTYPE_RAWC}
 RTPC_TYPES = {FTYPE_RTPC, FTYPE_RTPC_INLINE}
 OBC_TYPES = {FTYPE_OBC}
-STRUCTURE_TYPES = {FTYPE_FMOD_GUIDS, FTYPE_TTF}
+STRUCTURE_TYPES = {FTYPE_FMOD_GUIDS, FTYPE_TTF, FTYPE_BTC}
+HAVOK_TYPES = {FTYPE_H2014}
 VIEWER_TABS = dict([(t, 'Text') for t in TEXT_TYPES] + [(t, 'SARC') for t in SARC_TYPES] +
                    [(t, 'Image') for t in IMAGE_TYPES] + [(t, 'RTPC') for t in RTPC_TYPES] +
                    [(t, 'OBC') for t in OBC_TYPES] + [(t, 'Structure') for t in STRUCTURE_TYPES] +
+                   [(t, 'Havok') for t in HAVOK_TYPES] +
                    [(t, 'ADF/GDC' if t == FTYPE_ADF_BARE else 'ADF') for t in ftype_adf_family])
 
 
@@ -59,6 +62,7 @@ class DataViewWidget(QWidget):
         self.tab_rtpc = DataViewerRtpc()
         self.tab_obc = DataViewerObc()
         self.tab_structure = DataViewerStructure()
+        self.tab_havok = DataViewerHavok()
 
         self.tab_widget = QTabWidget()
         self.tab_info_index = self.tab_widget.addTab(self.tab_info, 'Info')
@@ -73,6 +77,7 @@ class DataViewWidget(QWidget):
         self.tab_rtpc_index = self.tab_widget.addTab(self.tab_rtpc, 'RTPC')
         self.tab_obc_index = self.tab_widget.addTab(self.tab_obc, 'OBC')
         self.tab_structure_index = self.tab_widget.addTab(self.tab_structure, 'Structure')
+        self.tab_havok_index = self.tab_widget.addTab(self.tab_havok, 'Havok')
 
         self._pending: Dict[int, Callable[[], None]] = {}
         self.errors: List[str] = []
@@ -201,5 +206,8 @@ class DataViewWidget(QWidget):
         elif vnode.file_type in STRUCTURE_TYPES:
             self._enable(self.tab_structure_index, self.tab_structure, vfs, vnode, True)
             target = self.tab_structure_index
+        elif vnode.file_type in HAVOK_TYPES:
+            self._enable(self.tab_havok_index, self.tab_havok, vfs, vnode, True)
+            target = self.tab_havok_index
 
         self._show(target)

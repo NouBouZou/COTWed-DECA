@@ -2,7 +2,9 @@
 """
 Tests des formats de COTW lus par le fork depuis le 2026-10-09 (lot L2) : RTPC en ligne (world.bin, .smodc),
 OBC version 1, .fmod_guids, police TrueType (.ttfc), tableaux bruts .rawc ; leur detection (ff_determine) ;
-retyper.py sur un faux projet (vrai scan) ; le routage de l'interface vers leurs visionneuses.
+retyper.py sur un faux projet (vrai scan) ; le routage de l'interface vers leurs visionneuses. Le faux projet
+contient aussi un squelette Havok (.bsk) et un arbre de comportement (.btc) : leurs lecteurs sont testes dans
+test_havok_btc.py, leur routage (onglets Havok et Structure) et leur retypage ici.
 
 Les fichiers sont fabriques ici avec les dispositions etablies sur les echantillons du jeu (journal de recherche,
 2026-10-09) : aucun fichier du jeu n'est versionne.
@@ -31,6 +33,7 @@ sys.path.insert(0, str(HERE.parent))
 sys.path.insert(0, str(HERE))
 import _projet  # noqa: E402,F401  (substitut de zugbruecke hors Windows ; niveau module pour "spawn")
 import retyper as RT  # noqa: E402
+import havok_fabrique as HF  # noqa: E402
 
 import numpy as np  # noqa: E402
 
@@ -237,6 +240,8 @@ FILES = [
     ('global/empty_test.fmod_guids', fmod_guids_bytes([])),
     ('textures/qui/test_font.ttfc', ttf_bytes()),
     ('worlds/world4/terrain/global_heightfield.rawc', heightfield_bytes()),
+    ('animations/test/rig_test.bsk', HF.skeleton_and_animation()),
+    ('ai/bts/animals/test_flee.btc', HF.btc_bytes()),
     ('settings/opaque_test.bin', b'\xfa\xce' * 64),
 ]
 EXPECTED = {'sound/sound_module_framework/test_root.smodc': 'rtpci',
@@ -244,7 +249,9 @@ EXPECTED = {'sound/sound_module_framework/test_root.smodc': 'rtpci',
             'editor/entities/test/weapon_test.fmod_guids': 'fmodguids',
             'global/empty_test.fmod_guids': 'fmodguids',
             'textures/qui/test_font.ttfc': 'ttf',
-            'worlds/world4/terrain/global_heightfield.rawc': 'rawc'}
+            'worlds/world4/terrain/global_heightfield.rawc': 'rawc',
+            'animations/test/rig_test.bsk': 'h2014',
+            'ai/bts/animals/test_flee.btc': 'btc'}
 
 
 def text_paths(project):
@@ -389,6 +396,14 @@ class TestViewers(unittest.TestCase):
 
         self.assertEqual(self.show('worlds/world4/terrain/global_heightfield.rawc'), 'Image')
         self.assertIn('rawc f32 64x64', dv.tab_image.select_dropdown.currentText())
+
+        self.assertEqual(self.show('animations/test/rig_test.bsk'), 'Havok')
+        top = dv.tab_havok.tree.model.root.children()
+        self.assertTrue(top[0].cols[0].startswith('Havok packfile hk_2014.1.0-r1'), top[0].cols)
+        self.assertIn('hkaSkeleton', [t.cols[0] for t in top])
+        self.assertEqual(self.show('ai/bts/animals/test_flee.btc'), 'Structure')
+        self.assertEqual(self.lines(dv.tab_structure)[0],
+                         'Behaviour tree (btc version 18): intermediate/ai/bts/animals/test_flee.bts')
         self.assertEqual(dv.errors, [])
         self.assertEqual(self.errors, [])
 

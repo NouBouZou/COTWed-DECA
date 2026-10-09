@@ -46,6 +46,7 @@ FTYPE_RTPC_INLINE = 'rtpci'      # inline RTPC: locations/world.bin, *.smodc (ff
 FTYPE_FMOD_GUIDS = 'fmodguids'   # *.fmod_guids: FMOD event GUIDs of an entity or location (ff_fmod_guids.py)
 FTYPE_TTF = 'ttf'                # *.ttfc: plain TrueType font (ff_ttf.py)
 FTYPE_RAWC = 'rawc'              # *.rawc: raw terrain arrays, typed by name (ff_rawc.py)
+FTYPE_BTC = 'btc'                # *.btc: compiled AI behaviour trees (ff_btc.py, structure only)
 
 FTYPE_SYMLINK = 'symlink'
 
@@ -91,6 +92,7 @@ ftype_list = {
     FTYPE_FMOD_GUIDS: 1 << 33,
     FTYPE_TTF: 1 << 34,
     FTYPE_RAWC: 1 << 35,
+    FTYPE_BTC: 1 << 36,
     FTYPE_EXE: 1 << 63,
     FTYPE_ANY_TYPE: 0xFFffFFffFFffFFff,
 }
