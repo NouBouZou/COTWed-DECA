@@ -425,6 +425,7 @@ def cmd_ajouter(args) -> int:
     lignes = rapport(plan, bilan, len(etat.sans_nom), args.simulation)
     texte = '\n'.join(lignes) + '\n'
     if args.rapport:
+        Path(args.rapport).parent.mkdir(parents=True, exist_ok=True)     # 07-lecture\ n'existe pas avant l'audit
         Path(args.rapport).write_text(texte, encoding='utf-8')
     print(texte)
     if not args.simulation and bilan and bilan['hashes']:
