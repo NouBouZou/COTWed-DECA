@@ -1,4 +1,5 @@
-"""Havok viewer (COTWed DECA): objects of a packfile (.ban, .bsk, .brd, .navmeshc, .physicsc), decoded members."""
+"""Havok viewer (COTWed DECA): objects of a packfile (.ban, .bsk, .brd, .navmeshc, .physicsc, and the packfile of the
+PFX physics files .pfxc / .pfs), decoded members."""
 from .viewer import *
 from PySide6.QtWidgets import QVBoxLayout
 
@@ -25,11 +26,17 @@ class DataViewerHavok(DataViewer):
 
     def vnode_process(self, vfs: VfsProcessor, vnode: VfsNode):
         from deca.ff_havok import Packfile
+        from deca.ff_types import FTYPE_PFX
         data = node_bytes(vfs, vnode)
         try:
+            head = []
+            if vnode.file_type == FTYPE_PFX:
+                from deca.ff_pfx import header_lines, packfile_bytes
+                head = header_lines(data)
+                data = packfile_bytes(data)
             pf = Packfile(data)
             tree = havok_tree(pf)
-            raw = lambda: havok_text(pf)   # noqa: E731
+            raw = lambda: '\n'.join(head + [havok_text(pf)])   # noqa: E731
         except Exception as e:  # noqa: BLE001 - unreadable file: say why
             cols = ['Havok packfile not readable', type(e).__name__, str(e)]
             tree, raw = root(lambda: [TreeItem(cols)]), None

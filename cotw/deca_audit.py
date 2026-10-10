@@ -96,6 +96,11 @@ LECTEURS = {
     'btc': 'Structure',                                # arbres de comportement : en-tete, parametres (code opaque)
     'riff': 'Structure',                               # banques FMOD : chunks ; noms FMOD de la banque de chaines
     'h2014': 'Havok',                                  # packfiles Havok 2014 : objets et membres (2026-10-09)
+    'pfx': 'Havok',                                    # .pfxc / .pfs : en-tete PFX + packfile Havok (2026-10-10)
+    'FSB5c': 'Structure',                              # .wavc : FSB5 Vorbis, export .ogg (2026-10-10)
+    'mdi': 'Structure',                                # .nl.mdic / .fl.mdic : instances de modeles (2026-10-10)
+    'gfx': 'Structure',                                # Scaleform GFx : en-tete, balises, images externes
+    'bik': 'Structure',                                # Bink 1 : en-tete et index des images (pas de decodage)
 }
 # Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
 # ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc nomme, elle leve EDecaFileMissing ; sans nom du tout, elle
@@ -629,8 +634,9 @@ class Audit:
         self.m['mips_orphelins'] = sum(r['statuts'].get('mip_orphelin', 0) for r in rows)
 
     def priorities(self, limit=15):
-        """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord."""
-        rows = [r for r in self.coverage if r['verdict'] in ('non lu', 'partiel') and r['non_lus'] > 0]
+        """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord. Une famille "lue" (99 % et plus)
+        qui garde des fichiers non lisibles en fait partie (23 .fmod_guids d'une autre disposition, 2026-10-10)."""
+        rows = [r for r in self.coverage if r['verdict'] != 'liens seulement' and r['non_lus'] > 0]
         rows.sort(key=lambda r: (-r['non_lus'], -r['octets'], r['famille']))
         return rows[:limit]
 
@@ -707,7 +713,8 @@ def sample_command(row, project_dir, out_dir, n):
         if not row['noeuds_exemples']:
             return None
         sel = '--noeuds {}'.format(' '.join(str(i) for i in row['noeuds_exemples']))
-    elif row['famille'] == '(sans extension)':
+    elif row['famille'] == '(sans extension)' or (row['verdict'] in ('partiel', 'lu') and row['exemples']):
+        # famille lue en partie (.hmddsc sans .ddsc...) : les fichiers non lisibles eux-memes, pas un tirage
         if not row['exemples']:
             return None
         sel = ' '.join('"{}"'.format(x) for x in row['exemples'])

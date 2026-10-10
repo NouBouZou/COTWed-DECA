@@ -11,7 +11,7 @@ from .ff_sarc import FileSarc
 from .util import make_dir_for_file
 from .export_import_adf import node_export_adf_processed, node_export_adf_gltf, node_export_adf_text
 from .export_import_rtpc import node_export_rtpc_gltf, node_export_rtpc_text
-from .export_import_audio import node_export_fsb5c_processed
+from .export_import_audio import node_export_fsb5c_processed, node_export_fmod_bank_processed
 from .export_map import export_map
 from .path import UniPath
 
@@ -209,6 +209,7 @@ def nodes_export_processed(
     vs_rtpc = []
     vs_images = []
     vs_fsb5cs = []
+    vs_banks = []
     vs_rename = []
     vs_other = []
     node_map = vfs_view.nodes_selected_get()
@@ -239,6 +240,8 @@ def nodes_export_processed(
                         vs_images.append(node)
                     elif node.file_type in {FTYPE_FSB5C}:
                         vs_fsb5cs.append(node)
+                    elif node.file_type == FTYPE_RIFF:      # FMOD Studio banks: their sounds (COTWed DECA)
+                        vs_banks.append(node)
                     elif isinstance(node.v_path, bytes) and (
                             node.v_path.endswith(b'.csvc') or node.v_path.endswith(b'.bmpc')):
                         vs_rename.append(node)
@@ -257,6 +260,11 @@ def nodes_export_processed(
             except EDecaFileExists as e:
                 vfs.logger.log(
                     'WARNING: Extraction failed overwrite disabled and {} exists, skipping'.format(e.args[0]))
+        for node in vs_banks:
+            try:
+                node_export_fmod_bank_processed(vfs, node, extract_dir, allow_overwrite=allow_overwrite)
+            except Exception as e:  # noqa: BLE001 - one unreadable bank must not stop the export of the others
+                vfs.logger.log('WARNING: export of FMOD bank {} failed: {}'.format(node.v_path, e))
 
         for node in vs_images:
             try:

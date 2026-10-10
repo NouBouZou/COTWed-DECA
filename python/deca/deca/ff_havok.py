@@ -25,6 +25,7 @@ APEX particularity (2026-10-09): hkaAnimationBinding.transformTrackToBoneIndices
 the low 16 bits of hash32 (Jenkins, as DECA's hash32_func) of each track's bone name; the names are those of the
 animation's annotation tracks, one per transform track (RightShoulder -> 0xee80, RightArm -> 0xb6cf).
 """
+import bisect
 import struct
 from typing import Dict, List, Optional, Tuple
 
@@ -317,8 +318,8 @@ def decode_generic(pf: Packfile, o: HkObject) -> dict:
     d = pf.data_section
     start, end = o.offset, o.offset + o.size
     out = {}
-    targets = sorted(set(d.local.values()))
-    for src in sorted(k for k in list(d.local) + list(d.glob) if start <= k < end):
+    targets = _index(pf)['targets']
+    for src in _sources_in(pf, start, end):
         rel = src - start
         if src in d.glob:
             out['+0x{:x}'.format(rel)] = pf.object_at(pf.ptr(src))
@@ -332,17 +333,35 @@ def decode_generic(pf: Packfile, o: HkObject) -> dict:
         if text is not None and not (0 < n <= cap & 0x3FFFFFFF):
             out['+0x{:x}'.format(rel)] = text
         elif 0 < n <= (cap & 0x3FFFFFFF):
-            nxt = next((x for x in targets if x > t), end)
+            k = bisect.bisect_right(targets, t)
+            nxt = targets[k] if k < len(targets) else end
             out['+0x{:x}'.format(rel)] = 'array: {} elements (~{} bytes each)'.format(n, max(0, (nxt - t)) // n)
         else:
             out['+0x{:x}'.format(rel)] = 'pointer to +0x{:x}'.format(t - start)
     return out
 
 
+def _index(pf: Packfile) -> dict:
+    """Sorted fixup sources and local targets of the data section, built once per packfile: the generic decoder
+    looks up the pointers of one object at a time (8 412 objects in a large .pfs)."""
+    idx = getattr(pf, '_fixup_index', None)
+    if idx is None:
+        d = pf.data_section
+        idx = {'sources': sorted(set(d.local) | set(d.glob)), 'targets': sorted(set(d.local.values()))}
+        pf._fixup_index = idx
+    return idx
+
+
+def _sources_in(pf: Packfile, start: int, end: int) -> List[int]:
+    src = _index(pf)['sources']
+    return src[bisect.bisect_left(src, start):bisect.bisect_left(src, end)]
+
+
 def _fixed_size(pf: Packfile, o: HkObject) -> int:
     """End of the object's fixed part: the first target of its own pointers (its arrays follow it)."""
     d = pf.data_section
-    own = [d.local[k] for k in d.local if o.offset <= k < o.offset + o.size and o.offset <= d.local[k] < o.offset + o.size]
+    lo, hi = o.offset, o.offset + o.size
+    own = [d.local[k] for k in _sources_in(pf, lo, hi) if k in d.local and lo <= d.local[k] < hi]
     return (min(own) - o.offset) if own else o.size
 
 

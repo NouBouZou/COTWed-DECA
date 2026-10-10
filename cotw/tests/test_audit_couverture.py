@@ -55,8 +55,8 @@ def synthetic_db():
         (15, 0, 2, 0xc1, b'y/z.bin', 0x41444620, 'adf', 30),                      # ADF sans definition
         (16, FAILED, 2, 0xc2, b'y/w.bin', 0x43505452, 'rtpc', 20),                # echec au scan
         (17, 0, 2, 0xc3, b'y/link.bin', None, 'symlink', 0),                      # lien : hors compte
-        (18, 0, 2, 0xd1, None, 0x2049444d, 'mdi', 500),                           # sans nom, sans visionneuse
-        (19, 0, 2, 0xd2, None, 0x2049444d, 'mdi', 300),
+        (18, 0, 2, 0xd1, None, 0x4c444d42, 'rbmdl', 500),                         # sans nom, sans visionneuse
+        (19, 0, 2, 0xd2, None, 0x4c444d42, 'rbmdl', 300),
         (20, PROCESSED, 2, 0xe1, b'g/files.gtoc', 0x43305447, 'gt0c', 900),       # conteneur explore
         (21, TEMP, 2, 0xf1, b'tmp/t.rtpc', None, 'rtpc', 5),                      # temporaire : ignore
         (22, 0, 2, 0xf2, b'y/k.nl.mdic', 0x00000000, 'NOT', 10),                  # non ouvrable
@@ -123,7 +123,7 @@ class TestCoverageSynthetic(unittest.TestCase):
         cls.rows = {r['famille']: r for r in cls.a.coverage}
 
     def test_families(self):
-        self.assertEqual(set(self.rows), {'.rtpc', '.ban', '.bin', '(sans nom) mdi', '.gtoc', '.nl.mdic'})
+        self.assertEqual(set(self.rows), {'.rtpc', '.ban', '.bin', '(sans nom) rbmdl', '.gtoc', '.nl.mdic'})
 
     def test_copies_count_once(self):
         r = self.rows['.rtpc']
@@ -138,6 +138,10 @@ class TestCoverageSynthetic(unittest.TestCase):
         self.assertEqual(r['statuts'], {'type_inconnu': 2, 'lisible': 1})
         self.assertEqual(r['exemples'], ['x/one.ban', 'x/three.ban'])   # exemples non lisibles seulement
         self.assertEqual(r['magics'].most_common(1)[0][1], 2)
+        # echantillons d'une famille partielle : ses fichiers non lisibles, pas un tirage dans toute l'extension
+        cmd = DA.sample_command(r, Path('projet'), Path('sortie'), 5)
+        self.assertIn('"x/one.ban" "x/three.ban" --a-plat', cmd)
+        self.assertNotIn('--extension', cmd)
 
     def test_failed_missing_adf_and_link(self):
         r = self.rows['.bin']
@@ -146,7 +150,7 @@ class TestCoverageSynthetic(unittest.TestCase):
         self.assertEqual(self.a.m['echecs_scan'], 1)
 
     def test_unnamed_and_containers(self):
-        r = self.rows['(sans nom) mdi']
+        r = self.rows['(sans nom) rbmdl']
         self.assertEqual((r['fichiers'], r['verdict'], r['noeuds_exemples']), (2, 'non lu', [18, 19]))
         self.assertEqual(r['statuts'], {'type_sans_visionneuse': 2})
         self.assertEqual(self.rows['.gtoc']['verdict'], 'lu')
@@ -155,23 +159,25 @@ class TestCoverageSynthetic(unittest.TestCase):
 
     def test_metrics_and_priorities(self):
         m = self.a.m
-        # utiles : rtpc 1 + ban 3 + bin 2 (sans le lien) + mdi 2 + gtoc 1 + nl.mdic 1 = 10 ; lus : 1 + 1 + 1 = 3
+        # utiles : rtpc 1 + ban 3 + bin 2 (sans le lien) + rbmdl 2 + gtoc 1 + nl.mdic 1 = 10 ; lus : 1 + 1 + 1 = 3
         self.assertEqual((m['couverture_fichiers'], m['couverture_lisibles']), (10, 3))
         self.assertEqual(m['couverture_pct'], 30.0)
         self.assertEqual((m['familles'], m['familles_non_lues'], m['familles_partielles']), (6, 3, 1))
         prio = [r['famille'] for r in self.a.priorities()]
-        self.assertEqual(prio[:3], ['(sans nom) mdi', '.ban', '.bin'])   # 2 non lus chacun : volume decroissant
+        self.assertEqual(prio[:3], ['(sans nom) rbmdl', '.ban', '.bin'])   # 2 non lus chacun : volume decroissant
         self.assertEqual(prio[3], '.nl.mdic')
         self.assertNotIn('.rtpc', prio)
 
     def test_sample_commands(self):
         proj, out = Path('P'), Path('O')
-        cmd = DA.sample_command(self.rows['.ban'], proj, out, 4)
-        self.assertIn('--extension .ban --echantillons 4', cmd)
+        cmd = DA.sample_command(self.rows['.bin'], proj, out, 4)          # famille non lue : tirage par taille
+        self.assertIn('--extension .bin --echantillons 4', cmd)
+        cmd = DA.sample_command(self.rows['.ban'], proj, out, 4)          # partielle : ses fichiers non lisibles
+        self.assertIn('"x/one.ban" "x/three.ban"', cmd)
         self.assertIn(str(Path('O') / 'echantillons' / 'ban'), cmd)
-        cmd = DA.sample_command(self.rows['(sans nom) mdi'], proj, out, 4)
+        cmd = DA.sample_command(self.rows['(sans nom) rbmdl'], proj, out, 4)
         self.assertIn('--noeuds 18 19', cmd)
-        self.assertIn(str(Path('O') / 'echantillons' / 'sans_nom_mdi'), cmd)
+        self.assertIn(str(Path('O') / 'echantillons' / 'sans_nom_rbmdl'), cmd)
         self.assertEqual(DA.sample_dir_name('.nl.mdic'), 'nl.mdic')
         self.assertEqual(DA.sample_dir_name('(sans extension)'), 'sans_extension')
 

@@ -25,6 +25,11 @@ string_table_bytes rebuilds these 206 701 bytes identically from the 4 001 names
 A name is the concatenation of the node texts from the root to its node: 'event:/' 'weapons/' 'bullet_impact/'...
 The game's bank files are sound/fmod_banks/<last part of the bank path>.fmod_bankc ('bank:/weapons/weapons' ->
 sound/fmod_banks/weapons.fmod_bankc): this names the 166 banks that had no name.
+
+Sounds (2026-10-10, banks gui and marketing_hints): chunk 'SND ' (after LIST 'PROJ') holds an FSB5 (ff_fsb5.py)
+that starts at the next multiple of 32 bytes of the file (zero padding before it) and ends with the chunk. Its
+samples carry their source names (american_alligator_mating_call_01_rvb). sound_fsb reads only the FSB5 headers
+and name table, sound_fsb_full the whole FSB5 (export).
 """
 import io
 import struct
@@ -305,6 +310,49 @@ def string_table_from(f: BinaryIO, size: int) -> Optional[StringTable]:
     return StringTable(chunk_data(f, stdt))
 
 
+def _sound_span(f: BinaryIO, top: Chunk) -> Optional[Tuple[int, int]]:
+    """(start, end) of the FSB5 of chunk SND, None if the bank has no sounds."""
+    snd = top.find('SND ')
+    if snd is None or snd.size < 4:
+        return None
+    start, end = snd.body, snd.body + snd.size
+    f.seek(start)
+    head = f.read(min(64, snd.size))
+    i = head.find(b'FSB5')
+    if i < 0 or head[:i].strip(b'\0'):
+        raise EFmodBank('chunk SND at 0x{:x} does not start with an FSB5'.format(snd.offset))
+    return start + i, end
+
+
+def sound_fsb(f: BinaryIO, size: int):
+    """FSB5 of the bank (deca.ff_fsb5.Fsb5) with its sample headers and names only, or None (no SND chunk)."""
+    from .ff_fsb5 import Fsb5
+    top = read_chunks(f, size)
+    span = _sound_span(f, top)
+    if span is None:
+        return None
+    start, end = span
+    f.seek(start)
+    head = f.read(0x40)
+    if len(head) < 0x18:
+        raise EFmodBank('FSB5 header cut')
+    version, _count, headers_size, names_size = struct.unpack_from('<4I', head, 4)
+    f.seek(start)
+    data = f.read((0x40 if version == 0 else 0x3C) + headers_size + names_size)
+    return Fsb5(data, 0, available=end - start)
+
+
+def sound_fsb_full(f: BinaryIO, size: int):
+    """FSB5 of the bank with its sound data (export), or None."""
+    from .ff_fsb5 import Fsb5
+    top = read_chunks(f, size)
+    span = _sound_span(f, top)
+    if span is None:
+        return None
+    f.seek(span[0])
+    return Fsb5(f.read(span[1] - span[0]), 0)
+
+
 def is_fmod_bank(head: bytes) -> bool:
     return len(head) >= 12 and head[:4] == b'RIFF' and head[8:12] == FORM_FEV
 
@@ -347,4 +395,10 @@ def dump_lines_from(f: BinaryIO, size: int, names_limit: Optional[int] = None) -
         lines += ['  {{{}}}  {}'.format(g, n) for g, n in shown]
         if len(shown) < len(st.names):
             lines.append('  ... {} more'.format(len(st.names) - len(shown)))
+    span = _sound_span(f, top)
+    if span is not None:
+        from .ff_fsb5 import dump_lines as fsb_lines
+        fsb = sound_fsb(f, size)
+        lines.append('sounds (SND, FSB5 at 0x{:x}):'.format(span[0]))
+        lines += ['  ' + line if line else '' for line in fsb_lines(fsb, 'FSB5')]
     return lines
