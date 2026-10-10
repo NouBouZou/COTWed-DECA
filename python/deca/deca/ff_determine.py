@@ -5,7 +5,8 @@ from deca.ff_aaf import load_aaf_header
 from deca.ff_avtx import DdImageHeader
 from deca.ff_types import *
 from deca.ff_obc import obc_version
-from deca.ff_fmod_guids import is_fmod_guids
+from deca.ff_fmod_guids import is_fmod_guids, is_fmod_guids_data, may_have_banks
+from deca.ff_hikcc import is_hikcc
 from deca.ff_ttf import is_ttf_header
 from deca.ff_rtpc_inline import is_inline_rtpc
 from deca.ff_btc import is_btc
@@ -124,9 +125,17 @@ def determine_file_type_and_size(f, file_size0, check_text=True):
         # COTW *.fmod_guids: (u32) 2, (u16) 0, (u16) count, count GUIDs; 3 518 of them are 8-byte empty lists
         elif is_fmod_guids(file_size0, magic[:8]):
             file_type = FTYPE_FMOD_GUIDS
+        # COTW global_sound_layers_*.fmod_guids: bank names before the GUIDs; small: read whole and checked
+        elif may_have_banks(file_size0, magic[:8]):
+            fm.seek(start_pos)
+            if is_fmod_guids_data(fm.read(file_size0)):
+                file_type = FTYPE_FMOD_GUIDS
         # COTW *.btc (compiled behaviour trees): (u32) 0x12, (u32) 0x30, offsets; the source name ends the file
         elif is_btc(file_size0, magic[:48]):
             file_type = FTYPE_BTC
+        # COTW *.hikcc (HumanIK character definition): magic 0x24022789, node flags, 120-byte node records
+        elif is_hikcc(file_size0, magic[:8]):
+            file_type = FTYPE_HIKCC
 
     if file_type is None and len(magic) >= 5 and magic[0] != 0 and magic[1:3] in (b'\x04\x00', b'\x05\x00') \
             and file_size0 <= INLINE_RTPC_MAX_SIZE:

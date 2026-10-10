@@ -8,6 +8,7 @@ from PySide6.QtWidgets import \
     QGraphicsView, QSizePolicy, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QGraphicsScene, QGraphicsPixmapItem, \
     QFrame, QWidget, QToolButton, QLineEdit, QCheckBox
 from deca.ff_types import *
+from deca.errors import EDecaFileMissing
 from deca.file import ArchiveFile
 
 # Initial version from
@@ -127,6 +128,11 @@ class Window(QWidget):
             self.editPixInfo.setText('%d, %d' % (pos.x(), pos.y()))
 
 
+def node_data(vfs, vnode) -> bytes:
+    with vfs.file_obj_from(vnode) as f:
+        return f.read(vnode.size_u)
+
+
 class _RawMip:
     """What update_image() needs from a ddsc mip, for a raw array (COTW *.rawc)."""
     def __init__(self, data, label):
@@ -151,6 +157,46 @@ def rawc_image(vfs, vnode):
     if layout is None:
         raise ValueError('rawc: no square layout for {} bytes'.format(len(data)))
     return _RawImage([_RawMip(R.to_rgba8(layout), 'rawc ' + R.describe(layout))])
+
+
+class _GuessedMip:
+    """A level of a texture without header (deca.ff_bc_raw): decoded when the dropdown shows it."""
+    def __init__(self, data: bytes, guess, level: int, rank: int, count: int):
+        self._raw, self._guess, self._level = data, guess, level
+        self.size_x, self.size_y = guess.layout.level_sizes()[level]
+        self.depth_idx = self.depth_cnt = None
+        tag = 'best guess' if rank == 0 else 'guess {}/{}'.format(rank + 1, count)
+        self.itype = '{}, {} level {}, {}, score {:.2f}'.format(
+            guess.format_name, 'mip' if level else 'largest', level, tag, guess.score)
+        self._data = None
+
+    @property
+    def data(self):
+        if self._data is None:
+            import deca.ff_bc_raw as R
+            img = R.decode_level(self._raw, self._guess.layout, self._guess.fmt, self._level)
+            if self._guess.fmt in (80, 83):        # BC4 / BC5: no alpha
+                img[:, :, 3] = 255
+            self._data = img
+        return self._data
+
+
+def guessed_image(data: bytes, alternatives: int = 5):
+    """Texture without header: the levels of the best guess, then the largest level of the next guesses."""
+    import deca.ff_bc_raw as R
+    guesses = R.guess(data)
+    if not guesses:
+        raise ValueError('{} bytes: no block-compressed mip chain has this size'.format(len(data)))
+    best = guesses[0]
+    mips = [_GuessedMip(data, best, i, 0, len(guesses)) for i in range(best.layout.levels)]
+    mips += [_GuessedMip(data, g, 0, k, len(guesses)) for k, g in enumerate(guesses[1:1 + alternatives], 1)]
+    return _RawImage(mips)
+
+
+def is_guessed_texture(vnode) -> bool:
+    """Untyped file whose size is that of a block-compressed mip chain (unnamed .hmddsc data, COTW)."""
+    from deca.ff_bc_raw import is_bc_raw_size
+    return vnode.file_type in (None, FTYPE_NOT_HANDLED) and vnode.size_u is not None and is_bc_raw_size(vnode.size_u)
 
 
 class DataViewerImage(DataViewer):
@@ -250,10 +296,18 @@ class DataViewerImage(DataViewer):
         self.ddsc = None
         self.select_dropdown.clear()
 
-        if vnode.file_type in {FTYPE_BMP, FTYPE_DDS, FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC}:
+        if vnode.file_type in {FTYPE_ATX, FTYPE_HMDDSC}:
+            try:
+                self.ddsc = deca.ff_avtx.image_load(vfs, vnode)
+            except EDecaFileMissing:
+                # COTW: 775 .hmddsc have no .ddsc in the game (no header): layout guessed
+                self.ddsc = guessed_image(node_data(vfs, vnode))
+        elif vnode.file_type in {FTYPE_BMP, FTYPE_DDS, FTYPE_AVTX}:
             self.ddsc = deca.ff_avtx.image_load(vfs, vnode)
         elif vnode.file_type == FTYPE_RAWC:
             self.ddsc = rawc_image(vfs, vnode)
+        elif is_guessed_texture(vnode):
+            self.ddsc = guessed_image(node_data(vfs, vnode))
 
         if self.ddsc is not None and self.ddsc.mips is not None:
             first_valid = None

@@ -12,6 +12,7 @@ from .util import make_dir_for_file
 from .export_import_adf import node_export_adf_processed, node_export_adf_gltf, node_export_adf_text
 from .export_import_rtpc import node_export_rtpc_gltf, node_export_rtpc_text
 from .export_import_audio import node_export_fsb5c_processed, node_export_fmod_bank_processed
+from .ff_bc_raw import is_bc_raw_size
 from .export_map import export_map
 from .path import UniPath
 
@@ -198,6 +199,31 @@ def nodes_export_gltf(
                 'WARNING: Extraction failed overwrite disabled and {} exists, skipping'.format(e.args[0]))
 
 
+def node_export_guessed_texture(vfs: VfsDatabase, node: VfsNode, extract_dir, allow_overwrite=False):
+    """Texture levels without header (deca.ff_bc_raw): the best guess as a PNG of the largest level and a DDS of
+    every level, the format and size of the guess in their names (<path>.DECA.guess_BC1_2048x2048.png / .dds)."""
+    from .ff_bc_raw import dds_bytes, export_names, guess, png_bytes
+    with vfs.file_obj_from(node) as f:
+        data = f.read(node.size_u)
+    guesses = guess(data)
+    if not guesses:
+        vfs.logger.log('WARNING: {}: no mip chain of {} bytes'.format(node.v_path, len(data)))
+        return
+    if node.v_path is None:
+        base = UniPath.join(extract_dir, '{:08X}.dat'.format(node.v_hash))
+    else:
+        base = UniPath.join(extract_dir, node.v_path.decode('utf-8'))
+    png_name, dds_name = export_names(base, guesses[0])
+    for ofile, make in ((png_name, png_bytes), (dds_name, dds_bytes)):
+        if not allow_overwrite and UniPath.isfile(ofile):
+            vfs.logger.log('WARNING: {} exists, skipping'.format(ofile))
+            continue
+        vfs.logger.log('Exporting {} (guessed layout: {})'.format(ofile, guesses[0].describe()))
+        make_dir_for_file(ofile)
+        with open(ofile, 'wb') as fo:
+            fo.write(make(data, guesses[0]))
+
+
 def nodes_export_processed(
         vfs: VfsDatabase,
         vfs_view: VfsView,
@@ -210,6 +236,7 @@ def nodes_export_processed(
     vs_images = []
     vs_fsb5cs = []
     vs_banks = []
+    vs_guessed = []
     vs_rename = []
     vs_other = []
     node_map = vfs_view.nodes_selected_get()
@@ -242,6 +269,8 @@ def nodes_export_processed(
                         vs_fsb5cs.append(node)
                     elif node.file_type == FTYPE_RIFF:      # FMOD Studio banks: their sounds (COTWed DECA)
                         vs_banks.append(node)
+                    elif node.file_type in (None, FTYPE_NOT_HANDLED) and is_bc_raw_size(node.size_u):
+                        vs_guessed.append(node)     # texture levels without header (COTWed DECA)
                     elif isinstance(node.v_path, bytes) and (
                             node.v_path.endswith(b'.csvc') or node.v_path.endswith(b'.bmpc')):
                         vs_rename.append(node)
@@ -273,6 +302,11 @@ def nodes_export_processed(
             except EDecaFileExists as e:
                 vfs.logger.log(
                     'WARNING: Extraction failed overwrite disabled and {} exists, skipping'.format(e.args[0]))
+            except EDecaFileMissing:
+                # COTW: .hmddsc without .ddsc in the game: layout guessed (COTWed DECA)
+                node_export_guessed_texture(vfs, node, extract_dir, allow_overwrite=allow_overwrite)
+        for node in vs_guessed:
+            node_export_guessed_texture(vfs, node, extract_dir, allow_overwrite=allow_overwrite)
 
     adf_db = AdfDatabase(vfs)
     for node in vs_adf:

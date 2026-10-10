@@ -105,10 +105,31 @@ class TestMipLevels(unittest.TestCase):
     def test_statuses(self):
         self.assertEqual(self.rows['.ddsc']['statuts'], {'lisible': 1})
         self.assertEqual(self.rows['.hmddsc']['statuts'], {'lisible': 1, 'mip_orphelin': 1})
-        self.assertEqual(self.rows['.hmddsc']['exemples'], ['textures/b.hmddsc'])
+        # depuis le 2026-10-10, un mip sans .ddsc se lit avec une disposition devinee : compte comme lu
+        self.assertEqual(self.rows['.hmddsc']['exemples'], [])
+        self.assertEqual((self.rows['.hmddsc']['lisibles'], self.rows['.hmddsc']['verdict']), (2, 'lu'))
+        self.assertEqual(self.rows['.hmddsc']['lecteurs'], {'Image': 1, 'Image (devinee)': 1})
         self.assertEqual(self.rows['.atx1']['statuts'], {'lisible': 1})
         self.assertEqual(self.rows['.atx2']['statuts'], {'mip_orphelin': 1})
         self.assertEqual(self.rows['(sans nom) hmddsc']['statuts'], {'mip_orphelin': 1})
+
+    def test_guessed_texture_without_type(self):
+        """Fichier sans type de la taille d'une chaine de mips (2 752 512 = BC1 2048 + 1024 + 512) : lu, devine ;
+        autre taille : type inconnu."""
+        conn = texture_db()
+        conn.executemany('INSERT INTO core_nodes (node_id, flags, parent_id, v_hash, v_path, magic, file_type, size_u) '
+                         'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                         [(40, 0, 2, 0x400, None, None, None, 2752512), (41, 0, 2, 0x401, None, None, None, 2610)])
+        rows = {r['famille']: r for r in run_audit(conn).coverage}
+        r = rows['(sans nom) type inconnu']
+        self.assertEqual(r['statuts'], {'texture_devinee': 1, 'type_inconnu': 1})
+        self.assertEqual(r['noeuds_exemples'], [41])
+
+    def test_chain_sizes_agree_with_the_viewer(self):
+        from deca.ff_bc_raw import is_bc_raw_size
+        sizes = [0, 6, 2610, 4096, 65536, 131072, 327680, 655360, 1376256, 2752512, 5570560, 11141120, 22347776,
+                 44695552, 316208, 987185, 5116085, 4652] + list(range(4000, 300000, 4096 + 8))
+        self.assertEqual([DA.taille_chaine_bc(n) for n in sizes], [is_bc_raw_size(n) for n in sizes])
 
     def test_metric_and_comparison(self):
         self.assertEqual(self.a.m['mips_orphelins'], 3)

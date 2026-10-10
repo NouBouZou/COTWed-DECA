@@ -47,6 +47,7 @@ FTYPE_FMOD_GUIDS = 'fmodguids'   # *.fmod_guids: FMOD event GUIDs of an entity o
 FTYPE_TTF = 'ttf'                # *.ttfc: plain TrueType font (ff_ttf.py)
 FTYPE_RAWC = 'rawc'              # *.rawc: raw terrain arrays, typed by name (ff_rawc.py)
 FTYPE_BTC = 'btc'                # *.btc: compiled AI behaviour trees (ff_btc.py, structure only)
+FTYPE_HIKCC = 'hikcc'            # *.hikcc: HumanIK character definition (ff_hikcc.py)
 
 FTYPE_SYMLINK = 'symlink'
 
@@ -93,6 +94,7 @@ ftype_list = {
     FTYPE_TTF: 1 << 34,
     FTYPE_RAWC: 1 << 35,
     FTYPE_BTC: 1 << 36,
+    FTYPE_HIKCC: 1 << 37,
     FTYPE_EXE: 1 << 63,
     FTYPE_ANY_TYPE: 0xFFffFFffFFffFFff,
 }

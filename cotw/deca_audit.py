@@ -101,19 +101,44 @@ LECTEURS = {
     'mdi': 'Structure',                                # .nl.mdic / .fl.mdic : instances de modeles (2026-10-10)
     'gfx': 'Structure',                                # Scaleform GFx : en-tete, balises, images externes
     'bik': 'Structure',                                # Bink 1 : en-tete et index des images (pas de decodage)
+    'hikcc': 'Structure',                              # HumanIK : noeuds utilises et pose de reference (2026-10-10)
 }
 # Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
-# ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc nomme, elle leve EDecaFileMissing ; sans nom du tout, elle
-# lit le fichier comme un .ddsc complet (en-tete AVTX absent : echec). Un tel fichier n'est donc pas lisible.
+# ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc dans le jeu (775 .hmddsc de COTW), elle devine depuis le
+# 2026-10-10 le format et la taille (deca/ff_bc_raw.py) : statut mip_orphelin, compte comme lu.
 TYPES_MIP = {'hmddsc', 'atx'}
+
+
+def taille_chaine_bc(size):
+    """Vrai si size est la taille d'une chaine de mips compressee par blocs (copie de deca.ff_bc_raw.layouts, sans
+    dependance : test_audit_couverture.py verifie l'accord). Un fichier sans type de cette taille s'ouvre dans
+    l'onglet Image, disposition devinee (dataviewwidget.is_guessed_texture) : statut texture_devinee."""
+    if size is None or size < 4096:
+        return False
+    for bpb in (8, 16):
+        for lw in range(2, 14):
+            for asp in range(-2, 3):
+                w = 1 << lw
+                h = w >> asp if asp > 0 else w << -asp
+                if h < 4 or h > 8192:
+                    continue
+                total = 0
+                for k in range(14):
+                    total += max(1, ((w >> k) + 3) // 4) * max(1, ((h >> k) + 3) // 4) * bpb
+                    if total == size:
+                        return True
+                    if total >= size:
+                        break
+    return False
 # Conteneurs explores par DECA : leur contenu devient des noeuds de l'arbre (pas de visionneuse propre).
 CONTENEURS = {'gt0c', 'garc', 'gdc'}
 
 # Statut d'un fichier pour la couverture de lecture, du meilleur au pire : un fichier present en plusieurs
 # copies (archives) prend le meilleur statut de ses copies.
-STATUTS = ('lisible', 'conteneur', 'adf_sans_type', 'echec_scan', 'mip_orphelin', 'type_sans_visionneuse',
-           'type_inconnu', 'lien')
-STATUTS_LUS = ('lisible', 'conteneur')
+STATUTS = ('lisible', 'conteneur', 'mip_orphelin', 'texture_devinee', 'adf_sans_type', 'echec_scan',
+           'type_sans_visionneuse', 'type_inconnu', 'lien')
+# mip_orphelin et texture_devinee : lus avec une disposition devinee (2026-10-10)
+STATUTS_LUS = ('lisible', 'conteneur', 'mip_orphelin', 'texture_devinee')
 SEUIL_LU = 99.0        # % de fichiers lisibles au-dessus duquel une famille est "lue"
 
 # db_processor.py : PRAGMA user_version = 2 est ecrit a la toute fin du traitement.
@@ -515,7 +540,7 @@ class Audit:
 
     # -- couverture de lecture par extension (COTWed DECA) ------------------
 
-    def node_status(self, node_id, flags, file_type, path_txt=None):
+    def node_status(self, node_id, flags, file_type, path_txt=None, size=None):
         if flags & FLAG_PROCESSING_FAILED:
             return 'echec_scan'
         if file_type in ('adf', 'adf0', 'adf5', 'adfb') and node_id in self.adf_missing_nodes:
@@ -531,7 +556,7 @@ class Audit:
         if file_type in CONTENEURS:
             return 'conteneur'
         if file_type is None or file_type == FTYPE_NOT_HANDLED:
-            return 'type_inconnu'
+            return 'texture_devinee' if taille_chaine_bc(size) else 'type_inconnu'
         return 'type_sans_visionneuse'
 
     def scan_coverage(self):
@@ -564,7 +589,7 @@ class Audit:
                 f = fams[key] = {'noeuds': 0, 'fichiers': {}, 'types': collections.Counter(),
                                  'magics': collections.Counter(), 'exemples': [], 'noeuds_exemples': []}
             f['noeuds'] += 1
-            status = self.node_status(node_id, flags, file_type, path_txt)
+            status = self.node_status(node_id, flags, file_type, path_txt, size_u)
             fid = v_hash if v_hash is not None else ('noeud', node_id)
             explored = file_type in TYPES_EXPLORES and v_hash is not None and (file_type, v_hash) in self.explored
             old = f['fichiers'].get(fid)
@@ -599,8 +624,10 @@ class Audit:
                 verdict = 'non lu'
             else:
                 verdict = 'partiel'
-            lecteurs = collections.Counter(LECTEURS.get(v[3], 'conteneur' if v[3] in CONTENEURS else 'octets')
-                                           for v in f['fichiers'].values() if v[0] != 'lien')
+            lecteurs = collections.Counter(
+                'Image (devinee)' if v[0] in ('mip_orphelin', 'texture_devinee')
+                else LECTEURS.get(v[3], 'conteneur' if v[3] in CONTENEURS else 'octets')
+                for v in f['fichiers'].values() if v[0] != 'lien')
             explorables = [v for v in f['fichiers'].values() if v[3] in TYPES_EXPLORES]
             rows.append({
                 'famille': key,
@@ -632,6 +659,7 @@ class Audit:
         self.m['familles_partielles'] = sum(1 for r in rows if r['verdict'] == 'partiel')
         self.m['echecs_scan'] = sum(r['statuts'].get('echec_scan', 0) for r in rows)
         self.m['mips_orphelins'] = sum(r['statuts'].get('mip_orphelin', 0) for r in rows)
+        self.m['textures_devinees'] = sum(r['statuts'].get('texture_devinee', 0) for r in rows)
 
     def priorities(self, limit=15):
         """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord. Une famille "lue" (99 % et plus)
@@ -853,6 +881,7 @@ SCALAIRES_COMPARES = [
     ('familles_non_lues', 'Familles (extensions) non lues', True),
     ('echecs_scan', 'Fichiers en echec au scan', True),
     ('mips_orphelins', 'Niveaux de mip sans leur .ddsc', True),
+    ('textures_devinees', 'Textures sans type ni en-tete (devinees)', True),
     ('chaines_connues', 'Chaines connues (dictionnaire)', False),
     ('virtuels', 'Fichiers virtuels total', False),
 ]
@@ -961,11 +990,12 @@ def write_report(path, a, arch_rows, magic_rows, unexp_rows, log_counts, log_sam
     L.append('')
     L.append('Fichiers uniques lisibles par une visionneuse de l\'interface (RTPC, ADF, Strings, Sheet, SARC, '
              'Image, Text, OBC, Structure, Havok) ou ranges par DECA dans l\'arbre (conteneurs) : **{} / {} ({:.1f} %)**. '
-             'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}. Niveaux de mip sans leur '
-             '`.ddsc` (illisibles : la visionneuse ouvre la texture par son `.ddsc`) : {}.'.format(
+             'Familles : {} ; non lues : {} ; partielles : {}. Echecs au scan : {}. Lus avec une disposition '
+             'devinee (onglet Image, format et taille devines) : {} niveaux de mip sans leur `.ddsc`, {} fichiers '
+             'sans type de la taille d\'une chaine de mips.'.format(
                  m.get('couverture_lisibles', 0), m.get('couverture_fichiers', 0), m.get('couverture_pct', 0.0),
                  m.get('familles', 0), m.get('familles_non_lues', 0), m.get('familles_partielles', 0),
-                 m.get('echecs_scan', 0), m.get('mips_orphelins', 0)))
+                 m.get('echecs_scan', 0), m.get('mips_orphelins', 0), m.get('textures_devinees', 0)))
     L.append('')
     L.append('Famille = extension pour un fichier nomme (a partir du premier point : `.nl.mdic`), '
              '`(sans nom) <type>` sinon. Verdict : *lu* a partir de {:.0f} % de fichiers lisibles. Detail de '
@@ -1045,7 +1075,9 @@ def print_summary(m, out_dir, comparison, log_samples):
     if m.get('echecs_scan', 0):
         p('Fichiers en echec au scan    : {}  (journal : loop_over_uid_wrapper: failed for)'.format(m['echecs_scan']))
     if m.get('mips_orphelins', 0):
-        p('Mips sans leur .ddsc         : {}  (.hmddsc/.atxN illisibles)'.format(m['mips_orphelins']))
+        p('Mips sans leur .ddsc         : {}  (.hmddsc/.atxN, disposition devinee)'.format(m['mips_orphelins']))
+    if m.get('textures_devinees', 0):
+        p('Textures sans en-tete        : {}  (sans type, disposition devinee)'.format(m['textures_devinees']))
     if comparison:
         p('')
         p('--- Evolution depuis {} ---'.format(comparison['date_reference']))

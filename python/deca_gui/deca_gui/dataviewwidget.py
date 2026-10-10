@@ -5,7 +5,7 @@ from deca.db_processor import VfsProcessor
 from deca.ff_types import *
 from .viewer_adf import DataViewerAdf
 from .viewer_rtpc import DataViewerRtpc
-from .viewer_image import DataViewerImage
+from .viewer_image import DataViewerImage, is_guessed_texture
 from .viewer_raw import DataViewerRaw
 from .viewer_info import DataViewerInfo
 from .viewer_text import DataViewerText
@@ -22,12 +22,15 @@ from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget, QVBoxLayout, Q
 
 # DECA file type -> tab showing the content (the routing of vnode_2click_selected). cotw/deca_audit.py keeps a
 # copy (LECTEURS, no Qt dependency) to measure what the fork can read; test_audit_couverture.py checks both agree.
+# Untyped files of the size of a block-compressed mip chain also open in Image, layout guessed (is_guessed_texture;
+# the audit: TEXTURES_DEVINEES).
 TEXT_TYPES = {FTYPE_TXT}
 SARC_TYPES = {FTYPE_SARC}
 IMAGE_TYPES = {FTYPE_AVTX, FTYPE_ATX, FTYPE_HMDDSC, FTYPE_DDS, FTYPE_BMP, FTYPE_RAWC}
 RTPC_TYPES = {FTYPE_RTPC, FTYPE_RTPC_INLINE}
 OBC_TYPES = {FTYPE_OBC}
-STRUCTURE_TYPES = {FTYPE_FMOD_GUIDS, FTYPE_TTF, FTYPE_BTC, FTYPE_RIFF, FTYPE_FSB5C, FTYPE_MDI, FTYPE_GFX, FTYPE_BINK_BIK}
+STRUCTURE_TYPES = {FTYPE_FMOD_GUIDS, FTYPE_TTF, FTYPE_BTC, FTYPE_RIFF, FTYPE_FSB5C, FTYPE_MDI, FTYPE_GFX, FTYPE_BINK_BIK,
+                   FTYPE_HIKCC}
 HAVOK_TYPES = {FTYPE_H2014, FTYPE_PFX}
 VIEWER_TABS = dict([(t, 'Text') for t in TEXT_TYPES] + [(t, 'SARC') for t in SARC_TYPES] +
                    [(t, 'Image') for t in IMAGE_TYPES] + [(t, 'RTPC') for t in RTPC_TYPES] +
@@ -209,5 +212,9 @@ class DataViewWidget(QWidget):
         elif vnode.file_type in HAVOK_TYPES:
             self._enable(self.tab_havok_index, self.tab_havok, vfs, vnode, True)
             target = self.tab_havok_index
+        elif is_guessed_texture(vnode):
+            # untyped, size of a block-compressed mip chain: texture levels without header (layout guessed)
+            self._enable(self.tab_image_index, self.tab_image, vfs, vnode, True)
+            target = self.tab_image_index
 
         self._show(target)
