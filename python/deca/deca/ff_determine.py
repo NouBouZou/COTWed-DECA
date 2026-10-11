@@ -108,6 +108,10 @@ def determine_file_type_and_size(f, file_size0, check_text=True):
             file_type = FTYPE_BINK_KB2
         elif magic.startswith(b'BIK'):
             file_type = FTYPE_BINK_BIK
+        elif magic.startswith(b'DKIF'):
+            file_type = FTYPE_IVF                   # COTW: one VP9 video (COTWed DECA, ff_video.py)
+        elif magic.startswith(b'\x1a\x45\xdf\xa3'):
+            file_type = FTYPE_WEBM                  # COTW: one WebM video (EBML magic)
         elif magic.startswith(b'GT0C'):
             file_type = FTYPE_GT0C
         elif is_ttf_header(file_size0, magic):

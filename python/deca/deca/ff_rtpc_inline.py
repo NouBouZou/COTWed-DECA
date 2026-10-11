@@ -23,6 +23,13 @@ a u32 count) and 13 (u64 object id) are read with the layout they have in binary
 such in the research log, that the reader turns into an error at the first file that contradicts it.
 
 The section order of every node is kept, so that inline_to_bytes(inline_from_bytes(data)) == data.
+
+Instance lists (2026-10-11, unnamed file 9f542e80 of game34.tab, 5 116 085 bytes, read to the last byte): 159 roots,
+each followed by the 9 bytes 01 03 00 04 00 'inst' [a marker; as a node it would be a section of unknown kind 3].
+Every root has one child 'weapon_base': the weapon entities (SAttachedEffect, SSoundResourceFMODEvent,
+CModelAttachementWeaponComponent...). inline_from_bytes returns them as the children of an InlineInstances root.
+This file also confirms the layouts of types 4, 6, 9 and 13 (vec2, vec4, u32 array, object id): 20, 134, 13 479
+and 8 627 values, read with the binary RTPC layouts to the last byte.
 """
 import struct
 from typing import List, Optional, Tuple, Union
@@ -60,6 +67,9 @@ class InlineProperty:
                                                            self.value)
 
 
+INSTANCE_SEPARATOR = b'\x01\x03\x00\x04\x00inst'
+
+
 class InlineNode:
     """sections: list of (kind, items) in file order; items are InlineNode (kind 4) or InlineProperty (kind 5)."""
     __slots__ = ('name_hash', 'sections', 'pos')
@@ -83,6 +93,11 @@ class InlineNode:
             n = stack.pop()
             yield n
             stack.extend(reversed(n.children))
+
+
+class InlineInstances(InlineNode):
+    """File of several roots, each followed by INSTANCE_SEPARATOR: the roots are this node's children."""
+    __slots__ = ()
 
 
 # ---------------------------------------------------------------------------------------------------------
@@ -164,6 +179,15 @@ def inline_from_bytes(data: bytes) -> InlineNode:
     """Root node of an inline RTPC file; EInlineRtpc if the bytes are not one (including trailing bytes)."""
     r = _Reader(bytes(data))
     root = _read_node(r, None, 0)
+    if r.pos != len(r.data) and r.data.startswith(INSTANCE_SEPARATOR, r.pos):
+        roots = [root]
+        while True:
+            if not r.data.startswith(INSTANCE_SEPARATOR, r.pos):
+                raise EInlineRtpc('instance {} not followed by the separator (at 0x{:x})'.format(len(roots), r.pos))
+            r.pos += len(INSTANCE_SEPARATOR)
+            if r.pos == len(r.data):
+                return InlineInstances(None, [(KIND_CHILDREN, roots)])
+            roots.append(_read_node(r, None, 0))
     if r.pos != len(r.data):
         raise EInlineRtpc('{} bytes after the root node (at 0x{:x})'.format(len(r.data) - r.pos, r.pos))
     return root
@@ -227,7 +251,12 @@ def _write_node(out: List[bytes], node: InlineNode):
 
 def inline_to_bytes(root: InlineNode) -> bytes:
     out: List[bytes] = []
-    _write_node(out, root)
+    if isinstance(root, InlineInstances):
+        for child in root.children:
+            _write_node(out, child)
+            out.append(INSTANCE_SEPARATOR)
+    else:
+        _write_node(out, root)
     return b''.join(out)
 
 

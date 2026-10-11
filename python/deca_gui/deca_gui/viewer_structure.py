@@ -1,12 +1,12 @@
 """Structure viewer (COTWed DECA): text description of formats decoded by the fork (fmod_guids, TrueType, btc, FMOD
-banks, FSB5 sounds, MDI model instances, Scaleform GFx, Bink, HumanIK)."""
+banks, FSB5 sounds, MDI model instances, Scaleform GFx, Bink, HumanIK, IVF and WebM videos)."""
 from typing import Dict, List, Optional
 
 from .viewer_text import DataViewerText
 from .viewer import VfsNode, VfsProcessor
 from .reading import fmod_names_for, node_bytes, noms_for
 from deca.ff_types import FTYPE_BINK_BIK, FTYPE_BTC, FTYPE_FMOD_GUIDS, FTYPE_FSB5C, FTYPE_GFX, FTYPE_HIKCC, FTYPE_MDI, \
-    FTYPE_RIFF, FTYPE_TTF
+    FTYPE_RIFF, FTYPE_TTF, FTYPE_IVF, FTYPE_WEBM
 
 
 def structure_lines(file_type: str, data: bytes, noms=None, fmod_names: Optional[Dict] = None) -> List[str]:
@@ -41,6 +41,9 @@ def structure_lines(file_type: str, data: bytes, noms=None, fmod_names: Optional
         return dump_lines(data)
     if file_type == FTYPE_HIKCC:
         from deca.ff_hikcc import dump_lines
+        return dump_lines(data)
+    if file_type in (FTYPE_IVF, FTYPE_WEBM):
+        from deca.ff_video import dump_lines
         return dump_lines(data)
     raise ValueError('no structure view for type {}'.format(file_type))
 

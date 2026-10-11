@@ -35,6 +35,8 @@ import fmod_fabrique as FF  # noqa: E402
 import deca.ff_bc_raw as R  # noqa: E402
 import deca.ff_fmod_guids as G  # noqa: E402
 import deca.ff_hikcc as HK  # noqa: E402
+import deca.ff_rtpc_inline as INL  # noqa: E402
+import deca.ff_video as VID  # noqa: E402
 from deca.ff_determine import determine_file_type_and_size  # noqa: E402
 
 APP = None
@@ -54,6 +56,39 @@ def hikcc_bytes(nodes=((0, (0, 0, 0)), (1, (0, 103.5, 0)), (15, (0.1, 165.4, -1.
     for _i, t in nodes:
         out += struct.pack('<10f', *t, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0) + bytes(80)
     return out + bytes(16)
+
+
+def instances_bytes(n=3):
+    """Comme le fichier 9f542e80 : n racines RTPC en ligne, chacune suivie de 01 03 00 04 00 'inst'."""
+    roots = []
+    for i in range(n):
+        props = [INL.InlineProperty(0x1000 + i, INL.T_STR, b'DrawWeapon'),
+                 INL.InlineProperty(0x2000, INL.T_ARRAY_U32, [1, 2, 3]),
+                 INL.InlineProperty(0x3000, INL.T_OBJID, 0x1122334455667788),
+                 INL.InlineProperty(0x4000, INL.T_VEC4, [1.0, 2.0, 3.0, 4.0])]
+        base = INL.InlineNode(0xa1c8991e, [(INL.KIND_PROPERTIES, props)])
+        roots.append(INL.InlineNode(None, [(INL.KIND_CHILDREN, [base])]))
+    return INL.inline_to_bytes(INL.InlineInstances(None, [(INL.KIND_CHILDREN, roots)]))
+
+
+def ivf_bytes(frames=(100, 40, 60)):
+    head = b'DKIF' + struct.pack('<HH4sHHIII4s', 0, 32, b'VP90', 356, 480, 30, 1, len(frames), b'\0' * 4)
+    return head + b''.join(struct.pack('<IQ', n, i) + bytes([i]) * n for i, n in enumerate(frames))
+
+
+def _ebml(eid: int, body: bytes, unknown_size=False) -> bytes:
+    size = b'\x01\xff\xff\xff\xff\xff\xff\xff' if unknown_size else b'\x01' + len(body).to_bytes(7, 'big')
+    return eid.to_bytes((eid.bit_length() + 7) // 8, 'big') + size + body
+
+
+def webm_bytes():
+    header = _ebml(0x1A45DFA3, _ebml(0x4282, b'webm') + _ebml(0x4287, b'\x02'))
+    info = _ebml(0x1549A966, _ebml(0x2AD7B1, (1000000).to_bytes(3, 'big')) + _ebml(0x4489, struct.pack('>d', 5300.0))
+                 + _ebml(0x4D80, b'Lavf59.27.100') + _ebml(0x5741, b'Lavf59.27.100'))
+    video = _ebml(0xE0, _ebml(0xB0, (356).to_bytes(2, 'big')) + _ebml(0xBA, (480).to_bytes(2, 'big')))
+    track = _ebml(0xAE, _ebml(0xD7, b'\x01') + _ebml(0x83, b'\x01') + _ebml(0x86, b'V_VP9') + video)
+    cluster = _ebml(0x1F43B675, _ebml(0xE7, b'\x00') + _ebml(0xA3, b'\x81\x00\x00\x80' + bytes(20)) * 2)
+    return header + _ebml(0x18538067, info + _ebml(0x1654AE6B, track) + cluster, unknown_size=True)
 
 
 def layers_bytes():
@@ -211,6 +246,41 @@ class TestHikcc(unittest.TestCase):
                 HK.Hikcc(bad)
 
 
+class TestInstancesAndVideos(unittest.TestCase):
+    def test_instance_list(self):
+        data = instances_bytes()
+        root = INL.inline_from_bytes(data)
+        self.assertIsInstance(root, INL.InlineInstances)
+        self.assertEqual(len(root.children), 3)
+        self.assertEqual(INL.inline_to_bytes(root), data)                  # aller-retour a l'octet
+        props = root.children[1].children[0].properties
+        self.assertEqual([p.value for p in props][:3], [b'DrawWeapon', [1, 2, 3], 0x1122334455667788])
+        self.assertEqual(determine_file_type_and_size(io.BytesIO(data), len(data), False)[0], 'rtpci')
+        self.assertEqual(INL.to_rtpc(root).root_node.child_count, 3)
+        for bad in (data[:-1], data + b'\x00', data[:-9]):               # separateur final manquant ou abime
+            with self.assertRaises(INL.EInlineRtpc):
+                INL.inline_from_bytes(bad)
+
+    def test_ivf(self):
+        data = ivf_bytes()
+        self.assertEqual(VID.dump_lines(data), ['IVF version 0: VP90 356 x 480, 3 frames at 30 frames/s (0.10 s)',
+                                                'frame sizes: 40 to 100 bytes, 200 bytes in all'])
+        self.assertEqual(determine_file_type_and_size(io.BytesIO(data), len(data), False)[0], 'ivf')
+        for bad in (data[:-1], data[:24] + struct.pack('<I', 4) + data[28:]):     # fin coupee ; 4 images annoncees
+            with self.assertRaises(VID.EVideo):
+                VID.Ivf(bad)
+
+    def test_webm(self):
+        data = webm_bytes()
+        lines = VID.dump_lines(data)
+        self.assertEqual(lines[1], 'muxing Lavf59.27.100, writing Lavf59.27.100, duration 5.30 s')
+        self.assertEqual(lines[2], '1 track(s), 1 cluster(s), 2 block(s)')
+        self.assertEqual(lines[3], '  track 1: video V_VP9, 356 x 480')
+        self.assertEqual(determine_file_type_and_size(io.BytesIO(data), len(data), False)[0], 'webm')
+        with self.assertRaises(VID.EVideo):
+            VID.WebM(data[:-5])                                              # dernier bloc coupe
+
+
 # ---------------------------------------------------------------------------------------------------------
 # Interface et export
 # ---------------------------------------------------------------------------------------------------------
@@ -221,6 +291,9 @@ FILES = [
     ('worlds/base/locations/test/global_sound_layers_test.fmod_guids', layers_bytes()),
     ('sound/fmod_banks/master_strings.fmod_bankc', FF.strings_bank()),
     ('animations/humanik/test.hikcc', hikcc_bytes()),
+    ('editor/test/weapons.inst', instances_bytes()),
+    ('ui/test_video.ivf', ivf_bytes()),
+    ('ui/test_video.webm', webm_bytes()),
 ]
 UNNAMED = 'models/test/textures/unnamed_test_nrm.hmddsc'
 
@@ -324,6 +397,12 @@ class TestViewersAndExport(unittest.TestCase):
         self.assertEqual(self.show_uid(uid), 'Structure')
         m = dv.tab_structure.list_view.model()
         self.assertEqual(m.data(m.index(0, 0)), 'HumanIK character definition (version 1): 4 nodes used of 172')
+        for path, first in (('ui/test_video.ivf', 'IVF version 0: VP90 356 x 480'), ('ui/test_video.webm', 'webm (EBML')):
+            self.assertEqual(self.show_uid(_projet.nodes_by_path(self.window.vfs, path)[0].uid), 'Structure')
+            m = dv.tab_structure.list_view.model()
+            self.assertTrue(m.data(m.index(0, 0)).startswith(first), m.data(m.index(0, 0)))
+        uid = _projet.nodes_by_path(self.window.vfs, 'editor/test/weapons.inst')[0].uid
+        self.assertEqual(self.show_uid(uid), 'RTPC')
         self.assertEqual(dv.errors, [])
         self.assertEqual(self.errors, [])
 
@@ -348,6 +427,8 @@ class TestViewersAndExport(unittest.TestCase):
         self.assertEqual(rows['models/test/textures/wood_test_dif.hmddsc'], 'hmddsc')
         self.assertEqual(rows['worlds/base/locations/test/global_sound_layers_test.fmod_guids'], 'fmodguids')
         self.assertEqual(rows['animations/humanik/test.hikcc'], 'hikcc')
+        self.assertEqual((rows['editor/test/weapons.inst'], rows['ui/test_video.ivf'], rows['ui/test_video.webm']),
+                         ('rtpci', 'ivf', 'webm'))
 
 
 if __name__ == '__main__':

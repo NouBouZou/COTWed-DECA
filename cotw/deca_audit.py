@@ -102,6 +102,7 @@ LECTEURS = {
     'gfx': 'Structure',                                # Scaleform GFx : en-tete, balises, images externes
     'bik': 'Structure',                                # Bink 1 : en-tete et index des images (pas de decodage)
     'hikcc': 'Structure',                              # HumanIK : noeuds utilises et pose de reference (2026-10-10)
+    'ivf': 'Structure', 'webm': 'Structure',           # videos VP9 : en-tete, images / arbre EBML (2026-10-11)
 }
 # Niveaux de mip d'une texture (python/deca/deca/ff_avtx.py, image_load) : la visionneuse ouvre <nom>.ddsc et lui
 # ajoute <nom>.hmddsc et <nom>.atx1..15. Sans <nom>.ddsc dans le jeu (775 .hmddsc de COTW), elle devine depuis le

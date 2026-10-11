@@ -48,6 +48,8 @@ FTYPE_TTF = 'ttf'                # *.ttfc: plain TrueType font (ff_ttf.py)
 FTYPE_RAWC = 'rawc'              # *.rawc: raw terrain arrays, typed by name (ff_rawc.py)
 FTYPE_BTC = 'btc'                # *.btc: compiled AI behaviour trees (ff_btc.py, structure only)
 FTYPE_HIKCC = 'hikcc'            # *.hikcc: HumanIK character definition (ff_hikcc.py)
+FTYPE_IVF = 'ivf'                # IVF video (VP9), header and frame index (ff_video.py)
+FTYPE_WEBM = 'webm'              # WebM / Matroska video, EBML tree (ff_video.py)
 
 FTYPE_SYMLINK = 'symlink'
 
@@ -95,6 +97,8 @@ ftype_list = {
     FTYPE_RAWC: 1 << 35,
     FTYPE_BTC: 1 << 36,
     FTYPE_HIKCC: 1 << 37,
+    FTYPE_IVF: 1 << 38,
+    FTYPE_WEBM: 1 << 39,
     FTYPE_EXE: 1 << 63,
     FTYPE_ANY_TYPE: 0xFFffFFffFFffFFff,
 }
