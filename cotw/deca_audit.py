@@ -587,7 +587,7 @@ class Audit:
             f = fams.get(key)
             if f is None:
                 f = fams[key] = {'noeuds': 0, 'fichiers': {}, 'types': collections.Counter(),
-                                 'magics': collections.Counter(), 'exemples': [], 'noeuds_exemples': []}
+                                 'magics': collections.Counter(), 'exemples': [], 'candidats': []}
             f['noeuds'] += 1
             status = self.node_status(node_id, flags, file_type, path_txt, size_u)
             fid = v_hash if v_hash is not None else ('noeud', node_id)
@@ -600,8 +600,8 @@ class Audit:
                 if status not in STATUTS_LUS and status != 'lien':
                     if path_txt and len(f['exemples']) < self.sample_size:
                         f['exemples'].append(path_txt)
-                    if not path_txt and len(f['noeuds_exemples']) < self.sample_size:
-                        f['noeuds_exemples'].append(node_id)
+                    if not path_txt and len(f['candidats']) < 4096:
+                        f['candidats'].append((node_id, (magic_short(magic), size_u or 0)))
             else:
                 if rank[status] < rank[old[0]]:
                     old[0], old[3] = status, file_type
@@ -645,7 +645,7 @@ class Audit:
                 'explores': sum(1 for v in explorables if v[2]),
                 'explorables': len(explorables),
                 'exemples': f['exemples'],
-                'noeuds_exemples': f['noeuds_exemples'],
+                'noeuds_exemples': self.varied(f['candidats']),
             })
         rows.sort(key=lambda r: (-r['fichiers'], r['famille']))
         self.coverage = rows
@@ -660,6 +660,21 @@ class Audit:
         self.m['echecs_scan'] = sum(r['statuts'].get('echec_scan', 0) for r in rows)
         self.m['mips_orphelins'] = sum(r['statuts'].get('mip_orphelin', 0) for r in rows)
         self.m['textures_devinees'] = sum(r['statuts'].get('texture_devinee', 0) for r in rows)
+
+    def varied(self, candidates):
+        """Noeuds sans nom a extraire : un par (magic, taille) d'abord, puis les suivants (2026-10-11 : les 28 restes
+        sans type etaient 22 fichiers identiques de 6 octets et 6 autres, que les 5 premiers noeuds ne montraient pas)."""
+        picked, seen = [], set()
+        for node_id, key in candidates:
+            if key not in seen and len(picked) < self.sample_size:
+                picked.append(node_id)
+                seen.add(key)
+        for node_id, _key in candidates:
+            if len(picked) >= self.sample_size:
+                break
+            if node_id not in picked:
+                picked.append(node_id)
+        return picked
 
     def priorities(self, limit=15):
         """Familles a etudier en phase C : le plus de fichiers non lisibles d'abord. Une famille "lue" (99 % et plus)

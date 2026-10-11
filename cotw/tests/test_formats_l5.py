@@ -162,6 +162,13 @@ class TestFmodGuidsBanks(unittest.TestCase):
         self.assertEqual(plain[4:8], b'\x00\x00\x01\x00')                 # sans banque : la disposition d'avant
         self.assertEqual(G.parse(plain)[1], [])
 
+    def test_empty_bank_name(self):
+        """global/global_sound_layers.fmod_guids : 23 banques dont une au nom vide."""
+        data = G.to_bytes([FF.GUID_GRAVEL], banks=['gui', '', 'weapons'])
+        self.assertEqual(G.parse(data)[1], ['gui', '', 'weapons'])
+        self.assertEqual(determine_file_type_and_size(io.BytesIO(data), len(data), False)[0], 'fmodguids')
+        self.assertIn('  (empty name)', G.dump_lines(data))
+
     def test_rejects(self):
         data = layers_bytes()
         for bad in (data[:-1], data + b'\0', data[:6] + b'\x05\x00ab' + data[10:]):

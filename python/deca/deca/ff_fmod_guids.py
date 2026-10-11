@@ -7,7 +7,8 @@ COTWed DECA, 2026-10-09, from four weapon entities (456 to 824 bytes) and the 8-
     u32 version (2)
     u16 bank count B (0 in 5 684 of the 5 707 files; 3 to 22 in the 23 global_sound_layers files)
     B x (u16 length, bank name: 'animal_boar', 'music_germanfarmlands', 'reserve_germanfarmlands'; the last part of
-         a 'bank:/...' path of the string bank, so the file sound/fmod_banks/<name>.fmod_bankc)
+         a 'bank:/...' path of the string bank, so the file sound/fmod_banks/<name>.fmod_bankc; global/
+         global_sound_layers.fmod_guids lists 23 banks, one of them with an empty name)
     u16 GUID count
     GUID count x GUID (16 bytes, Windows layout: u32, u16, u16, 8 bytes; FMOD prints them as {xxxxxxxx-...})
 
@@ -38,7 +39,7 @@ def parse(data: bytes) -> Tuple[int, List[str], List[uuid.UUID]]:
             raise ValueError('fmod_guids: bank name {} beyond the end'.format(i))
         n = struct.unpack_from('<H', data, p)[0]
         raw = bytes(data[p + 2:p + 2 + n])
-        if len(raw) != n or not raw or not all(32 < c < 127 for c in raw):
+        if len(raw) != n or not all(32 < c < 127 for c in raw):      # empty: seen once (global_sound_layers)
             raise ValueError('fmod_guids: bank name {} is not a name'.format(i))
         banks.append(raw.decode('ascii'))
         p += 2 + n
@@ -93,7 +94,7 @@ def dump_lines(data: bytes, names: Optional[dict] = None) -> List[str]:
     if banks:
         paths = {p.rsplit('/', 1)[-1]: p for p in names.values() if isinstance(p, str) and p.startswith('bank:/')}
         lines.append('banks:')
-        lines += ['  {}{}'.format(b, '  ' + paths[b] if b in paths else '') for b in banks]
+        lines += ['  {}{}'.format(b or '(empty name)', '  ' + paths[b] if b in paths else '') for b in banks]
         lines.append('events:')
     for i, g in enumerate(guids):
         name = names.get(g)

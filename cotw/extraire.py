@@ -9,6 +9,7 @@ SORTIE ; rien n'est ecrit dans le projet ni dans le jeu.
 Selection :
   - chemins virtuels donnes en argument ;
   - --motif : motif SQL LIKE sur le chemin (ex : "ui/%.stringlookup") ;
+  - --hashes : fichiers sans nom par leur hash (hashes_orphelins.csv), ex : --hashes 9f542e80 633a08dd ;
   - --extension : extension complete, a partir du premier point du nom (".nl.mdic" ne prend pas les ".mdic"),
     comme la compte deca_audit.py ;
   - --noeuds : numeros de noeuds (fichiers sans nom, listes par deca_audit.py), ecrits sous _noeuds\\.
@@ -126,6 +127,18 @@ def write_node(vfs, uid: int, out_root: Path, flat: bool = False) -> Path:
     return target
 
 
+def node_of_hash(vfs, text: str) -> int:
+    """Premier noeud avec contenu portant ce hash (une copie suffit : toutes ont le meme contenu)."""
+    try:
+        value = int(text, 16)
+    except ValueError:
+        raise SystemExit('ERREUR : hash {} : hexadecimal attendu (ex : 9f542e80)'.format(text))
+    nodes = [n for n in vfs.nodes_where_match(v_hash=value) if n.offset is not None]
+    if not nodes:
+        raise SystemExit('ERREUR : aucun fichier de hash {} dans le projet'.format(text))
+    return nodes[0].uid
+
+
 def main(argv=None):
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(errors='replace')
@@ -135,6 +148,8 @@ def main(argv=None):
     ap.add_argument('--motif', help='motif SQL LIKE sur le chemin virtuel, ex : "ui/%%.stringlookup"')
     ap.add_argument('--extension', help='extension complete, ex : .nl.mdic (meme regle que deca_audit.py)')
     ap.add_argument('--noeuds', nargs='+', type=int, default=[], help='numeros de noeuds (fichiers sans nom)')
+    ap.add_argument('--hashes', nargs='+', default=[],
+                    help='hashes de fichiers sans nom, en hexadecimal (colonne hash de hashes_orphelins.csv)')
     ap.add_argument('--echantillons', type=int, default=0,
                     help='avec --motif / --extension : N fichiers repartis par taille')
     ap.add_argument('--max', type=int, default=MAX_DEFAULT, help='nombre maximal de fichiers pour --motif')
@@ -142,10 +157,12 @@ def main(argv=None):
     ap.add_argument('--a-plat', dest='a_plat', action='store_true',
                     help='ecrire les fichiers directement dans --sortie, chemin aplati ("/" -> "__")')
     args = ap.parse_args(argv)
-    if not args.chemins and not args.motif and not args.extension and not args.noeuds:
-        raise SystemExit('ERREUR : donner des chemins virtuels, --motif, --extension ou --noeuds')
+    if not args.chemins and not args.motif and not args.extension and not args.noeuds and not args.hashes:
+        raise SystemExit('ERREUR : donner des chemins virtuels, --motif, --extension, --noeuds ou --hashes')
 
     vfs = _projet.open_project(args.projet)
+    for h in args.hashes:
+        args.noeuds.append(node_of_hash(vfs, h))
     paths = list(args.chemins)
     if args.motif:
         paths += matching_paths(vfs, args.motif, args.max, args.echantillons)

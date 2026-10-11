@@ -125,6 +125,15 @@ class TestMipLevels(unittest.TestCase):
         self.assertEqual(r['statuts'], {'texture_devinee': 1, 'type_inconnu': 1})
         self.assertEqual(r['noeuds_exemples'], [41])
 
+    def test_varied_unnamed_samples(self):
+        """Echantillons sans nom : un par (magic, taille) d'abord (22 fichiers de 6 octets identiques masquaient les
+        6 autres restes du jeu)."""
+        audit = run_audit(texture_db())
+        same = [(i, ('02 00 00 00', 6)) for i in range(1, 23)]
+        other = [(100, ('DKIF', 987185)), (101, ('.E..', 316208)), (102, ('02 00 00 00', 6))]
+        self.assertEqual(audit.varied(same + other), [1, 100, 101])          # sample_size 3
+        self.assertEqual(audit.varied(same[:2]), [1, 2])
+
     def test_chain_sizes_agree_with_the_viewer(self):
         from deca.ff_bc_raw import is_bc_raw_size
         sizes = [0, 6, 2610, 4096, 65536, 131072, 327680, 655360, 1376256, 2752512, 5570560, 11141120, 22347776,
@@ -299,6 +308,15 @@ class TestDemoProject(unittest.TestCase):
             ids = [int(t) for t in unnamed[0].split('--noeuds', 1)[1].split('--sortie')[0].split() if t.isdigit()]
             EX.main([str(self.project), '--noeuds', str(ids[0]), '--sortie', str(target)])
             self.assertTrue(list((target / '_noeuds').glob('{}_*'.format(ids[0]))))
+            # le meme fichier par son hash (colonne hash de hashes_orphelins.csv)
+            db = sqlite3.connect(str(Path(self.project) / 'db' / 'core.db'))
+            h = db.execute('SELECT v_hash FROM core_nodes WHERE node_id = ?', (ids[0],)).fetchone()[0]
+            db.close()
+            by_hash = self.root / 'ech_hash'
+            EX.main([str(self.project), '--hashes', '{:08x}'.format(h), '--sortie', str(by_hash)])
+            self.assertEqual(len(list((by_hash / '_noeuds').glob('*'))), 1)
+            with self.assertRaises(SystemExit):
+                EX.main([str(self.project), '--hashes', 'zz', '--sortie', str(by_hash)])
 
 
 if __name__ == '__main__':
