@@ -60,7 +60,8 @@ class Etat:
     - nommes : chemins virtuels presents dans la base ;
     - sans_nom : hash32 -> types des noeuds de ce hash, pour les hashes dont AUCUN noeud n'a de nom
       (definition de deca_audit.py, "hashes orphelins") ;
-    - types_par_extension : extension complete -> Counter des types des noeuds nommes (un noeud par hash).
+    - types_par_extension : extension complete -> Counter des types des noeuds nommes (un noeud par hash) ;
+    - bornes : hash sans nom -> intervalles de son nom donnes par l'ordre des archives (rempli par generer_noms.py).
     """
 
     def __init__(self):
@@ -68,6 +69,8 @@ class Etat:
         self.sans_nom: Dict[int, Set[Optional[str]]] = {}
         self.types_par_extension: Dict[str, collections.Counter] = {}
         self.types_par_derniere: Dict[str, collections.Counter] = {}
+        # hash sans nom -> intervalles de son nom (voisins_orphelins.bornes) ; vide si inconnu
+        self.bornes: Dict[int, list] = {}
 
     @classmethod
     def depuis_base(cls, vfs) -> 'Etat':

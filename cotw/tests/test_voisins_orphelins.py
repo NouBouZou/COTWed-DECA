@@ -67,6 +67,8 @@ class TestVoisins(unittest.TestCase):
         md = (self.out / 'voisins_orphelins.md').read_text(encoding='utf-8')
         self.assertIn('`ui/a`', md)
         self.assertIn('2 : 1', md)  # x_02 + x_03 : une suite de 2
+        self.assertIn('Archives triees par chemin', md)
+        self.assertIn('**1 / 1**', md)
 
     def test_readonly(self):
         db = sqlite3.connect(os.path.join(self.project, 'db', 'core.db'))

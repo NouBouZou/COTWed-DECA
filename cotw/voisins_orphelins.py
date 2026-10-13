@@ -15,11 +15,17 @@ Sorties (dossier --sortie) :
     voisins_orphelins.md   par type : dossiers des voisins les plus frequents, runs de fichiers sans nom
                            (suites contigues dans une archive) et quelques exemples
 
+Mesure 10-voisins (13/10) : **les .arc sont tries par chemin virtuel, ordre des octets** (5 011 des 5 051 hashes sans
+nom ont des voisins nommes dans l'ordre ; les 40 autres sont en tete de game12, ou une deuxieme suite triee commence).
+Un fichier sans nom a donc un nom compris entre ceux de ses voisins nommes : bornes() donne cet intervalle, que
+generer_noms.py utilise pour guider et controler ses candidats.
+
 Usage (DECA ferme) :
     python cotw\\voisins_orphelins.py D:\\dev\\work\\hp --sortie D:\\dev\\audits\\10-voisins
 """
 import argparse
 import collections
+import csv
 import posixpath
 import sys
 from pathlib import Path
@@ -29,6 +35,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import deca_audit as DA  # noqa: E402  (base en lecture seule, formats des hashes et des archives)
 
 RAYON_DEFAUT = 3
+PART_TRIEE_MIN = 0.98   # part des paires de voisins nommes dans l'ordre pour qu'une archive soit dite triee
+
+# Intervalle d'un nom : (bas, haut) avec bas < nom < haut (ordre des octets) ; bas '' = pas de borne basse,
+# haut None = pas de borne haute.
+Intervalle = Tuple[str, Optional[str]]
 
 
 class Entree:
@@ -76,6 +87,67 @@ def voisins(lst: List[Entree], i: int, rayon: int, nommes: set) -> Tuple[List[st
     return avant, apres, trou
 
 
+def part_triee(lst: List[Entree]) -> Tuple[int, int]:
+    """(paires de noms consecutifs dans l'ordre des octets, paires) parmi les entrees nommees d'une archive."""
+    noms = [e.path for e in lst if e.path]
+    paires = list(zip(noms, noms[1:]))
+    return sum(1 for a, b in paires if a < b), len(paires)   # str : ordre des points de code = ordre UTF-8
+
+
+def intervalles_entre(bas: Optional[str], haut: Optional[str]) -> List[Intervalle]:
+    """Intervalle(s) d'un nom range entre les noms bas et haut (None : bord de l'archive). Si bas >= haut, une suite
+    triee se termine entre les deux : le nom est apres bas (fin de la premiere suite) ou avant haut (debut de la
+    suivante)."""
+    if bas and haut and not bas < haut:
+        return [(bas, None), ('', haut)]
+    return [(bas or '', haut)]
+
+
+def dans(nom: str, intervalles: List[Intervalle]) -> bool:
+    return any(bas < nom and (haut is None or nom < haut) for bas, haut in intervalles)
+
+
+def bornes(par_tab: Dict[int, List[Entree]], nommes: set,
+           part_min: float = PART_TRIEE_MIN) -> Tuple[Dict[int, List[Intervalle]], Dict[int, Tuple[int, int]]]:
+    """(hash sans nom -> intervalles de son nom, archive -> (paires dans l'ordre, paires)). Une archive dont moins de
+    part_min des paires de voisins nommes sont dans l'ordre ne donne pas d'intervalle."""
+    out: Dict[int, List[Intervalle]] = collections.defaultdict(list)
+    tri = {}
+    for tab_id, lst in par_tab.items():
+        ok, n = part_triee(lst)
+        tri[tab_id] = (ok, n)
+        if n and ok < part_min * n:
+            continue
+        precedent = None
+        en_attente = []
+        for e in lst:
+            if e.path:
+                for h in en_attente:
+                    out[h].extend(intervalles_entre(precedent, e.path))
+                en_attente, precedent = [], e.path
+            elif e.v_hash is not None and e.v_hash not in nommes:
+                en_attente.append(e.v_hash)
+        for h in en_attente:
+            out[h].extend(intervalles_entre(precedent, None))
+    return {h: sorted(set(v)) for h, v in out.items()}, tri
+
+
+def bornes_depuis_base(conn) -> Dict[int, List[Intervalle]]:
+    _tabs, par_tab, nommes = charger(conn)
+    return bornes(par_tab, nommes)[0]
+
+
+def bornes_depuis_csv(path) -> Dict[int, List[Intervalle]]:
+    """Intervalles relus dans un voisins_orphelins.csv (une ligne par hash : ses voisins dans une archive)."""
+    out = {}
+    with open(path, encoding='utf-8-sig', newline='') as f:
+        for r in csv.DictReader(f, delimiter=';'):
+            avant = r['nommes_avant'].split(' | ')[0] or None
+            apres = r['nommes_apres'].split(' | ')[0] or None
+            out[int(r['hash'][-8:], 16)] = intervalles_entre(avant, apres)
+    return out
+
+
 def runs(lst: List[Entree], nommes: set) -> List[Tuple[int, int]]:
     """(debut, longueur) des suites contigues de fichiers sans nom (hash porte par aucun nom)."""
     out, start = [], None
@@ -94,6 +166,7 @@ def analyser(conn, rayon: int = RAYON_DEFAUT):
     lignes, dossiers, exemples, longueurs = [], collections.defaultdict(collections.Counter), \
         collections.defaultdict(list), collections.defaultdict(collections.Counter)
     vus = set()
+    tri = {tabs[t]: part_triee(lst) for t, lst in par_tab.items()}
     for tab_id, lst in sorted(par_tab.items(), key=lambda kv: tabs[kv[0]]):
         archive = tabs[tab_id]
         for start, n in runs(lst, nommes):
@@ -111,10 +184,10 @@ def analyser(conn, rayon: int = RAYON_DEFAUT):
                 exemples[t].append((DA.fmt_hash(e.v_hash, e.flags), archive, avant[:1], apres[:1]))
             lignes.append((DA.fmt_hash(e.v_hash, e.flags), archive, e.offset, e.size, t, ' | '.join(avant),
                            ' | '.join(apres), trou))
-    return lignes, dossiers, exemples, longueurs
+    return lignes, dossiers, exemples, longueurs, tri
 
 
-def ecrire(sortie: Path, lignes, dossiers, exemples, longueurs, sep=';'):
+def ecrire(sortie: Path, lignes, dossiers, exemples, longueurs, tri=None, sep=';'):
     sortie.mkdir(parents=True, exist_ok=True)
     DA.write_csv(sortie / 'voisins_orphelins.csv',
                  ['hash', 'archive', 'position', 'taille', 'type', 'nommes_avant', 'nommes_apres',
@@ -122,6 +195,13 @@ def ecrire(sortie: Path, lignes, dossiers, exemples, longueurs, sep=';'):
     par_type = collections.Counter(l[4] for l in lignes)
     L = ['# Fichiers sans nom et leurs voisins nommes', '',
          '{} hashes sans nom (entrees directes des .tab), par type :'.format(len(lignes)), '']
+    if tri:
+        n_ok = sum(1 for ok, n in tri.values() if not n or ok >= PART_TRIEE_MIN * n)
+        desordre = sorted(((n - ok, a) for a, (ok, n) in tri.items() if n - ok), reverse=True)
+        L[2:2] = ['Archives triees par chemin (au moins {:.0%} des paires de voisins nommes dans l\'ordre des octets) : '
+                  '**{} / {}**. Paires dans le desordre : {}.'.format(
+                      PART_TRIEE_MIN, n_ok, len(tri),
+                      ', '.join('{} ({})'.format(a, k) for k, a in desordre[:10]) or 'aucune'), '']
     L += ['| Type | Sans nom | Dossiers voisins les plus frequents | Suites contigues (longueur : nombre) |',
           '|---|---:|---|---|']
     for t, n in par_type.most_common():
@@ -147,10 +227,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     db_path, _projet_dir = DA.resolve_paths(args.projet)
     conn = DA.open_readonly(db_path)
     try:
-        lignes, dossiers, exemples, longueurs = analyser(conn, args.rayon)
+        lignes, dossiers, exemples, longueurs, tri = analyser(conn, args.rayon)
     finally:
         conn.close()
-    par_type = ecrire(Path(args.sortie), lignes, dossiers, exemples, longueurs, args.sep)
+    par_type = ecrire(Path(args.sortie), lignes, dossiers, exemples, longueurs, tri, args.sep)
     print('{} hashes sans nom : {}'.format(len(lignes), ', '.join('{} {}'.format(n, t) for t, n in
                                                                   par_type.most_common())))
     print('Resultats : {}'.format(Path(args.sortie).resolve()))

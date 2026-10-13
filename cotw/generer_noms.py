@@ -15,8 +15,13 @@ Passes (chacune produit des candidats ; seul un candidat dont le hash32 est celu
   - dossiers : un fichier d'un dossier est essaye dans les dossiers freres (meme parent), tel quel et avec le nom
     du dossier remplace dans le nom du fichier ;
   - exe : chaines en forme de chemin de l'executable, et motifs printf ("zoom%d/%d.ddsc") developpes ;
+  - greffe et grammaire (noms_tri.py) : guidees par l'ordre des archives, voir plus bas ;
   - les noms trouves servent de graines a une nouvelle iteration, tant qu'elle trouve quelque chose.
 Chaque candidat est aussi essaye avec ses extensions associees (hp.json : ".ddsc" -> ".hmddsc"...).
+
+Ordre des archives (mesure 10-voisins, 13/10) : les .arc sont tries par chemin. Un fichier sans nom a donc un nom
+compris entre ceux de ses voisins nommes (voisins_orphelins.bornes, calcule sur la base ; hors ligne : --voisins).
+Tout candidat qui touche un hash hors de cet intervalle est refuse ("hors intervalle"), quelle que soit la passe.
 
 Controle : un nom touche n'est garde que si le type detecte par DECA dans le fichier est attendu pour son
 extension (noms_fichiers.ModeleTypes). Les refus mesurent le taux reel de faux positifs ; le rapport donne aussi le
@@ -28,7 +33,7 @@ Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\generer_noms.py D:\\dev\\work\\hp --sortie D:\\dev\\audits\\noms\\noms_generes.txt --rapport D:\\dev\\audits\\noms\\generer_noms.md
     python cotw\\renommer.py ajouter D:\\dev\\work\\hp --noms D:\\dev\\audits\\noms\\noms_generes.txt
 Sans le jeu (portable), a partir des sorties d'un audit et de vpaths.txt :
-    python cotw\\generer_noms.py --hors-ligne vpaths.txt hashes_orphelins.csv couverture_extensions.csv --sortie noms.txt
+    python cotw\\generer_noms.py --hors-ligne vpaths.txt hashes_orphelins.csv couverture_extensions.csv --voisins voisins_orphelins.csv --sortie noms.txt
 """
 import argparse
 import collections
@@ -42,9 +47,10 @@ from typing import Callable, Dict, Iterable, Iterator, List, Optional, Set, Tupl
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402,F401  (installe le substitut de zugbruecke sous Linux)
 import noms_fichiers as NF  # noqa: E402
+import voisins_orphelins as VO  # noqa: E402
 
 RX_CHIFFRES = re.compile(r'\d+')
-PASSES = ('chiffres', 'suffixes', 'dossiers', 'exe')
+PASSES = ('chiffres', 'suffixes', 'dossiers', 'exe', 'greffe', 'grammaire')
 LARGEUR_MAX = 2            # largeur des groupes de chiffres variee pour tout nom
 LARGEUR_SERIE = 3          # largeur variee pour une serie (au moins SERIE_MIN noms connus)
 SERIE_MIN = 2
@@ -86,7 +92,10 @@ class Stat:
         self.acceptes = 0
         self.refuses = 0
         self.non_controles = 0
+        self.hors_intervalle = 0
+        self.fp_guides = None   # passes guidees : somme des candidats x fichiers de leur intervalle / 2^32
         self.secondes = 0.0
+        self.notes = collections.Counter()
 
 
 class Chercheur:
@@ -97,6 +106,8 @@ class Chercheur:
         self.modele = modele
         self.assoc = assoc
         self.cibles = etat.sans_nom
+        self.bornes = getattr(etat, 'bornes', {}) or {}
+        self._hacheur = None
         self.trouves: Dict[int, Dict[str, str]] = collections.defaultdict(dict)   # hash -> nom -> passe
         self.non_controles: Dict[int, Dict[str, str]] = collections.defaultdict(dict)
         self.refus: List[Tuple[str, int, Set[Optional[str]], str]] = []
@@ -104,7 +115,10 @@ class Chercheur:
         self.nouveaux: Set[str] = set()
         self._refus_vus: Set[Tuple[str, int]] = set()
 
-    def essayer(self, nom: str, stat: Stat):
+    def essayer(self, nom: str, stat: Stat, guide: bool = False):
+        """guide : candidat d'une passe guidee par l'ordre des archives ; il n'est garde que s'il tombe dans un
+        intervalle borne des deux cotes (un intervalle de bord d'archive ne controle presque rien : un candidat
+        produit pour un autre intervalle y tombe facilement)."""
         stat.candidats += 1
         try:
             h = int(self._hash(nom.encode('ascii')))
@@ -114,6 +128,12 @@ class Chercheur:
         if types is None:
             return
         stat.touches += 1
+        bornes = self.bornes.get(h)
+        if guide:
+            bornes = [(b, t) for b, t in (bornes or ()) if b and t is not None]
+        if bornes is not None and not VO.dans(nom, bornes):
+            stat.hors_intervalle += 1
+            return
         if nom in self.trouves[h] or nom in self.non_controles[h]:
             return
         verdict = self.modele.accepte(nom, types)
@@ -140,6 +160,14 @@ class Chercheur:
         if dot > nom.rfind('/') + 1:
             for autre in self.assoc.get(nom[dot:], ()):
                 self.essayer(nom[:dot] + autre, stat)
+
+    @property
+    def hacheur(self):
+        """hash_lot.Hacheur des cibles (compile a la premiere utilisation : quelques secondes)."""
+        if self._hacheur is None:
+            import hash_lot
+            self._hacheur = hash_lot.Hacheur(self.cibles)
+        return self._hacheur
 
     def passe(self, nom: str, generateur: Callable[[Stat], None]) -> Stat:
         stat = Stat(nom)
@@ -358,6 +386,18 @@ def generer(etat: NF.Etat, modele: NF.ModeleTypes, file_assoc: List[dict], passe
         ch.passe('suffixes', passe_suffixes(ch, noms))
     if 'dossiers' in passes:
         ch.passe('dossiers', passe_dossiers(ch, noms))
+    # passes guidees par l'ordre des archives : seulement si des intervalles sont connus
+    greffe = grammaire = None
+    if ch.bornes and ('greffe' in passes or 'grammaire' in passes):
+        import noms_tri
+        connus = set(noms) | ch.nouveaux
+        if 'greffe' in passes:
+            greffe = noms_tri.Greffe(ch)
+            ch.passe('greffe', greffe.passe(sorted(connus)))
+        if 'grammaire' in passes:
+            grammaire = noms_tri.Grammaire(ch)
+            grammaire.ajouter(connus | ch.nouveaux)
+            ch.passe('grammaire', grammaire.passe())
     # iterations : seuls les noms trouves a l'iteration precedente sont modifies ; les series, les mots
     # frequents et les dossiers freres sont appris sur tous les noms connus
     for i in range(iterations):
@@ -372,6 +412,10 @@ def generer(etat: NF.Etat, modele: NF.ModeleTypes, file_assoc: List[dict], passe
             ch.passe('suffixes+{}'.format(i + 1), passe_suffixes(ch, noms, graines))
         if 'dossiers' in passes:
             ch.passe('dossiers+{}'.format(i + 1), passe_dossiers(ch, noms, graines))
+        if greffe is not None:
+            ch.passe('greffe+{}'.format(i + 1), greffe.passe(graines))
+        if grammaire is not None:
+            ch.passe('grammaire+{}'.format(i + 1), grammaire.passe(grammaire.ajouter(graines)))
     return ch
 
 
@@ -388,12 +432,15 @@ def cibles_fictives(etat: NF.Etat, graine: int = 20261008) -> NF.Etat:
     fictif.nommes = etat.nommes
     fictif.types_par_extension = etat.types_par_extension
     fictif.types_par_derniere = etat.types_par_derniere
-    for types in etat.sans_nom.values():
+    bornes = getattr(etat, 'bornes', {}) or {}
+    for h_reel, types in etat.sans_nom.items():
         while True:
             h = rng.getrandbits(32)
             if h not in reels and h not in fictif.sans_nom:
                 break
         fictif.sans_nom[h] = set(types)
+        if h_reel in bornes:
+            fictif.bornes[h] = bornes[h_reel]   # meme intervalle : les passes guidees explorent les memes plages
     return fictif
 
 
@@ -447,13 +494,20 @@ def rapport(ch: Chercheur, n_cibles: int, limite: int = 25, temoin: Optional['Ch
     L = ['# generer_noms.py', '',
          'Cibles : {} fichiers sans nom. Faux positifs attendus d\'une passe = candidats x cibles / 2^32 '
          '(majorant : un candidat produit deux fois compte deux fois). Les refus pour type incoherent mesurent les '
-         'faux positifs reels.'.format(n_cibles), '',
-         '| Passe | Candidats | Touches | Acceptes | Refuses (type) | Sans controle | FP attendus | Duree |',
-         '|---|---:|---:|---:|---:|---:|---:|---:|']
+         'faux positifs reels.'.format(n_cibles), '']
+    if ch.bornes:
+        L += ['Ordre des archives : {} fichiers sans nom ont un intervalle (voisins nommes dans une archive triee). Un '
+              'hash touche hors de son intervalle est refuse (colonne "Hors intervalle" : faux positifs ecartes). '
+              'Pour greffe et grammaire, qui n\'essaient que des noms d\'intervalles, FP attendus = somme des '
+              'candidats x fichiers sans nom de leur intervalle / 2^32.'.format(sum(1 for h in ch.bornes if h in ch.cibles)), '']
+    L += ['| Passe | Candidats | Touches | Hors intervalle | Acceptes | Refuses (type) | Sans controle | FP attendus '
+          '| Duree | Notes |',
+          '|---|---:|---:|---:|---:|---:|---:|---:|---:|---|']
     for s in ch.stats:
-        L.append('| {} | {} | {} | {} | {} | {} | {:.2f} | {:.0f} s |'.format(
-            s.nom, s.candidats, s.touches, s.acceptes, s.refuses, s.non_controles,
-            NF.faux_positifs_attendus(s.candidats, n_cibles), s.secondes))
+        L.append('| {} | {} | {} | {} | {} | {} | {} | {:.2f} | {:.0f} s | {} |'.format(
+            s.nom, s.candidats, s.touches, s.hors_intervalle, s.acceptes, s.refuses, s.non_controles,
+            s.fp_guides if s.fp_guides is not None else NF.faux_positifs_attendus(s.candidats, n_cibles), s.secondes,
+            ', '.join('{} {}'.format(n, k) for k, n in sorted(s.notes.items())) or ''))
     par_ext = collections.Counter(NF.extension_complete(n) for n, _p in retenus.values())
     par_type = collections.Counter()
     for h in retenus:
@@ -502,6 +556,9 @@ def main(argv=None):
     ap.add_argument('projet', nargs='?', help='projet DECA (dossier contenant db\\core.db)')
     ap.add_argument('--hors-ligne', nargs=3, metavar=('VPATHS', 'ORPHELINS_CSV', 'COUVERTURE_CSV'),
                     help='sans la base : vpaths.txt, hashes_orphelins.csv et couverture_extensions.csv d\'un audit')
+    ap.add_argument('--voisins', help='hors ligne : voisins_orphelins.csv (intervalles donnes par l\'ordre des archives)')
+    ap.add_argument('--sans-bornes', action='store_true',
+                    help='ignorer l\'ordre des archives (ni controle d\'intervalle, ni passes greffe et grammaire)')
     ap.add_argument('--exe', help='executable du jeu (defaut avec un projet : celui du projet)')
     ap.add_argument('--passes', default=','.join(PASSES), help='passes : ' + ','.join(PASSES))
     ap.add_argument('--iterations', type=int, default=5, help='iterations sur les noms trouves (defaut 5)')
@@ -516,11 +573,15 @@ def main(argv=None):
 
     if args.hors_ligne:
         etat = etat_hors_ligne(*args.hors_ligne)
+        if args.voisins and not args.sans_bornes:
+            etat.bornes = VO.bornes_depuis_csv(args.voisins)
         file_assoc = _file_assoc_hp()
         exe = args.exe
     elif args.projet:
         vfs = _projet.open_project(args.projet)
         etat = NF.Etat.depuis_base(vfs)
+        if not args.sans_bornes:
+            etat.bornes = VO.bornes_depuis_base(vfs.db_conn)
         file_assoc = vfs.game_info.file_assoc()
         exe = args.exe or str(Path(vfs.game_info.game_dir) / vfs.game_info.exe_name)
         vfs.db_conn.close()
