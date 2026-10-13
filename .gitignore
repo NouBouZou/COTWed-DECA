@@ -4,6 +4,7 @@
 log.txt
 deca_gui.pex
 __PYCACHE__/
+__pycache__/
 **.egg-info/
 test/
 tools/
