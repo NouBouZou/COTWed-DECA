@@ -15,7 +15,7 @@ Passes (chacune produit des candidats ; seul un candidat dont le hash32 est celu
   - dossiers : un fichier d'un dossier est essaye dans les dossiers freres (meme parent), tel quel et avec le nom
     du dossier remplace dans le nom du fichier ;
   - exe : chaines en forme de chemin de l'executable, et motifs printf ("zoom%d/%d.ddsc") developpes ;
-  - greffe et grammaire (noms_tri.py) : guidees par l'ordre des archives, voir plus bas ;
+  - greffe, grammaire et chaines (noms_tri.py) : guidees par l'ordre des archives, voir plus bas ;
   - les noms trouves servent de graines a une nouvelle iteration, tant qu'elle trouve quelque chose.
 Chaque candidat est aussi essaye avec ses extensions associees (hp.json : ".ddsc" -> ".hmddsc"...).
 
@@ -50,7 +50,7 @@ import noms_fichiers as NF  # noqa: E402
 import voisins_orphelins as VO  # noqa: E402
 
 RX_CHIFFRES = re.compile(r'\d+')
-PASSES = ('chiffres', 'suffixes', 'dossiers', 'exe', 'greffe', 'grammaire')
+PASSES = ('chiffres', 'suffixes', 'dossiers', 'exe', 'greffe', 'grammaire', 'chaines')
 LARGEUR_MAX = 2            # largeur des groupes de chiffres variee pour tout nom
 LARGEUR_SERIE = 3          # largeur variee pour une serie (au moins SERIE_MIN noms connus)
 SERIE_MIN = 2
@@ -372,7 +372,8 @@ def passe_exe(ch: Chercheur, chemins: Iterable[str], motifs: Iterable[str]) -> C
 # ---------------------------------------------------------------------------------------------------------
 
 def generer(etat: NF.Etat, modele: NF.ModeleTypes, file_assoc: List[dict], passes: Iterable[str],
-            exe_chemins: Iterable[str] = (), exe_motifs: Iterable[str] = (), iterations: int = 5) -> Chercheur:
+            exe_chemins: Iterable[str] = (), exe_motifs: Iterable[str] = (), iterations: int = 5,
+            chaines: Iterable[str] = ()) -> Chercheur:
     ch = Chercheur(etat, modele, extensions_associees(file_assoc))
     passes = list(passes)
     noms = sorted(etat.nommes)
@@ -388,9 +389,14 @@ def generer(etat: NF.Etat, modele: NF.ModeleTypes, file_assoc: List[dict], passe
         ch.passe('dossiers', passe_dossiers(ch, noms))
     # passes guidees par l'ordre des archives : seulement si des intervalles sont connus
     greffe = grammaire = None
-    if ch.bornes and ('greffe' in passes or 'grammaire' in passes):
+    if ch.bornes and ('greffe' in passes or 'grammaire' in passes or 'chaines' in passes):
         import noms_tri
         connus = set(noms) | ch.nouveaux
+        if 'chaines' in passes:
+            chs = noms_tri.Chaines(ch, chaines)
+            chs.ajouter(connus)
+            ch.passe('chaines', chs.passe())
+            connus |= ch.nouveaux
         if 'greffe' in passes:
             greffe = noms_tri.Greffe(ch)
             ch.passe('greffe', greffe.passe(sorted(connus)))
@@ -557,6 +563,10 @@ def main(argv=None):
     ap.add_argument('--hors-ligne', nargs=3, metavar=('VPATHS', 'ORPHELINS_CSV', 'COUVERTURE_CSV'),
                     help='sans la base : vpaths.txt, hashes_orphelins.csv et couverture_extensions.csv d\'un audit')
     ap.add_argument('--voisins', help='hors ligne : voisins_orphelins.csv (intervalles donnes par l\'ordre des archives)')
+    ap.add_argument('--chaines', action='append', default=[],
+                    help='fichier de chaines pour la passe chaines (chaque champ de chaque ligne, separateur tabulation ; '
+                         'repetable), en plus des chaines de la base (core_strings) avec un projet. Par exemple '
+                         'noms_par_famille.tsv d\'audit_noms_internes.py : evenements RTPC "dia_..._08_18.play"')
     ap.add_argument('--sans-bornes', action='store_true',
                     help='ignorer l\'ordre des archives (ni controle d\'intervalle, ni passes greffe et grammaire)')
     ap.add_argument('--exe', help='executable du jeu (defaut avec un projet : celui du projet)')
@@ -577,11 +587,14 @@ def main(argv=None):
             etat.bornes = VO.bornes_depuis_csv(args.voisins)
         file_assoc = _file_assoc_hp()
         exe = args.exe
+        chaines = lire_chaines(args.chaines)
     elif args.projet:
         vfs = _projet.open_project(args.projet)
         etat = NF.Etat.depuis_base(vfs)
         if not args.sans_bornes:
             etat.bornes = VO.bornes_depuis_base(vfs.db_conn)
+        chaines = [NF.to_text(s) for (s,) in vfs.db_conn.execute('SELECT string FROM core_strings')]
+        chaines += lire_chaines(args.chaines)
         file_assoc = vfs.game_info.file_assoc()
         exe = args.exe or str(Path(vfs.game_info.game_dir) / vfs.game_info.exe_name)
         vfs.db_conn.close()
@@ -595,10 +608,10 @@ def main(argv=None):
         chemins = sorted(x.decode('ascii') for x in p)
         motifs = sorted(x.decode('ascii') for x in m)
     modele = NF.ModeleTypes(etat, file_assoc)
-    ch = generer(etat, modele, file_assoc, passes, chemins, motifs, args.iterations)
+    ch = generer(etat, modele, file_assoc, passes, chemins, motifs, args.iterations, chaines)
     temoin = None
     if args.temoin:
-        temoin = generer(cibles_fictives(etat), modele, file_assoc, passes, chemins, motifs, args.iterations)
+        temoin = generer(cibles_fictives(etat), modele, file_assoc, passes, chemins, motifs, args.iterations, chaines)
     n, extra = ecrire(ch, Path(args.sortie), args.avec_non_controles)
     texte = '\n'.join(rapport(ch, len(etat.sans_nom), temoin=temoin)) + '\n'
     if args.rapport:
@@ -608,6 +621,17 @@ def main(argv=None):
     print('{} noms ecrits dans {}{}.'.format(n, args.sortie, ' (+{} sans controle)'.format(extra) if extra else ''))
     print('Pour les appliquer : python cotw\\renommer.py ajouter PROJET --noms {} [--simulation]'.format(args.sortie))
     return 0
+
+
+def lire_chaines(paths: Iterable[str]) -> List[str]:
+    """Chaque champ (tabulations) de chaque ligne des fichiers ; les lignes commencant par '#' sont ignorees."""
+    out = []
+    for p in paths:
+        with open(p, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                if not line.startswith('#'):
+                    out += [c.strip() for c in line.rstrip('\r\n').split('\t') if c.strip()]
+    return out
 
 
 def _file_assoc_hp() -> List[dict]:

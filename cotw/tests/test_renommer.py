@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Tests de cotw/renommer.py et cotw/noms_fichiers.py : nommer les fichiers sans nom d'un projet deja scanne,
-controle de type, associations, simulation, annulation ; chaines de l'executable lues au scan ; banques FMOD
+controle de type, associations, simulation, annulation, retrait de quelques noms ; chaines de l'executable lues au scan ; banques FMOD
 nommees par la banque de chaines, au scan et par --fmod.
 
 Un faux jeu est scanne par DECA (vrai pipeline). Quelques fichiers sont nommes directement dans la base (ils
@@ -265,6 +265,28 @@ class TestRenommer(unittest.TestCase):
         self.assertEqual(RN.main(['ajouter', self.project, '--fmod']), 0)
         self.assertEqual(self.noms().get(bank), 'riff')
         self.assertEqual(RN.main(['annuler', self.project]), 0)
+        self.assertEqual(instantane(self.db), avant)
+
+    def test_5_remove_some_names(self):
+        avant = instantane(self.db)
+        self.assertEqual(RN.main(['ajouter', self.project, '--noms', self.liste]), 0)
+        self.assertIn('cfg/a_02.bin', self.noms())
+        self.assertEqual(RN.main(['retirer', self.project, '--nom', 'cfg/a_02.bin', '--nom', 'tex/t_01.hmddsc',
+                                  '--nom', 'pas/dans_le_journal.txt']), 0)
+        noms = self.noms()
+        self.assertNotIn('cfg/a_02.bin', noms)
+        self.assertNotIn('tex/t_01.hmddsc', noms)
+        self.assertIn('docs/notes_02.txt', noms)                    # les autres noms restent
+        conn = sqlite3.connect(self.db)
+        try:
+            self.assertIsNone(conn.execute('SELECT rowid FROM core_strings WHERE string = ?',
+                                           ('cfg/a_02.bin',)).fetchone())
+            self.assertIsNone(conn.execute('SELECT file_type FROM core_nodes WHERE v_hash = ?',
+                                           (h32('tex/t_01.hmddsc'),)).fetchone()[0])   # type d'origine : aucun
+        finally:
+            conn.close()
+        self.assertNotIn('cfg/a_02.bin\t', (Path(self.project) / 'vpaths.txt').read_text(encoding='utf-8'))
+        self.assertEqual(RN.main(['annuler', self.project]), 0)    # annuler apres retirer : etat d'origine
         self.assertEqual(instantane(self.db), avant)
 
     def sans_nom(self):

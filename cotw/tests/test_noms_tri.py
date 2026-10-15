@@ -127,6 +127,31 @@ class TestOutils(unittest.TestCase):
         self.assertIn('nrm.ddsc', f.derniers.textes)
 
 
+class TestProche(unittest.TestCase):
+    def test_close_to_a_known_name(self):
+        assoc = G.extensions_associees(G._file_assoc_hp())
+        connus = [x for f in NT.apprendre(['mm4100_ale_m_xx_10.wavc', 'mm4100_ale_m_xx_20.wavc',
+                                           'spruce_foliage_tree_01_dif.ddsc']) for x in f.connus]
+        self.assertTrue(NT.proche('d/mm4100_ale_m_xx_35.wavc', connus, assoc))             # un nombre
+        self.assertTrue(NT.proche('d/spruce_foliage_tree_02_mpm.hmddsc', connus, assoc))   # 2 mots, ext. associee
+        self.assertFalse(NT.proche('d/mm4100_ale_m_87_832.wavc', connus, assoc))           # "xx" -> "87" : pas un mot
+        self.assertFalse(NT.proche('d/spruce_foliage_tree_02_mpm.wavc', connus, assoc))    # 3 differences
+        self.assertTrue(NT.proche('d/mm4100_ale_m_xx_100.wavc', connus, assoc))            # 10 -> 100
+        self.assertTrue(NT.proche('d/mm4100_ale_m_xx_010.wavc', connus, assoc))            # 10 -> 010 : 2 (retrait + ajout)
+        self.assertFalse(NT.proche('d/mm4100_bob_m_87_10.wavc', connus, assoc))            # 1 + 2
+        self.assertTrue(NT.proche('d/mm4100_ale_xx_10.wavc', connus, assoc))               # un mot retire
+        self.assertTrue(NT.proche('d/spruce_foliage_tree_02_01_dif.ddsc', connus, assoc))  # un numero insere (x2)
+        self.assertFalse(NT.proche('d/spruce_big_old_foliage_x_tree_01_dif.ddsc', connus, assoc))  # 3 insertions
+
+    def test_word_distance(self):
+        self.assertEqual(NT.distance_mots(['a', 'b'], ['a', 'b'], 2), 0)
+        self.assertEqual(NT.distance_mots(['a', '01'], ['a', '02'], 2), 1)
+        self.assertEqual(NT.distance_mots(['a', 'xx'], ['a', '02'], 2), 2)        # incompatible : retirer + inserer
+        self.assertEqual(NT.distance_mots(['a', 'xx', 'b'], ['a', '02', 'c'], 2), 3)
+        self.assertEqual(NT.distance_mots(['a', 'b'], ['a', 'x', 'b'], 2), 1)
+        self.assertEqual(NT.distance_mots(['a'], ['a', 'b', 'c', 'd'], 2), 3)
+
+
 def etat_de(nommes_types, cibles):
     """Etat de generer_noms : nommes_types = [(nom, type)], cibles = {nom vrai: (type, intervalles)}."""
     rows = [(h32(n), n, t) for n, t in nommes_types] + [(h32(n), None, t) for n, (t, _b) in cibles.items()]
@@ -137,7 +162,8 @@ def etat_de(nommes_types, cibles):
 
 DDSC = [('textures/ui/thumbs/pack_a/camo_a_t{}_0{}_dif.ddsc'.format(t, i), 'avtx') for t in (1, 2) for i in (1, 2, 3)]
 WAVC = [('sound/dialogue/eng/mm1150_conni_f_xx_{}.wavc'.format(n), 'FSB5c') for n in (10, 20)] + \
-       [('sound/dialogue/eng/mm1210_conni_f_xx_{}.wavc'.format(n), 'FSB5c') for n in (10, 15, 40)]
+       [('sound/dialogue/eng/mm1210_conni_f_xx_{}.wavc'.format(n), 'FSB5c') for n in (10, 15, 40)] + \
+       [('sound/dialogue/eng/mm1210_bob_m_{}_10.wavc'.format(n), 'FSB5c') for n in (12, 13)]
 CAMO_BAS, CAMO_HAUT = 'textures/camo/camo_basic.ddsc', 'textures/camo/trophy/x_dif.ddsc'
 DIA_BAS, DIA_HAUT = 'sound/dialogue/eng/mm1150_conni_f_xx_20.wavc', 'sound/dialogue/eng/mm1210_conni_f_xx_10.wavc'
 
@@ -156,6 +182,9 @@ class TestPasses(unittest.TestCase):
             'sound/dialogue/eng/mm1150_conni_f_xx_35.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
             # hors de son intervalle : jamais accepte
             'sound/dialogue/eng/mm1150_conni_f_xx_05.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
+            # dans l'intervalle, produit par la grammaire (mots de mm1150_conni_f_xx_20 et mm1210_bob_m_12_10), mais
+            # loin de tout nom connu : refuse
+            'sound/dialogue/eng/mm1150_conni_m_15_40.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
         }
         ch, _etat, _m = self.generer(cibles)
         retenus, ambigus = ch.resultats()
@@ -163,7 +192,31 @@ class TestPasses(unittest.TestCase):
         self.assertEqual(noms.get('textures/camo/pack_a/camo_a_t2_03_dif.ddsc'), 'greffe')
         self.assertEqual(noms.get('sound/dialogue/eng/mm1150_conni_f_xx_35.wavc'), 'grammaire')
         self.assertNotIn('sound/dialogue/eng/mm1150_conni_f_xx_05.wavc', noms)
+        self.assertNotIn('sound/dialogue/eng/mm1150_conni_m_15_40.wavc', noms)
+        self.assertGreaterEqual(sum(s.notes['loin des noms connus'] for s in ch.stats), 1)
         self.assertFalse(ambigus)
+
+    def test_chaines(self):
+        cibles = {
+            'sound/dialogue/eng/mm1150_conni_f_xx_77.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
+            'sound/dialogue/eng/mm1150_conni_f_xx_78.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
+            'sound/dialogue/eng/mm1150_conni_f_xx_79.wavc': ('FSB5c', [(DIA_BAS, DIA_HAUT)]),
+        }
+        etat = etat_de(DDSC + WAVC, cibles)
+        modele = NF.ModeleTypes(etat, G._file_assoc_hp())
+        chaines = ['MM1150_Conni_F_XX_77',                          # identifiant (casse ignoree)
+                   'sound\\dialogue\\eng\\mm1150_conni_f_xx_78.wav',   # chemin : son nom de base sans extension
+                   'mm1150_conni_f_xx-79', 'ab', None, '']        # caracteres hors [a-z0-9_], trop court, vide
+        ch = G.generer(etat, modele, G._file_assoc_hp(), ['chaines'], chaines=chaines)
+        noms = {n: p for n, p in ch.resultats()[0].values()}
+        self.assertEqual(noms, {'sound/dialogue/eng/mm1150_conni_f_xx_77.wavc': 'chaines',
+                                'sound/dialogue/eng/mm1150_conni_f_xx_78.wavc': 'chaines'})
+
+    def test_plage_cle_keeps_order(self):
+        textes = sorted(['ab', 'ab_c', 'ab0', 'abc', 'b'])
+        self.assertEqual([t + '.x' for t in textes], sorted(t + '.x' for t in textes))
+        k0, k1 = NT.plage_cle('d/', 'd/ab.x', 'd/abc.x', textes, '.x')
+        self.assertEqual(textes[k0:k1], ['ab0', 'ab_c'])
 
     def test_no_bounds_no_guided_pass(self):
         etat = etat_de(DDSC, {'textures/camo/pack_a/camo_a_t2_03_dif.ddsc': ('avtx', [])})

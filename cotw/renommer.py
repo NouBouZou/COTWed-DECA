@@ -16,11 +16,13 @@ mais seulement pour les fichiers sans nom :
   5. vpaths.txt est reecrit.
 
 Tout ce qui est ecrit est journalise dans <projet>\\cotw_renommages.tsv ; "annuler" remet la base dans son etat
-precedent (noms retires, chaines et references ajoutees supprimees). DECA doit etre ferme (base verrouillee).
+precedent (noms retires, chaines et references ajoutees supprimees) ; "retirer" fait de meme pour quelques noms
+seulement (faux positifs reperes apres coup). DECA doit etre ferme (base verrouillee).
 
 Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\renommer.py ajouter D:\\dev\\work\\hp --noms noms.txt [--noms autres.txt] [--exe] [--fmod] [--simulation]
     python cotw\\renommer.py annuler D:\\dev\\work\\hp
+    python cotw\\renommer.py retirer D:\\dev\\work\\hp --nom sound/dialogue/eng/x.wavc [--noms faux.txt]
 Un fichier de noms contient un chemin virtuel par ligne ; les lignes vides ou commencant par '#' sont ignorees,
 et seule la premiere colonne d'une ligne a tabulations est lue (format de vpaths.txt).
 """
@@ -286,51 +288,84 @@ def appliquer(vfs, plan: Plan, journal_path: Path, comm: Optional[Comm] = None) 
             'autres_noms': autres, 'non_nommes': sorted(set(hashes) - nommes), 'erreurs': comm.erreurs}
 
 
-def annuler(vfs, journal_path: Path) -> Dict[str, int]:
-    """Annule toutes les sessions du journal : noms retires des noeuds (s'ils portent encore un nom de la
-    session), references puis chaines ajoutees supprimees (une chaine encore referencee ailleurs est gardee)."""
-    cibles: Dict[int, Tuple[str, Optional[int], Optional[int], Set[str]]] = {}
+def _lire_journal(journal_path: Path):
+    """(cibles : noeud -> etat d'origine, noms_noeud : noeud -> noms poses, references : rowid -> nom,
+    chaines : rowid -> nom)."""
+    cibles: Dict[int, Tuple[Optional[str], Optional[int], Optional[int]]] = {}
     noms_noeud: Dict[int, Set[str]] = collections.defaultdict(set)
-    refs: List[int] = []
-    chaines: List[int] = []
+    refs: Dict[int, str] = {}
+    chaines: Dict[int, str] = {}
     for line in journal_path.read_text(encoding='utf-8').splitlines():
         cols = line.split('\t')
         if cols[0] == 'chaine':
-            chaines.append(int(cols[1]))
+            chaines[int(cols[1])] = cols[2]
         elif cols[0] == 'reference':
-            refs.append(int(cols[1]))
+            refs[int(cols[1])] = cols[2]
         elif cols[0] == 'cible':
             node_id = int(cols[1])
             ext_hash = int(cols[4]) if cols[4] else None
             depth = int(cols[5]) if cols[5] else None
             if node_id not in cibles:     # premiere session qui l'a touche : etat d'origine
-                cibles[node_id] = (cols[3] or None, ext_hash, depth, set())
+                cibles[node_id] = (cols[3] or None, ext_hash, depth)
             noms_noeud[node_id].add(cols[6])
         elif cols[0] == 'noeud':
             noms_noeud[int(cols[1])].add(cols[2])
+    return cibles, noms_noeud, refs, chaines
 
+
+def _defaire(vfs, cibles, noms_noeud, refs, chaines, garder=None) -> Dict[str, int]:
+    """Remet sans nom les noeuds cibles qui portent encore un nom du journal (si garder : seulement ceux dont le nom
+    est dans garder), supprime les references et les chaines de ces noms (une chaine encore referencee est gardee)."""
     conn = vfs.db_conn
     cur = conn.cursor()
     bilan = {'noeuds': 0, 'noeuds_modifies_depuis': 0, 'references': 0, 'chaines': 0, 'chaines_gardees': 0}
-    for node_id, (file_type, ext_hash, depth, _s) in cibles.items():
+    for node_id, (file_type, ext_hash, depth) in cibles.items():
         row = cur.execute('SELECT v_path FROM core_nodes WHERE node_id = ?', (node_id,)).fetchone()
         if row is None or row[0] is None:
             continue
-        if _projet.to_text(row[0]) not in noms_noeud[node_id]:
+        v_path = _projet.to_text(row[0])
+        if garder is not None and v_path not in garder:
+            continue
+        if v_path not in noms_noeud[node_id]:
             bilan['noeuds_modifies_depuis'] += 1      # renomme depuis par autre chose : on n'y touche pas
             continue
         cur.execute('UPDATE core_nodes SET v_path = NULL, file_type = ?, ext_hash = ?, used_at_runtime_depth = ? '
                     'WHERE node_id = ?', (file_type, ext_hash, depth, node_id))
         bilan['noeuds'] += 1
-    for rowid in refs:
-        bilan['references'] += cur.execute('DELETE FROM core_string_references WHERE rowid = ?', (rowid,)).rowcount
-    for rowid in chaines:
-        n = cur.execute('DELETE FROM core_strings WHERE rowid = ? AND rowid NOT IN '
-                        '(SELECT string_rowid FROM core_string_references)', (rowid,)).rowcount
-        bilan['chaines'] += n
-        bilan['chaines_gardees'] += 1 - n
+    for rowid, nom in refs.items():
+        if garder is None or nom in garder:
+            bilan['references'] += cur.execute('DELETE FROM core_string_references WHERE rowid = ?',
+                                               (rowid,)).rowcount
+    for rowid, nom in chaines.items():
+        if garder is None or nom in garder:
+            n = cur.execute('DELETE FROM core_strings WHERE rowid = ? AND rowid NOT IN '
+                            '(SELECT string_rowid FROM core_string_references)', (rowid,)).rowcount
+            bilan['chaines'] += n
+            bilan['chaines_gardees'] += 1 - n
     conn.commit()
     ecrire_vpaths(vfs)
+    return bilan
+
+
+def retirer(vfs, journal_path: Path, noms: Iterable[str]) -> Dict[str, int]:
+    """Retire des noms poses par les sessions du journal (faux positifs reperes apres coup) : leurs noeuds
+    redeviennent sans nom, avec leur type d'origine ; references et chaines de ces noms supprimees. Les autres noms
+    du journal restent ; 'annuler' les defera toujours tous."""
+    garder = set(noms)
+    cibles, noms_noeud, refs, chaines = _lire_journal(journal_path)
+    bilan = _defaire(vfs, cibles, noms_noeud, refs, chaines, garder)
+    bilan['inconnus'] = len(garder - {n for s in noms_noeud.values() for n in s})
+    stamp = datetime.datetime.now().isoformat(timespec='seconds')
+    with open(journal_path, 'a', encoding='utf-8', newline='\n') as journal:
+        for nom in sorted(garder):
+            journal.write('retire\t{}\t{}\n'.format(stamp, nom))
+    return bilan
+
+
+def annuler(vfs, journal_path: Path) -> Dict[str, int]:
+    """Annule toutes les sessions du journal : noms retires des noeuds (s'ils portent encore un nom de la
+    session), references puis chaines ajoutees supprimees (une chaine encore referencee ailleurs est gardee)."""
+    bilan = _defaire(vfs, *_lire_journal(journal_path))
     journal_path.rename(journal_path.with_name(
         journal_path.name + '.annule-' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')))
     return bilan
@@ -447,6 +482,22 @@ def cmd_annuler(args) -> int:
     return 0
 
 
+def cmd_retirer(args) -> int:
+    noms = list(args.nom) + lire_noms(args.noms)
+    if not noms:
+        raise SystemExit('ERREUR : aucun nom a retirer (--nom ou --noms)')
+    journal = Path(args.projet) / JOURNAL
+    if not journal.is_file():
+        print('Rien a retirer ({} absent).'.format(journal))
+        return 0
+    vfs = _projet.open_project(args.projet)
+    b = retirer(vfs, journal, noms)
+    print('{} noeud(s) remis sans nom, {} reference(s) et {} chaine(s) supprimees ; {} nom(s) absents du journal ; '
+          '{} noeud(s) renommes depuis, laisses tels quels.'.format(
+              b['noeuds'], b['references'], b['chaines'], b['inconnus'], b['noeuds_modifies_depuis']))
+    return 0
+
+
 def main(argv=None):
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(errors='replace')
@@ -466,6 +517,11 @@ def main(argv=None):
     u = sub.add_parser('annuler', help='annuler tous les renommages du journal')
     u.add_argument('projet')
     u.set_defaults(func=cmd_annuler)
+    r = sub.add_parser('retirer', help='retirer certains noms poses par renommer.py (faux positifs)')
+    r.add_argument('projet')
+    r.add_argument('--nom', action='append', default=[], help='nom a retirer (repetable)')
+    r.add_argument('--noms', action='append', default=[], help='fichier de noms a retirer (un par ligne)')
+    r.set_defaults(func=cmd_retirer)
     args = ap.parse_args(argv)
     return args.func(args)
 

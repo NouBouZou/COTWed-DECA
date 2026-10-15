@@ -96,10 +96,12 @@ def lookup3(d, length):
 
 
 @njit(cache=True)
-def _touches(prefixe, buf, offs, k0, k1, cibles, filtre, tampon):
-    """Indices k de [k0, k1) tels que hash32(prefixe + suffixe[k]) est dans cibles (uint32 trie). filtre : un octet
-    par valeur des 24 bits hauts du hash (1 si une cible les a), pour eviter la recherche dans presque tous les cas."""
+def _touches(prefixe, buf, offs, k0, k1, cibles, filtre, tampon, postfixe):
+    """Indices k de [k0, k1) tels que hash32(prefixe + suffixe[k] + postfixe) est dans cibles (uint32 trie). filtre :
+    un octet par valeur des 24 bits hauts du hash (1 si une cible les a), pour eviter la recherche dans presque tous
+    les cas."""
     n = len(prefixe)
+    q = len(postfixe)
     for i in range(n):
         tampon[i] = prefixe[i]
     out = []
@@ -110,7 +112,9 @@ def _touches(prefixe, buf, offs, k0, k1, cibles, filtre, tampon):
         m = b - a
         for j in range(m):
             tampon[n + j] = buf[a + j]
-        h = lookup3(tampon, n + m)
+        for j in range(q):
+            tampon[n + m + j] = postfixe[j]
+        h = lookup3(tampon, n + m + q)
         if filtre[h >> 8] == 0:
             continue
         h = np.uint32(h)
@@ -129,18 +133,19 @@ class Hacheur:
         self.filtre[self.cibles >> 8] = 1
         self._tampon = np.zeros(4096, dtype=np.uint8)
 
-    def touches(self, prefixe: str, suffixes: Suffixes, k0: int = 0, k1: int = -1) -> List[int]:
-        """Indices des suffixes (dans [k0, k1)) dont prefixe + suffixe a pour hash l'une des cibles."""
+    def touches(self, prefixe: str, suffixes: Suffixes, k0: int = 0, k1: int = -1, postfixe: str = '') -> List[int]:
+        """Indices des suffixes (dans [k0, k1)) dont prefixe + suffixe + postfixe a pour hash l'une des cibles."""
         if k1 < 0:
             k1 = len(suffixes)
         if k1 <= k0 or not len(self.cibles):
             return []
         p = np.frombuffer(prefixe.encode('ascii'), dtype=np.uint8)
-        besoin = len(p) + suffixes.long_max
+        q = np.frombuffer(postfixe.encode('ascii'), dtype=np.uint8) if postfixe else np.zeros(0, dtype=np.uint8)
+        besoin = len(p) + suffixes.long_max + len(q)
         if besoin > len(self._tampon):
             self._tampon = np.zeros(max(besoin, 2 * len(self._tampon)), dtype=np.uint8)
         return list(_touches(p, suffixes.buf, suffixes.offs, k0, k1, self.cibles, self.filtre,
-                                 self._tampon))
+                             self._tampon, q))
 
 
 def hash32_lot(noms: Sequence[str]) -> List[int]:
