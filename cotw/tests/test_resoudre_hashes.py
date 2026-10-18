@@ -414,6 +414,26 @@ class TestEndToEnd(unittest.TestCase):
         self.assertIn('Aucune cible', out.read_text(encoding='utf-8'))
 
 
+    def test_4b_file_name_passes(self):
+        """--cibles : un noeud qui porte le nom de base d'un fichier connu, les evenements <nom>.play et <nom>.done
+        d'une ligne de dialogue (ici le seul fichier du faux projet), et un suffixe non essaye (.stop)."""
+        csv_path = Path(self.tmp.name) / 'inconnus_fichiers.csv'
+        rows = [('rtpc_noeud', 32, h32('equipment_data'), 3), ('rtpc_event', 32, h32('equipment_data.play'), 1),
+                ('rtpc_event', 32, h32('equipment_data.done'), 1), ('rtpc_event', 32, h32('equipment_data.stop'), 1)]
+        write_audit_csv(csv_path, rows)
+        dictionary = Path(self.tmp.name) / 'noms_fichiers.tsv'
+        out = Path(self.tmp.name) / 'fichiers.md'
+        args = ['chercher', self.project, '--cibles', str(csv_path), '--sources', 'exe', '--vocabulaire',
+                str(self.vocab), '--paires', '0', '--triplets', '0', '--positionnels', '0', '--sans-familles',
+                '--dictionnaire', str(dictionary), '--out', str(out)]
+        RH.main(args)
+        names = {n for ns in _projet.load_dictionary(dictionary).values() for n in ns}
+        self.assertEqual(names, {'equipment_data', 'equipment_data.play', 'equipment_data.done'})
+        self.assertIn('| evenements_fichiers |', out.read_text(encoding='utf-8'))
+        dictionary.unlink()
+        RH.main(args + ['--sans-radicaux'])
+        self.assertFalse(dictionary.exists() and _projet.load_dictionary(dictionary))
+
     def test_5_family_passes(self):
         """Passes par famille : des noms que les passes globales ne trouvent pas (mots du domaine et des noms
         connus de la famille), ecrits avec la passe famille-*."""

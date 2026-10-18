@@ -14,6 +14,8 @@ des chaines de l'exe, on calcule leur hash, et on garde ceux qui tombent sur un 
              nomme les entrees de ses listes (compatibility_0, compatibility_1...) ;
   paires   : deux mots parmi les plus frequents, joints par "_" ;
   triplets : trois mots pris dans un vocabulaire plus court.
+  (--cibles) fichiers : le nom de base sans extension de chaque fichier nomme ; evenements_fichiers : ce nom suivi de
+             .play ou .done (evenements des lignes de dialogue).
 
 Faux positifs : un candidat quelconque tombe par hasard sur l'un des T hashes 32 bits cherches avec une
 probabilite de T / 2^32. Pour N candidats, on attend donc N x T / 2^32 coincidences. Chaque passe affiche ce
@@ -636,6 +638,34 @@ def source_chemins(vfs) -> List[str]:
     return [t for t, _n in counter.most_common()]
 
 
+SUFFIXES_EVENEMENTS = ('.play', '.done')
+
+
+def source_radicaux(vfs) -> List[str]:
+    """Noms de base sans extension des fichiers nommes (mm11000_tut_salvador_010, rio_grande_turkey_male).
+
+    Pourquoi (2026-10-18) : les evenements RTPC d'une ligne de dialogue sont <ligne>.play et <ligne>.done
+    (6 882 evenements resolus du 09/10 : 2 419 .play, 1 306 .done), et des noeuds RTPC portent le nom d'un fichier
+    (animaux, trophees). Essai sur inconnus.csv du 09/10 avec les noms du 18/10 : 3 260 .play et 3 124 .done de plus
+    (8,7 faux positifs attendus pour 7 suffixes), 485 noeuds (85 933 occurrences)."""
+    out = set()
+    for (v,) in vfs.db_query_all('SELECT DISTINCT v_path FROM core_nodes WHERE v_path IS NOT NULL', [],
+                                 dbg='cotw_resolve_stems'):
+        b = (_projet.to_text(v) or '').lower().replace('\\', '/')
+        b = b[b.rfind('/') + 1:]
+        dot = b.find('.')
+        stem = b[:dot] if dot > 0 else b
+        if 3 <= len(stem) <= 120 and stem.isascii():
+            out.add(stem)
+    return sorted(out)
+
+
+def gen_events_of_stems(stems: Iterable[str]) -> Iterator[str]:
+    for st in stems:
+        for suf in SUFFIXES_EVENEMENTS:
+            yield st + suf
+
+
 def gen_verbs(objects: Iterable[str]) -> Iterator[str]:
     """verbe_objet : la forme des evenements RTPC (show_clues, hide_clues, start_muted...)."""
     for o in objects:
@@ -654,6 +684,8 @@ def racines(pass_name: str, name: str) -> Tuple[str, ...]:
                             {name[:-len(s)] for s in AFFIX_SUFFIXES if name.endswith(s)}))
     if pass_name == 'verbes':
         return tuple(sorted({name[len(v) + 1:] for v in VERBES if name.startswith(v + '_')}))
+    if pass_name == 'evenements_fichiers':
+        return (name[:name.rfind('.')],) if '.' in name else ()
     if pass_name in ('paires', 'triplets'):
         parts = name.split('_')
         return ('1:' + parts[0], '9:' + parts[-1]) if len(parts) > 1 else ()
@@ -863,11 +895,15 @@ def load_sources(spec: str, vfs) -> Dict[str, Set[str]]:
 
 
 def run_target_passes(searcher: CategorySearcher, identifiers: Set[str], words: List[str], path_words: List[str],
-                      args, log=print):
+                      args, log=print, stems: Iterable[str] = ()):
     """Les passes du mode --cibles, dans l'ordre : un nom garde la premiere passe qui l'a produit."""
     counter = tokens_of(identifiers)
     vocab = build_vocab(counter, args.paires or 3000, words + path_words)
     passes = [('directs', lambda: gen_direct(identifiers, words + path_words), 0, 1)]
+    stems = list(stems)
+    if stems:
+        passes.append(('fichiers', lambda: iter(stems), 0, 1))
+        passes.append(('evenements_fichiers', lambda: gen_events_of_stems(stems), len(SUFFIXES_EVENEMENTS), 1))
     if args.affixes:
         forms = snake_forms(identifiers) | set(words) | set(path_words)
         passes.append(('affixes', lambda: gen_affixes(forms), len(AFFIX_PREFIXES) + len(AFFIX_SUFFIXES), 1))
@@ -1115,12 +1151,13 @@ def cmd_search_targets(args, vfs) -> int:
     identifiers = set().union(*sources.values()) if sources else set()
     words = load_word_list(Path(args.vocabulaire)) if args.vocabulaire else []
     path_words = source_chemins(vfs) if args.mots_chemins else []
+    stems = source_radicaux(vfs) if args.radicaux else []
     for src, ids in sources.items():
         print('  source {} : {} identifiants'.format(src, len(ids)))
-    print('  mots des chemins : {}'.format(len(path_words)))
+    print('  mots des chemins : {} ; noms de fichiers : {}'.format(len(path_words), len(stems)))
 
     searcher = CategorySearcher(targets)
-    run_target_passes(searcher, identifiers, words, path_words, args)
+    run_target_passes(searcher, identifiers, words, path_words, args, stems=stems)
     decisions = decide(searcher, list(real), args.seuil_fp, args.seuil_taux, args.tout_ecrire)
     found = select_names(searcher, decisions)
     family_runs = run_families(args, real, found) if args.familles else []
@@ -1527,6 +1564,9 @@ def main(argv=None):
                    help='avec --cibles : chercher aussi autant de cibles fictives, pour mesurer les faux positifs')
     s.add_argument('--sans-mots-chemins', dest='mots_chemins', action='store_false',
                    help='avec --cibles : ne pas ajouter les mots des chemins de fichiers aux candidats')
+    s.add_argument('--sans-radicaux', dest='radicaux', action='store_false',
+                   help='avec --cibles : sauter les passes fichiers (nom de base d\'un fichier connu) et '
+                        'evenements_fichiers (<nom>.play, <nom>.done)')
     s.add_argument('--out', help='rapport markdown (sinon : affichage a l\'ecran)')
     s.set_defaults(func=cmd_search)
 
