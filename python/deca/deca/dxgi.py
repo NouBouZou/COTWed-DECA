@@ -37,7 +37,7 @@ def ux_to_fx_to_f32(s, e, f, den):
     elif e == 31 and f == 0:
         return np.float32(s * np.inf)
     elif e == 0 and f != 0:
-        return np.float(s * (2.0**(e-14)) * f * den)
+        return np.float32(s * (2.0**(e-14)) * f * den)
     elif e == 0 and f == 0:
         return np.float32(s * 0.0)
     else:
@@ -49,7 +49,7 @@ def u10_to_f10_in_f32(value):
     s = 0
     e = (value >> 5) & 0x1F
     f = value & 0x1F
-    den = (1 / 31.0)
+    den = (1 / 32.0)    # COTWed DECA, 2026-10-18 : 1 / 2^5 (was 1 / 31 : the mantissa overshot by up to 3 %)
     return ux_to_fx_to_f32(s, e, f, den)
 
 
@@ -58,7 +58,7 @@ def u11_to_f11_in_f32(value):
     s = 0
     e = (value >> 6) & 0x1F
     f = value & 0x3F
-    den = (1 / 63.0)
+    den = (1 / 64.0)    # COTWed DECA, 2026-10-18 : 1 / 2^6 (was 1 / 63)
     return ux_to_fx_to_f32(s, e, f, den)
 
 
@@ -67,7 +67,7 @@ def u16_to_f16_in_f32(value):
     s = value >> 15
     e = (value >> 10) & 0x1F
     f = value & 0x3FF
-    den = (1 / 1023.0)
+    den = (1 / 1024.0)  # COTWed DECA, 2026-10-18 : 1 / 2^10 (was 1 / 1023)
     return ux_to_fx_to_f32(s, e, f, den)
 
 

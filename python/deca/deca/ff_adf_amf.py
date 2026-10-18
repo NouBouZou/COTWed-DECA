@@ -373,16 +373,76 @@ def convert_norm_s8(data_out, data_in, attrs: AmfStreamAttribute, pack):
     convert_norm(data_out, data_in, attrs, pack, 0x7f)
 
 
+# COTWed DECA, 2026-10-18 : the three packed 32-bit formats (DXGI layouts, red in the low bits). data_in / data_out
+# are the packed u32 values on one side and (N, 4) or (N, 3) components on the other.
+
+def _unpack_10_10_10_2(v):
+    v = v.astype(np.uint32)
+    return np.stack([v & 0x3ff, (v >> 10) & 0x3ff, (v >> 20) & 0x3ff, (v >> 30) & 0x3], axis=-1)
+
+
+def _pack_10_10_10_2(c):
+    c = np.asarray(c, dtype=np.uint32)
+    return (c[:, 0] & 0x3ff) | ((c[:, 1] & 0x3ff) << 10) | ((c[:, 2] & 0x3ff) << 20) | ((c[:, 3] & 0x3) << 30)
+
+
 def convert_R10G10B10A2_UNORM(data_out, data_in, attrs: AmfStreamAttribute, pack):
-    raise NotImplementedError('convert_R10G10B10A2_UNORM')
+    scale = np.array([1023.0, 1023.0, 1023.0, 3.0])
+    if pack:
+        c = np.rint(np.clip(np.asarray(data_in, dtype=np.float64), 0.0, 1.0) * scale)
+        data_out[:] = _pack_10_10_10_2(c)
+    else:
+        data_out[:] = _unpack_10_10_10_2(data_in) / scale
 
 
 def convert_R10G10B10A2_UINT(data_out, data_in, attrs: AmfStreamAttribute, pack):
-    raise NotImplementedError('convert_R10G10B10A2_UINT')
+    if pack:
+        data_out[:] = _pack_10_10_10_2(data_in)
+    else:
+        data_out[:] = _unpack_10_10_10_2(data_in)
+
+
+def _unpack_ufloat(bits, mantissa_bits):
+    """Unsigned small float of DXGI R11G11B10 : 5 exponent bits (bias 15), mantissa_bits (6 or 5) mantissa bits."""
+    e = (bits >> mantissa_bits) & 0x1f
+    m = (bits & ((1 << mantissa_bits) - 1)).astype(np.float64) / float(1 << mantissa_bits)
+    normal = np.ldexp(1.0 + m, e.astype(np.int64) - 15)
+    denormal = np.ldexp(m, -14)
+    special = np.where(m == 0.0, np.inf, np.nan)
+    return np.where(e == 0, denormal, np.where(e == 31, special, normal))
+
+
+def _pack_ufloat(x, mantissa_bits):
+    """Nearest unsigned small float (negative and NaN give 0, too large gives the largest finite value)."""
+    x = np.nan_to_num(np.asarray(x, dtype=np.float64), nan=0.0, posinf=np.inf, neginf=0.0)
+    x = np.maximum(x, 0.0)
+    max_bits = (30 << mantissa_bits) | ((1 << mantissa_bits) - 1)
+    out = np.zeros(x.shape, dtype=np.uint32)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        e = np.floor(np.log2(np.where(x > 0, x, 1.0))).astype(np.int64)
+    # denormals : x < 2^-14
+    den = x < 2.0 ** -14
+    out[den] = np.rint(x[den] / 2.0 ** -14 * (1 << mantissa_bits)).astype(np.uint32)
+    nrm = ~den
+    m = np.rint((x[nrm] / np.ldexp(1.0, e[nrm]) - 1.0) * (1 << mantissa_bits)).astype(np.int64)
+    ee = e[nrm] + 15
+    carry = m >> mantissa_bits                      # rounding up to the next power of two
+    ee = ee + carry
+    m = np.where(carry > 0, 0, m)
+    bits = (ee << mantissa_bits) | m
+    out[nrm] = np.where(ee >= 31, max_bits, bits).astype(np.uint32)
+    return out
 
 
 def convert_R11G11B10_FLOAT(data_out, data_in, attrs: AmfStreamAttribute, pack):
-    raise NotImplementedError('convert_R11G11B10_FLOAT')
+    if pack:
+        c = np.asarray(data_in, dtype=np.float64)
+        data_out[:] = _pack_ufloat(c[:, 0], 6) | (_pack_ufloat(c[:, 1], 6) << 11) | (_pack_ufloat(c[:, 2], 5) << 22)
+    else:
+        v = np.asarray(data_in).astype(np.uint32)
+        data_out[:, 0] = _unpack_ufloat(v & 0x7ff, 6)
+        data_out[:, 1] = _unpack_ufloat((v >> 11) & 0x7ff, 6)
+        data_out[:, 2] = _unpack_ufloat((v >> 22) & 0x3ff, 5)
 
 
 def convert_R32_UNIT_VEC_AS_FLOAT(data_out, data_in, attrs: AmfStreamAttribute, pack):
@@ -542,6 +602,10 @@ def amf_meshc_reformat(mesh_header, mesh_buffers):
         b'AmfFormat_R16_UINT': b'AmfFormat_R32_UINT',
         b'AmfFormat_R32_UNIT_VEC_AS_FLOAT': b'AmfFormat_R32G32B32_FLOAT',
         b'AmfFormat_R32_R8G8B8A8_UNORM_AS_FLOAT': b'AmfFormat_R8G8B8A8_UNORM',
+        # COTWed DECA : packed 32-bit formats, to formats the glTF export knows
+        b'AmfFormat_R10G10B10A2_UNORM': b'AmfFormat_R32G32B32A32_FLOAT',
+        b'AmfFormat_R10G10B10A2_UINT': b'AmfFormat_R16G16B16A16_SINT',
+        b'AmfFormat_R11G11B10_FLOAT': b'AmfFormat_R32G32B32_FLOAT',
     }
 
     # get references to raw_buffers
