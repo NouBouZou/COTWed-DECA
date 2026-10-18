@@ -195,6 +195,12 @@ class TestAudit(unittest.TestCase):
         m.indexBufferStride = 1
         self.assertIn('1 octets', AM.verifier_indices(m, b'\0\1\2'))
 
+    def test_just_cause(self):
+        self.assertTrue(AM.herite_just_cause('models/jc_vehicles/02_air/v2102/utility_body.meshc'))
+        self.assertTrue(AM.herite_just_cause('jc_props/a.meshc'))
+        self.assertFalse(AM.herite_just_cause('models/hp_weapons/jcx.meshc'))      # nom de fichier, pas dossier
+        self.assertFalse(AM.herite_just_cause('models/hp_characters/animals/jackal/a.meshc'))
+
     def test_report(self):
         import tempfile
         rs = []
@@ -223,6 +229,7 @@ class TestAuditProjet(unittest.TestCase):
         import faux_projet
         with tempfile.TemporaryDirectory() as d:
             project = faux_projet.build_fake_project(d, [('models/x/faux.meshc', b'pas un ADF' * 10),
+                                                         ('models/jc_vehicles/b.meshc', b'pas un ADF' * 10),
                                                          ('docs/a.txt', b'texte\n' * 20)])
             out = Path(d) / 'sortie'
             self.assertEqual(AM.main([project, '--sortie', str(out), '--processus', '1']), 0)
@@ -232,6 +239,7 @@ class TestAuditProjet(unittest.TestCase):
         self.assertTrue(lignes[1].startswith('models/x/faux.meshc;'))
         self.assertNotIn(';ok;', lignes[1])
         self.assertIn('0 / 1', md)
+        self.assertIn('1 herites de Just Cause', md)
 
 
 if __name__ == '__main__':

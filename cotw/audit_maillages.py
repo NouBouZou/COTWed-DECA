@@ -134,7 +134,8 @@ def auditer_meshc(vfs, adf_db, uid: int, chemin: str) -> Resultat:
                     hr_node = nodes[0]
                     break
             if hr_node is None:
-                r.hrmesh = 'introuvable'
+                # un maillage a un seul LOD cite souvent un .hrmeshc qui n'existe pas : ses tampons sont tous ici
+                r.hrmesh = 'introuvable' if len(header.lodGroups) > 1 else 'inutile'
             else:
                 r.hr_uid = hr_node.uid
                 hr_adf = adf_db.read_node(vfs, hr_node)
@@ -202,22 +203,33 @@ def _lot(lot: List[Tuple[int, str]]) -> List[Resultat]:
     return [auditer_meshc(_VFS, _ADF_DB, uid, chemin) for uid, chemin in lot]
 
 
-def selectionner(vfs, echantillon: int = 0, graine: int = 1) -> List[Tuple[int, str]]:
-    """Un noeud par .meshc nomme (le plus petit numero)."""
+def herite_just_cause(chemin: str) -> bool:
+    """Fichier herite de Just Cause (un dossier commence par 'jc', par ex. models/jc_vehicles/...) : present dans les
+    archives de COTW mais pas dans le jeu (2026-10-18)."""
+    return any(part.startswith('jc') for part in chemin.split('/')[:-1])
+
+
+def selectionner(vfs, echantillon: int = 0, graine: int = 1, avec_jc: bool = False) -> Tuple[List[Tuple[int, str]], int]:
+    """(un noeud par .meshc nomme, le plus petit numero ; nombre de .meshc herites de Just Cause ecartes)."""
     rows = vfs.db_query_all("SELECT MIN(node_id), v_path FROM core_nodes WHERE CAST(v_path AS TEXT) LIKE '%.meshc' "
                             "GROUP BY v_path", [], dbg='cotw_audit_maillages')
     out = sorted((uid, _projet.to_text(p)) for uid, p in rows)
+    jc = 0
+    if not avec_jc:
+        n = len(out)
+        out = [(u, c) for u, c in out if not herite_just_cause(c)]
+        jc = n - len(out)
     if echantillon and echantillon < len(out):
         import random
         out = sorted(random.Random(graine).sample(out, echantillon))
-    return out
+    return out, jc
 
 
 # ---------------------------------------------------------------------------------------------------------------
 # Rapport
 # ---------------------------------------------------------------------------------------------------------------
 
-def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float):
+def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, jc: int = 0):
     sortie.mkdir(parents=True, exist_ok=True)
     with open(sortie / 'maillages.csv', 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f, delimiter=';')
@@ -227,7 +239,8 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float):
     n = len(resultats)
     ok = sum(statuts[s] for s in STATUTS_OK)
     L = ['# Audit des maillages (.meshc)', '',
-         '- Projet : `{}` ; {} fichiers .meshc ; duree : {:.0f} s'.format(projet, n, duree),
+         '- Projet : `{}` ; {} fichiers .meshc ; duree : {:.0f} s'.format(projet, n, duree)
+         + (' ; {} herites de Just Cause (dossiers jc*) ecartes'.format(jc) if jc else ''),
          '- **Passent le chemin d\'export de DECA : {} / {} ({:.1f} %)**'.format(ok, n, 100.0 * ok / max(n, 1)), '',
          '| Statut | Fichiers |', '|---|---:|']
     L += ['| {} | {} |'.format(s, c) for s, c in statuts.most_common()]
@@ -289,6 +302,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument('projet', help='projet DECA (dossier contenant db\\core.db)')
     ap.add_argument('--sortie', required=True, help='dossier des resultats')
     ap.add_argument('--echantillon', type=int, default=0, help='nombre de .meshc tires au hasard (0 = tous)')
+    ap.add_argument('--avec-jc', action='store_true',
+                    help='garder les maillages herites de Just Cause (dossiers jc*, ecartes par defaut)')
     ap.add_argument('--processus', type=int, default=max(1, (os.cpu_count() or 2) * 3 // 4),
                     help='processus de lecture (defaut : 3/4 des coeurs)')
     ap.add_argument('--lot', type=int, default=50, help='fichiers par lot envoye a un processus')
@@ -296,10 +311,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     t0 = time.time()
     vfs = _projet.open_project(args.projet)
     try:
-        choix = selectionner(vfs, args.echantillon)
+        choix, jc = selectionner(vfs, args.echantillon, avec_jc=args.avec_jc)
     finally:
         vfs.db_conn.close()
-    print('{} fichiers .meshc'.format(len(choix)))
+    print('{} fichiers .meshc{}'.format(len(choix), ' ({} herites de Just Cause ecartes)'.format(jc) if jc else ''))
     lots = [choix[i:i + args.lot] for i in range(0, len(choix), args.lot)]
     resultats: List[Resultat] = []
     if args.processus <= 1:
@@ -313,7 +328,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if i % 20 == 0:
                     print('  {} / {}'.format(len(resultats), len(choix)), flush=True)
     resultats.sort(key=lambda r: r.chemin)
-    statuts = ecrire(Path(args.sortie), resultats, args.projet, time.time() - t0)
+    statuts = ecrire(Path(args.sortie), resultats, args.projet, time.time() - t0, jc)
     print(', '.join('{} {}'.format(s, c) for s, c in statuts.most_common()))
     print('Resultats : {}'.format(Path(args.sortie).resolve()))
     return 0
