@@ -195,6 +195,20 @@ class TestAudit(unittest.TestCase):
         m.indexBufferStride = 1
         self.assertIn('1 octets', AM.verifier_indices(m, b'\0\1\2'))
 
+    def test_node_of_type_prefers_the_right_file_on_a_name_collision(self):
+        from deca.ff_adf_amf_gltf import node_of_type, TYPES_ADF_NODE, TYPES_TEXTURE_NODE
+
+        class N:
+            def __init__(self, uid, ft):
+                self.uid, self.file_type = uid, ft
+
+        class V:
+            def nodes_where_match(self, v_path=None):
+                return [N(1, None), N(2, 'adf'), N(3, 'avtx')] if v_path == b'a.meshc' else []
+        self.assertEqual([n.uid for n in node_of_type(V(), b'a.meshc', TYPES_ADF_NODE)], [2, 1, 3])
+        self.assertEqual(node_of_type(V(), b'a.meshc', TYPES_TEXTURE_NODE)[0].uid, 3)
+        self.assertEqual(node_of_type(V(), b'b.meshc', TYPES_ADF_NODE), [])
+
     def test_just_cause(self):
         self.assertTrue(AM.herite_just_cause('models/jc_vehicles/02_air/v2102/utility_body.meshc'))
         self.assertTrue(AM.herite_just_cause('jc_props/a.meshc'))
@@ -223,23 +237,48 @@ class TestAudit(unittest.TestCase):
 
 class TestAuditProjet(unittest.TestCase):
     def test_end_to_end_on_fake_project(self):
-        """Faux projet (vrai scan) : un .meshc qui n'est pas un ADF est compte en echec, sans arreter l'audit."""
+        """Faux projet (vrai scan) : un .meshc type ADF mais illisible est compte en echec sans arreter l'audit ; un
+        fichier d'un autre type qui porte le meme nom (collision de hash) n'est pas pris ; les dossiers jc* sont
+        ecartes. Puis --modeles sur un .modelc illisible."""
+        import os
+        import sqlite3
         import tempfile
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import faux_projet
         with tempfile.TemporaryDirectory() as d:
             project = faux_projet.build_fake_project(d, [('models/x/faux.meshc', b'pas un ADF' * 10),
+                                                         ('models/x/texture_homonyme.bin', b'\x80\x45\x21\x70' * 64),
                                                          ('models/jc_vehicles/b.meshc', b'pas un ADF' * 10),
+                                                         ('models/x/faux.modelc', b'pas un ADF' * 12),
                                                          ('docs/a.txt', b'texte\n' * 20)])
+            db = sqlite3.connect(os.path.join(project, 'db', 'core.db'))
+            db.execute("UPDATE core_nodes SET file_type = 'adf' WHERE CAST(v_path AS TEXT) LIKE '%.meshc' "
+                       "OR CAST(v_path AS TEXT) LIKE '%.modelc'")
+            # collision : un fichier sans type porte le meme nom que le .meshc, avec un numero de noeud plus petit
+            uid_meshc = db.execute("SELECT node_id FROM core_nodes WHERE CAST(v_path AS TEXT) = 'models/x/faux.meshc'"
+                                   ).fetchone()[0]
+            db.execute("UPDATE core_nodes SET v_path = ?, file_type = NULL WHERE CAST(v_path AS TEXT) = "
+                       "'models/x/texture_homonyme.bin'", (b'models/x/faux.meshc',))
+            db.commit()
+            db.close()
             out = Path(d) / 'sortie'
             self.assertEqual(AM.main([project, '--sortie', str(out), '--processus', '1']), 0)
             lignes = (out / 'maillages.csv').read_text(encoding='utf-8-sig').splitlines()
             md = (out / 'maillages.md').read_text(encoding='utf-8')
+            bat = (out / 'extraire_echantillons.bat').read_text(encoding='utf-8')
+            out2 = Path(d) / 'modeles'
+            self.assertEqual(AM.main([project, '--modeles', '--sortie', str(out2), '--processus', '1']), 0)
+            md2 = (out2 / 'modeles.md').read_text(encoding='utf-8')
+            lignes2 = (out2 / 'modeles.csv').read_text(encoding='utf-8-sig').splitlines()
         self.assertEqual(len(lignes), 2)
         self.assertTrue(lignes[1].startswith('models/x/faux.meshc;'))
         self.assertNotIn(';ok;', lignes[1])
         self.assertIn('0 / 1', md)
         self.assertIn('1 herites de Just Cause', md)
+        self.assertIn('--noeuds {}'.format(uid_meshc), bat)          # le noeud ADF, pas l'homonyme
+        self.assertEqual(len(lignes2), 2)
+        self.assertTrue(lignes2[1].startswith('models/x/faux.modelc;echec_lecture;'))
+        self.assertIn('Exportes sans defaut : 0 / 1', md2)
 
 
 if __name__ == '__main__':

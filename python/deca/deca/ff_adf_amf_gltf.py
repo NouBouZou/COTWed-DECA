@@ -62,6 +62,24 @@ class Deca3dMatrix:
         return mat
 
 
+# COTWed DECA, 2026-10-18 : two files can carry the same name when their name hashes collide (hash32 of the path). In
+# COTW an untyped texture is named models/hp_characters/animals/eu_hare/internal_organs/
+# eu_hare_internal_left_fore_phalanges.meshc like the real mesh, and nodes_where_match(...)[0] returned the texture,
+# so the export of the hare model failed. Pick the node whose type fits.
+TYPES_ADF_NODE = {'adf', 'adf0', 'adf5', 'adfb'}
+TYPES_TEXTURE_NODE = {'avtx', 'dds'}
+TYPES_HAVOK_NODE = {'h2014'}
+
+
+def node_of_type(vfs, v_path, types):
+    """Nodes of v_path whose file type is in types first, then the others (empty list if v_path is not mapped)."""
+    nodes = vfs.nodes_where_match(v_path=v_path)
+    def kind(n):
+        t = n.file_type.decode('utf-8', 'replace') if isinstance(n.file_type, bytes) else n.file_type
+        return 0 if t in types else 1
+    return sorted(nodes, key=kind)
+
+
 class Deca3dDatabase:
     def __init__(self, vfs: VfsDatabase, resource_prefix_abs, resource_prefix_uri, flat_file_layout, texture_format):
         self.vfs = vfs
@@ -116,7 +134,7 @@ class Deca3dTexture:
             # dump textures
             texture_fn_uri = None
             if len(self.v_path) > 0:
-                texture_nodes = vfs.nodes_where_match(v_path=self.v_path)
+                texture_nodes = node_of_type(vfs, self.v_path, TYPES_TEXTURE_NODE)
                 if len(texture_nodes) > 0:
                     texture_fn = self.v_path.decode('utf-8')
                     if not texture_fn.endswith(texture_format):
@@ -179,7 +197,7 @@ class Deca3dMeshc:
     def add_to_gltf(self, vfs: VfsDatabase, adf_db: AdfDatabase, db: Deca3dDatabase, gltf: pyg.GLTF2):
         if self.meshes is None:
             vfs.logger.log('Setup Meshc: {}'.format(self.v_path))
-            mesh_adf = adf_db.read_node(vfs, vfs.nodes_where_match(v_path=self.v_path)[0])
+            mesh_adf = adf_db.read_node(vfs, node_of_type(vfs, self.v_path, TYPES_ADF_NODE)[0])
             assert len(mesh_adf.table_instance) == 2
             # 0xea60065d - gz/hp, 0x7A2C9B73 - rg2, 0x6f841426 - hp (also)
             assert mesh_adf.table_instance[0].type_hash in {0xea60065d, 0x7A2C9B73, 0x6f841426}
@@ -198,11 +216,11 @@ class Deca3dMeshc:
             hrmesh_vpath2 = remove_prefix_if_present(b'intermediate/', hrmesh_vpath)
             hrmesh_node = None
 
-            hrmesh_nodes = vfs.nodes_where_match(v_path=hrmesh_vpath)
+            hrmesh_nodes = node_of_type(vfs, hrmesh_vpath, TYPES_ADF_NODE)
             if hrmesh_nodes:
                 hrmesh_node = hrmesh_nodes[0]
             elif hrmesh_vpath2 is not None:
-                hrmesh_nodes = vfs.nodes_where_match(v_path=hrmesh_vpath2)
+                hrmesh_nodes = node_of_type(vfs, hrmesh_vpath2, TYPES_ADF_NODE)
                 if hrmesh_nodes:
                     hrmesh_node = hrmesh_nodes[0]
 
@@ -429,7 +447,7 @@ class Deca3dModelc:
         if self.models is None:
             vfs.logger.log('Setup Modelc: {}'.format(self.v_path))
 
-            nodes = vfs.nodes_where_match(v_path=self.v_path)
+            nodes = node_of_type(vfs, self.v_path, TYPES_ADF_NODE)
             if len(nodes) == 0:
                 # raise EDecaFileMissing('Not Mapped: {}'.format(self.v_path))
                 vfs.logger.warning(f"{EDecaFileMissing('Not Mapped: {}'.format(self.v_path))}")
@@ -659,7 +677,7 @@ class Deca3dHkSkeleton:
             ppath_skel_xml = ppath_skel_raw + '.xml'
 
             if not UniPath.isfile(ppath_skel_raw):
-                vnodes = vfs.nodes_where_match(v_path=v_path)
+                vnodes = node_of_type(vfs, v_path, TYPES_HAVOK_NODE)
 
                 if len(vnodes) == 0:
                     raise EDecaFileMissing('Not Mapped: {}'.format(v_path))
