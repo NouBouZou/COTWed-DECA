@@ -186,6 +186,80 @@ class TestReformat(unittest.TestCase):
         self.assertEqual(list(bi), [1, 2, 3, 0])
 
 
+def sphere(n_lat=12, n_lon=24):
+    """Sphere unite : positions, normales (= positions) et triangles dans le sens direct (normales sortantes)."""
+    pts = [(0.0, 0.0, 1.0)]
+    for i in range(1, n_lat):
+        th = np.pi * i / n_lat
+        for j in range(n_lon):
+            ph = 2 * np.pi * j / n_lon
+            pts.append((np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)))
+    pts.append((0.0, 0.0, -1.0))
+    pts = np.array(pts)
+    tri = []
+    for j in range(n_lon):
+        tri.append((0, 1 + j, 1 + (j + 1) % n_lon))
+    for i in range(n_lat - 2):
+        for j in range(n_lon):
+            a, b = 1 + i * n_lon + j, 1 + i * n_lon + (j + 1) % n_lon
+            c, d = a + n_lon, b + n_lon
+            tri += [(a, c, d), (a, d, b)]
+    last = len(pts) - 1
+    base = 1 + (n_lat - 2) * n_lon
+    for j in range(n_lon):
+        tri.append((base + j, last, base + (j + 1) % n_lon))
+    return pts, np.array(tri)
+
+
+def code_unit_vec(v):
+    """Codage candidat : octets c = (v + 1) / 2 x 255, f = c0 / 256 + c1 + 256 c2."""
+    c = np.rint((np.asarray(v) + 1.0) / 2.0 * 255.0)
+    return (c[:, 0] / 256.0 + c[:, 1] + 256.0 * c[:, 2]).astype(np.float32)
+
+
+class TestGeometrie(unittest.TestCase):
+    def setUp(self):
+        import geometrie_maillages as GM
+        self.GM = GM
+        pts, tri = sphere()
+        self.tri = tri
+        n = len(pts)
+        scale = 2.0
+        pos16 = np.rint(pts / scale * 0x7fff).astype(np.int16)
+        f = code_unit_vec(pts)
+        stride = 6 + 2 + 4
+        data = b''.join(pos16[i].tobytes() + b'\0\0' + f[i:i + 1].tobytes() for i in range(n))
+        pa = attr(b'AmfUsage_Position', b'AmfFormat_R16G16B16_SNORM', 0, stride)
+        pa.packingData = (scale, 0.0)
+        na = attr(b'AmfUsage_Normal', b'AmfFormat_R32_UNIT_VEC_AS_FLOAT', 8, stride)
+        self.mesh = maillage(n, [pa, na], [stride], list(tri.reshape(-1)))
+        self.buffers = tampons(tri.astype(np.uint16).tobytes(), [data])
+
+    def test_positions_and_box(self):
+        pos = self.GM.positions(self.mesh, self.buffers.vertexBuffers)
+        self.assertLess(float(np.max(np.abs(np.linalg.norm(pos, axis=1) - 1.0))), 1e-3)
+        self.assertEqual(self.GM.dans_boite(pos, [-1, -1, -1], [1, 1, 1]), 1.0)
+        self.assertLess(self.GM.dans_boite(pos, [-1, -1, -1], [0, 1, 1]), 0.7)
+
+    def test_scores_find_the_right_decoding(self):
+        m = self.GM.mesurer(self.mesh, self.buffers.vertexBuffers, self.buffers.indexBuffers,
+                            ([-1, -1, -1], [1, 1, 1]))
+        self.assertGreater(m['normale:z_corrige_2v-1'], 0.98)
+        self.assertLess(m['normale:z_corrige'], 0.9)
+        self.assertLess(m['normale:deca'], 0.9)
+        self.assertEqual(m['boite'], 1.0)
+        # faces dans l'autre sens : score negatif
+        self.mesh.subMeshes[0].indexCount = len(self.tri) * 3
+        inv = tampons(self.tri[:, ::-1].astype(np.uint16).tobytes(), [self.buffers.vertexBuffers[0].data])
+        m2 = self.GM.mesurer(self.mesh, inv.vertexBuffers, inv.indexBuffers)
+        self.assertLess(m2['normale:z_corrige_2v-1'], -0.98)
+
+    def test_cumuler(self):
+        c = self.GM.cumuler([{'sommets': 1.0, 'a': 1.0}, {'sommets': 3.0, 'a': 0.0, 'b': 2.0}])
+        self.assertAlmostEqual(c['a'], 0.25)
+        self.assertAlmostEqual(c['b'], 2.0)
+
+
 class TestAudit(unittest.TestCase):
     def test_indices(self):
         m = maillage(3, [], [12], [0, 1, 2])

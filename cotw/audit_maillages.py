@@ -11,7 +11,9 @@ utilise, ni ce qui casse d'autre. Cet audit refait, pour chaque .meshc, ce que f
   2. AmfMeshHeader et AmfMeshBuffers, puis le .hrmeshc (highLodPath, avec ou sans le prefixe intermediate/) ;
   3. amf_meshc_reformat (conversion des flux de sommets) ;
   4. formats de sortie connus de l'export glTF ; indices de chaque sous-maillage inferieurs au nombre de sommets ;
-     positions finies.
+     positions finies ;
+  5. vraisemblance (geometrie_maillages.py, avant la conversion) : positions dans la boite englobante, normales et
+     tangentes comparees a celles des faces pour plusieurs decodages candidats.
 
 Sorties (dossier --sortie) :
     maillages.csv        chemin ; statut ; detail ; lods ; maillages ; sommets ; hrmesh ; formats (usage:format)
@@ -59,7 +61,7 @@ ECHANTILLONS_PAR_STATUT = 5
 
 class Resultat:
     __slots__ = ('chemin', 'uid', 'statut', 'detail', 'lods', 'maillages', 'sommets', 'hrmesh', 'formats',
-                 'hr_uid')
+                 'hr_uid', 'geo')
 
     def __init__(self, chemin: str, uid: int):
         self.chemin, self.uid = chemin, uid
@@ -68,10 +70,16 @@ class Resultat:
         self.hrmesh = '-'
         self.hr_uid: Optional[int] = None
         self.formats: collections.Counter = collections.Counter()
+        self.geo: Dict[str, float] = {}
 
     def ligne(self):
         return (self.chemin, self.statut, self.detail, self.lods, self.maillages, self.sommets, self.hrmesh,
-                ' '.join('{}:{}x{}'.format(u, f, n) for (u, f), n in sorted(self.formats.items())))
+                ' '.join('{}:{}x{}'.format(u, f, n) for (u, f), n in sorted(self.formats.items()))) + tuple(
+                    '' if self.geo.get(k) is None else '{:.3f}'.format(self.geo[k]) for k in CLES_GEO)
+
+
+CLES_GEO = ('boite', 'normale:deca', 'normale:z_corrige', 'normale:z_corrige_2v-1', 'tangente_orthogonale:deca',
+            'tangente_orthogonale:z_corrige', 'tangente_orthogonale:z_corrige_2v-1', 'tangent_space')
 
 
 def _txt(b) -> str:
@@ -174,6 +182,22 @@ def auditer_meshc(vfs, adf_db, uid: int, chemin: str) -> Resultat:
                 if err:
                     r.statut, r.detail = 'indices_faux', err
                     return r
+        etape = 'geometrie'
+        try:
+            import geometrie_maillages as GM
+            bb = header.boundingBox
+            boite = (bb.min, bb.max) if bb is not None else None
+            mesures, total = [], 0
+            for lg in header.lodGroups:
+                for m in lg.meshes:
+                    if total >= GM.SOMMETS_MAX:
+                        break
+                    mesures.append(GM.mesurer(m, buffers.vertexBuffers, buffers.indexBuffers, boite))
+                    total += m.vertexCount
+            r.geo = GM.cumuler(mesures)
+        except Exception as exc:  # noqa: BLE001 - la mesure est un plus : son echec n'arrete pas l'audit
+            r.geo = {}
+            r.detail = 'geometrie : {}: {}'.format(type(exc).__name__, str(exc)[:120])
         etape = 'conversion'
         amf_meshc_reformat(header, buffers)
         etape = 'export'
@@ -340,11 +364,38 @@ def selectionner(vfs, echantillon: int = 0, graine: int = 1, avec_jc: bool = Fal
 # Rapport
 # ---------------------------------------------------------------------------------------------------------------
 
+def vraisemblance(resultats: List[Resultat]) -> List[str]:
+    """Section du rapport : scores de geometrie_maillages par fichier (mediane, quartiles, part au-dessus d'un
+    seuil)."""
+    import numpy as np
+    L = ['## Vraisemblance des sommets (geometrie_maillages.py)', '',
+         'Normales : moyenne du produit scalaire entre la normale lue et celle des faces (1 = juste, 0 = sans rapport, '
+         '-1 = faces dans l\'autre sens). Tangentes : moyenne de |t . n| (0 attendu). Boite : part des sommets dans la '
+         'boite englobante de l\'en-tete.', '',
+         '| Mesure | Fichiers | Q1 | Mediane | Q3 | Part >= 0,9 (boite : >= 0,99 ; tangentes : <= 0,1) |',
+         '|---|---:|---:|---:|---:|---:|']
+    for k in CLES_GEO:
+        v = np.array([r.geo[k] for r in resultats if r.geo.get(k) is not None])
+        if not len(v):
+            continue
+        if k == 'boite':
+            part = np.mean(v >= 0.99)
+        elif k.startswith('tangente_orthogonale'):
+            part = np.mean(v <= 0.1)
+        else:
+            part = np.mean(v >= 0.9)
+        q1, med, q3 = np.percentile(v, [25, 50, 75])
+        L.append('| {} | {} | {:.3f} | {:.3f} | {:.3f} | {:.1f} % |'.format(k, len(v), q1, med, q3, 100 * part))
+    L.append('')
+    return L
+
+
 def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, jc: int = 0):
     sortie.mkdir(parents=True, exist_ok=True)
     with open(sortie / 'maillages.csv', 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f, delimiter=';')
-        w.writerow(['chemin', 'statut', 'detail', 'lods', 'maillages', 'sommets', 'hrmesh', 'formats'])
+        w.writerow(['chemin', 'statut', 'detail', 'lods', 'maillages', 'sommets', 'hrmesh', 'formats']
+                   + [k.replace(':', '_') for k in CLES_GEO])
         w.writerows(r.ligne() for r in resultats)
     statuts = collections.Counter(r.statut for r in resultats)
     n = len(resultats)
@@ -382,6 +433,7 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, j
         L += ['| {} | {} | {} | {} |'.format(u, f, c, fichiers_par_format[(u, f)])
               for (u, f), c in formats.most_common()]
         L.append('')
+    L += vraisemblance(resultats)
     (sortie / 'maillages.md').write_text('\n'.join(L) + '\n', encoding='utf-8')
     # echantillons : quelques fichiers par statut en echec, avec leur .hrmeshc
     par_statut = collections.defaultdict(list)
