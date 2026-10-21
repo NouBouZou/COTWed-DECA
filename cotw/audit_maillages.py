@@ -24,6 +24,9 @@ Mode --modeles : chaque .modelc est exporte en glTF comme le fait DECA (DecaGltf
 temporaire efface ensuite : materiaux (RenderBlockId traites ou non), textures citees (presentes ou non ; decodees et
 ecrites seulement avec --textures, plus lent), maillage cite, erreurs. Sorties modeles.csv, modeles.md.
 
+Mode --materiaux : lecture seule des materiaux des .modelc (rapide) : par RenderBlockId, role des textures de chaque
+emplacement d'apres la fin de leur nom, attributs et leurs valeurs. Sorties materiaux.md, materiaux.json.
+
 Les fichiers herites de Just Cause (dossiers jc*) sont ecartes : ils sont dans les archives, pas dans le jeu.
 Quand deux fichiers portent le meme nom (collision de hash32), le noeud ADF est pris (meme regle que l'export,
 ff_adf_amf_gltf.node_of_type).
@@ -31,6 +34,7 @@ ff_adf_amf_gltf.node_of_type).
 Usage (DECA ferme) :
     python cotw\\audit_maillages.py D:\\dev\\work\\hp --sortie D:\\dev\\audits\\14-maillages
     python cotw\\audit_maillages.py D:\\dev\\work\\hp --modeles --sortie D:\\dev\\audits\\15-modeles
+    python cotw\\audit_maillages.py D:\\dev\\work\\hp --materiaux --sortie D:\\dev\\audits\\16-materiaux
 """
 import argparse
 import collections
@@ -312,20 +316,54 @@ def auditer_modelc(vfs, adf_db, uid: int, chemin: str, textures: bool = False) -
     return r
 
 
+def suffixe_texture(chemin: str) -> str:
+    """Role probable d'une texture d'apres la fin de son nom : 'models/x/arme_01_dif.ddsc' -> 'dif' ;
+    '(vide)' pour un emplacement sans texture."""
+    if not chemin:
+        return '(vide)'
+    base = chemin.rsplit('/', 1)[-1]
+    base = base.split('.', 1)[0]
+    mot = base.rsplit('_', 1)[-1] if '_' in base else base
+    return mot if mot.isalpha() and len(mot) <= 12 else '(autre)'
+
+
+def lire_materiaux(vfs, adf_db, uid: int, chemin: str) -> List[Tuple[str, str, List[str], Dict[str, object]]]:
+    """(modele, RenderBlockId, textures, attributs) de chaque materiau d'un .modelc ; liste vide si illisible."""
+    from deca.ff_adf_amf import AmfModel
+    try:
+        adf = adf_db.read_node(vfs, vfs.node_where_uid(uid))
+        model = AmfModel(adf, adf.table_instance_full_values[0])
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for m in model.materials:
+        attrs = {}
+        for k, v in (m.attributes or {}).items():
+            k = _txt(k)
+            if isinstance(v, (bool, int, float, str, bytes)):
+                attrs[k] = _txt(v) if isinstance(v, bytes) else v
+            else:
+                attrs[k] = type(v).__name__
+        out.append((chemin, _txt(m.renderBlockId), [_txt(t) for t in m.textures], attrs))
+    return out
+
+
 _VFS = None
 _ADF_DB = None
-_MODE = {'modeles': False, 'textures': False}
+_MODE = {'modeles': False, 'textures': False, 'materiaux': False}
 
 
-def _init_travail(projet: str, modeles: bool = False, textures: bool = False):
+def _init_travail(projet: str, modeles: bool = False, textures: bool = False, materiaux: bool = False):
     global _VFS, _ADF_DB
     from deca.ff_adf import AdfDatabase
     _VFS = _projet.open_project(projet)
     _ADF_DB = AdfDatabase(_VFS)
-    _MODE['modeles'], _MODE['textures'] = modeles, textures
+    _MODE['modeles'], _MODE['textures'], _MODE['materiaux'] = modeles, textures, materiaux
 
 
-def _lot(lot: List[Tuple[int, str]]) -> List[Resultat]:
+def _lot(lot: List[Tuple[int, str]]) -> list:
+    if _MODE['materiaux']:
+        return [m for uid, chemin in lot for m in lire_materiaux(_VFS, _ADF_DB, uid, chemin)]
     if _MODE['modeles']:
         return [auditer_modelc(_VFS, _ADF_DB, uid, chemin, _MODE['textures']) for uid, chemin in lot]
     return [auditer_meshc(_VFS, _ADF_DB, uid, chemin) for uid, chemin in lot]
@@ -504,6 +542,59 @@ def ecrire_modeles(sortie: Path, resultats: List[ResultatModele], projet: str, d
     return statuts
 
 
+def ecrire_materiaux(sortie: Path, materiaux: List[Tuple[str, str, List[str], Dict[str, object]]], projet: str,
+                     duree: float, n_modeles: int):
+    """Par RenderBlockId : role des textures de chaque emplacement (fin du nom), attributs et leurs valeurs.
+    C'est la matiere pour traduire en glTF les materiaux que l'export de DECA ne traite pas."""
+    import json
+    sortie.mkdir(parents=True, exist_ok=True)
+    blocs: Dict[str, dict] = {}
+    for modele, bloc, textures, attrs in materiaux:
+        b = blocs.setdefault(bloc, {'materiaux': 0, 'modeles': set(), 'emplacements': {}, 'attributs': {},
+                                    'exemple': modele})
+        b['materiaux'] += 1
+        b['modeles'].add(modele)
+        for i, t in enumerate(textures):
+            e = b['emplacements'].setdefault(i, {'roles': collections.Counter(), 'exemples': []})
+            e['roles'][suffixe_texture(t)] += 1
+            if t and len(e['exemples']) < 3 and t not in e['exemples']:
+                e['exemples'].append(t)
+        for k, v in attrs.items():
+            a = b['attributs'].setdefault(k, collections.Counter())
+            a[repr(v) if not isinstance(v, float) else '{:.4g}'.format(v)] += 1
+    data = {}
+    L = ['# Materiaux des modeles (.modelc), par RenderBlockId', '',
+         '- Projet : `{}` ; {} modeles lus ; {} materiaux ; duree : {:.0f} s'.format(projet, n_modeles, len(materiaux),
+                                                                                  duree),
+         '- Role d\'une texture : fin de son nom (`_dif`, `_nrm`, `_mpm`...). Emplacement = rang dans la liste '
+         '`Textures` du materiau.', '']
+    for bloc, b in sorted(blocs.items(), key=lambda kv: -kv[1]['materiaux']):
+        traite = bloc in BLOCS_TRAITES
+        L += ['## {} ({} materiaux, {} modeles{})'.format(bloc, b['materiaux'], len(b['modeles']),
+                                                         '' if traite else ', **non traite par l\'export**'),
+              '', 'Exemple : `{}`'.format(b['exemple']), '',
+              '| Emplacement | Roles (part) | Exemples |', '|---:|---|---|']
+        for i in sorted(b['emplacements']):
+            e = b['emplacements'][i]
+            tot = sum(e['roles'].values())
+            roles = ', '.join('{} {:.0f} %'.format(r, 100.0 * c / tot) for r, c in e['roles'].most_common(4))
+            L.append('| {} | {} | {} |'.format(i, roles, ', '.join('`{}`'.format(x) for x in e['exemples'][:2])))
+        if b['attributs']:
+            L += ['', '| Attribut | Valeurs (occurrences) |', '|---|---|']
+            for k in sorted(b['attributs']):
+                vals = b['attributs'][k]
+                L.append('| {} | {}{} |'.format(k, ', '.join('{} ({})'.format(v, c) for v, c in vals.most_common(6)),
+                                                ' ...' if len(vals) > 6 else ''))
+        L.append('')
+        data[bloc] = {'materiaux': b['materiaux'], 'modeles': len(b['modeles']), 'traite': traite,
+                      'emplacements': {str(i): {'roles': dict(e['roles']), 'exemples': e['exemples']}
+                                       for i, e in b['emplacements'].items()},
+                      'attributs': {k: dict(v.most_common(20)) for k, v in b['attributs'].items()}}
+    (sortie / 'materiaux.md').write_text('\n'.join(L) + '\n', encoding='utf-8')
+    (sortie / 'materiaux.json').write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding='utf-8')
+    return collections.Counter({b: v['materiaux'] for b, v in blocs.items()})
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(errors='replace')
@@ -512,6 +603,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument('--sortie', required=True, help='dossier des resultats')
     ap.add_argument('--echantillon', type=int, default=0, help='nombre de .meshc tires au hasard (0 = tous)')
     ap.add_argument('--modeles', action='store_true', help='auditer les .modelc (export glTF) au lieu des .meshc')
+    ap.add_argument('--materiaux', action='store_true',
+                    help='lire seulement les materiaux des .modelc (RenderBlockId, role des textures, attributs)')
     ap.add_argument('--textures', action='store_true',
                     help='avec --modeles : decoder et ecrire aussi les textures (plus lent)')
     ap.add_argument('--avec-jc', action='store_true',
@@ -523,7 +616,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     t0 = time.time()
     vfs = _projet.open_project(args.projet)
     try:
-        ext = '.modelc' if args.modeles else '.meshc'
+        ext = '.modelc' if (args.modeles or args.materiaux) else '.meshc'
         choix, jc = selectionner(vfs, args.echantillon, avec_jc=args.avec_jc, extension=ext)
     finally:
         vfs.db_conn.close()
@@ -531,16 +624,21 @@ def main(argv: Optional[List[str]] = None) -> int:
     lots = [choix[i:i + args.lot] for i in range(0, len(choix), args.lot)]
     resultats: List[Resultat] = []
     if args.processus <= 1:
-        _init_travail(args.projet, args.modeles, args.textures)
+        _init_travail(args.projet, args.modeles, args.textures, args.materiaux)
         for lot in lots:
             resultats += _lot(lot)
     else:
         with multiprocessing.Pool(args.processus, initializer=_init_travail,
-                                  initargs=(args.projet, args.modeles, args.textures)) as pool:
+                                  initargs=(args.projet, args.modeles, args.textures, args.materiaux)) as pool:
             for i, rs in enumerate(pool.imap_unordered(_lot, lots), 1):
                 resultats += rs
                 if i % 20 == 0:
                     print('  {} / {}'.format(len(resultats), len(choix)), flush=True)
+    if args.materiaux:
+        statuts = ecrire_materiaux(Path(args.sortie), resultats, args.projet, time.time() - t0, len(choix))
+        print(', '.join('{} {}'.format(s, c) for s, c in statuts.most_common()))
+        print('Resultats : {}'.format(Path(args.sortie).resolve()))
+        return 0
     resultats.sort(key=lambda r: r.chemin)
     if args.modeles:
         statuts = ecrire_modeles(Path(args.sortie), resultats, args.projet, time.time() - t0, jc)

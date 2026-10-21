@@ -283,6 +283,26 @@ class TestAudit(unittest.TestCase):
         self.assertEqual(node_of_type(V(), b'a.meshc', TYPES_TEXTURE_NODE)[0].uid, 3)
         self.assertEqual(node_of_type(V(), b'b.meshc', TYPES_ADF_NODE), [])
 
+    def test_material_survey(self):
+        import json
+        import tempfile
+        self.assertEqual(AM.suffixe_texture('models/w/rifle_01_dif.ddsc'), 'dif')
+        self.assertEqual(AM.suffixe_texture(''), '(vide)')
+        self.assertEqual(AM.suffixe_texture('models/w/rifle_01.ddsc'), '(autre)')
+        mats = [('a.modelc', 'WeaponCamo', ['w/a_dif.ddsc', 'w/a_nrm.ddsc', ''], {'UseCamo': True, 'Scale': 0.5}),
+                ('b.modelc', 'WeaponCamo', ['w/b_dif.ddsc', 'w/b_nrm.ddsc', 'w/b_mpm.ddsc'], {'UseCamo': False}),
+                ('b.modelc', 'GeneralR2', ['w/c_dif.ddsc'], {})]
+        with tempfile.TemporaryDirectory() as d:
+            c = AM.ecrire_materiaux(Path(d), mats, 'P', 1.0, 2)
+            md = (Path(d) / 'materiaux.md').read_text(encoding='utf-8')
+            data = json.loads((Path(d) / 'materiaux.json').read_text(encoding='utf-8'))
+        self.assertEqual(c['WeaponCamo'], 2)
+        self.assertIn('## WeaponCamo (2 materiaux, 2 modeles, **non traite par l\'export**)', md)
+        self.assertIn('| 2 | (vide) 50 %, mpm 50 % |', md)
+        self.assertIn('| UseCamo | True (1), False (1) |', md)
+        self.assertEqual(data['WeaponCamo']['emplacements']['0']['roles'], {'dif': 2})
+        self.assertTrue(data['GeneralR2']['traite'])
+
     def test_just_cause(self):
         self.assertTrue(AM.herite_just_cause('models/jc_vehicles/02_air/v2102/utility_body.meshc'))
         self.assertTrue(AM.herite_just_cause('jc_props/a.meshc'))
@@ -344,6 +364,9 @@ class TestAuditProjet(unittest.TestCase):
             self.assertEqual(AM.main([project, '--modeles', '--sortie', str(out2), '--processus', '1']), 0)
             md2 = (out2 / 'modeles.md').read_text(encoding='utf-8')
             lignes2 = (out2 / 'modeles.csv').read_text(encoding='utf-8-sig').splitlines()
+            out3 = Path(d) / 'materiaux'
+            self.assertEqual(AM.main([project, '--materiaux', '--sortie', str(out3), '--processus', '1']), 0)
+            md3 = (out3 / 'materiaux.md').read_text(encoding='utf-8')
         self.assertEqual(len(lignes), 2)
         self.assertTrue(lignes[1].startswith('models/x/faux.meshc;'))
         self.assertNotIn(';ok;', lignes[1])
@@ -353,6 +376,7 @@ class TestAuditProjet(unittest.TestCase):
         self.assertEqual(len(lignes2), 2)
         self.assertTrue(lignes2[1].startswith('models/x/faux.modelc;echec_lecture;'))
         self.assertIn('Exportes sans defaut : 0 / 1', md2)
+        self.assertIn('1 modeles lus ; 0 materiaux', md3)
 
 
 if __name__ == '__main__':
