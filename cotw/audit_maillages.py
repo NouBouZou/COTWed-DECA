@@ -260,7 +260,9 @@ class ResultatModele(Resultat):
                 len(self.textures_absentes), ' | '.join(self.textures_absentes[:5]), self.gltf)
 
 
-BLOCS_TRAITES = {'GeneralR2', 'Character', 'CarPaint', 'VegetationFoliage', 'VegetationBark'}
+BLOCS_TRAITES = {'GeneralR2', 'Character', 'CarPaint', 'VegetationFoliage', 'VegetationBark',
+                 # depuis le 22/10 (16-materiaux)
+                 'CharacterSkin', 'Window', 'WeaponCamo', 'Lens', 'CarLight', 'CarPaintMM', 'GeneralMkIII'}
 
 
 def auditer_modelc(vfs, adf_db, uid: int, chemin: str, textures: bool = False) -> ResultatModele:

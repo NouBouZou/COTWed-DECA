@@ -446,13 +446,21 @@ def convert_R11G11B10_FLOAT(data_out, data_in, attrs: AmfStreamAttribute, pack):
 
 
 def convert_R32_UNIT_VEC_AS_FLOAT(data_out, data_in, attrs: AmfStreamAttribute, pack):
+    # COTWed DECA, 2026-10-22 : three bytes in one float, f = c0 / 256 + c1 + 256 c2 : x = frac(f), y = frac(f / 256),
+    # z = frac(f / 65536), each in [0, 1[, then 2 u - 1. Measured on the 18 231 COTW meshes that use it (audit
+    # 14-maillages, normals compared with the face normals) : median agreement 0.982, tangents orthogonal to normals
+    # (|t.n| median 0.008). The previous code had z = frac(f) ((1.0 / 256*256) == 1.0) and no 2 u - 1 : median 0.22.
     if pack:
-        raise NotImplementedError('convert_R32_UNIT_VEC_AS_FLOAT: pack')
+        v = np.asarray(data_in, dtype=np.float64)[:, 0:3]
+        c = np.clip(np.rint((v + 1.0) * 0.5 * 256.0), 0, 255)
+        data_out[:] = c[:, 0] / 256.0 + c[:, 1] + 256.0 * c[:, 2]
     else:
-        data_out[:, 0] = data_in[:]
-        data_out[:, 1] = data_in[:] * (1.0 / 256)
-        data_out[:, 2] = data_in[:] * (1.0 / 256*256)
-        data_out[:, :] = data_out - np.floor(data_out)
+        f = np.asarray(data_in, dtype=np.float64)
+        data_out[:, 0] = f
+        data_out[:, 1] = f * (1.0 / 256)
+        data_out[:, 2] = f * (1.0 / (256 * 256))
+        data_out[:, 0:3] = data_out[:, 0:3] - np.floor(data_out[:, 0:3])
+        data_out[:, 0:3] = data_out[:, 0:3] * 2.0 - 1.0
 
 
 def convert_R32_R8G8B8A8_UNORM_AS_FLOAT(data_out, data_in, attrs: AmfStreamAttribute, pack):

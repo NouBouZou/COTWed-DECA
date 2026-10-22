@@ -433,6 +433,30 @@ class Deca3dMeshc:
         return self.meshes
 
 
+# COTWed DECA, 2026-10-22 : render blocks whose first texture slots are [0] diffuse (_dif), [1] normal (_nrm),
+# [2] MPM (_mpm), measured on the 39 937 materials of the 24 278 COTW models (audit 16-materiaux, slots named by the
+# end of the texture file names : 100 % in each slot). DECA only handled GeneralR2, Character and CarPaint ;
+# CharacterSkin (animals, 10 300 models), Window, WeaponCamo (weapons ; [4] is the camo RGB mask, not emissive),
+# Lens, CarLight and CarPaintMM were exported without material.
+RENDER_BLOCKS_DIF_NRM_MPM = {
+    b'GeneralR2', b'Character', b'CarPaint',
+    b'CharacterSkin', b'Window', b'WeaponCamo', b'Lens', b'CarLight', b'CarPaintMM',
+}
+RENDER_BLOCKS_TRANSPARENT = {b'Window', b'Lens'}
+
+
+def material_finish(gltf_material, material):
+    """Double-sided and transparency, from the material attributes and render block."""
+    attrs = material.attributes or {}
+    if attrs.get('DoubleSided', False) or attrs.get('TwoSided', False):
+        gltf_material.doubleSided = True
+    if material.renderBlockId in RENDER_BLOCKS_TRANSPARENT or attrs.get('AlphaBlending', False) \
+            or attrs.get('AlphaBlend', False):
+        gltf_material.alphaMode = 'BLEND'
+    elif attrs.get('AlphaTest', False):
+        gltf_material.alphaMode = 'MASK'
+
+
 class Deca3dModelc:
     # The model stores it's mesh with material info in the gltf when instantiated in node, only once.
     # The model stores it's material, texture info, ... in the gltf when used
@@ -460,7 +484,7 @@ class Deca3dModelc:
             material_map = {}
             material: AmfMaterial
             for material in model.materials:
-                if material.renderBlockId in {b'GeneralR2', b'Character', b'CarPaint'}:
+                if material.renderBlockId in RENDER_BLOCKS_DIF_NRM_MPM:
                     # add textures
                     textures = []
                     for texture_vpath in material.textures:
@@ -523,6 +547,25 @@ class Deca3dModelc:
                     #     if tid is not None:
                     #         mat_sg['diffuseTexture'] = pyg.TextureInfo(index=tid)
 
+                    material_finish(gltf_material, material)
+                    material_idx = len(gltf.materials)
+                    gltf.materials.append(gltf_material)
+                    material_map[material.name] = material_idx
+                elif b'GeneralMkIII' == material.renderBlockId:
+                    # COTWed DECA, 2026-10-22 (audit 16-materiaux, 1 material in COTW) : [0] dif, [1] glo, [2] met,
+                    # [3] nrm ; gloss and metal are separate maps, not a glTF metallic-roughness texture
+                    textures = [db.gltf_add_texture(gltf, t) for t in material.textures]
+                    gltf_material = pyg.Material()
+                    gltf_material.name = material.name.decode('utf-8')
+                    mat_mr = pyg.PbrMetallicRoughness()
+                    if len(textures) > 0 and textures[0] is not None:
+                        mat_mr.baseColorTexture = pyg.TextureInfo(index=textures[0])
+                    mat_mr.roughnessFactor = 1.0
+                    mat_mr.metallicFactor = 0.0
+                    gltf_material.pbrMetallicRoughness = mat_mr
+                    if len(textures) > 3 and textures[3] is not None:
+                        gltf_material.normalTexture = pyg.NormalMaterialTexture(index=textures[3])
+                    material_finish(gltf_material, material)
                     material_idx = len(gltf.materials)
                     gltf.materials.append(gltf_material)
                     material_map[material.name] = material_idx

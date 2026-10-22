@@ -3,7 +3,8 @@ geometrie_maillages.py -- les sommets d'un maillage AMF sont-ils decodes juste ?
 
 Pourquoi (2026-10-18) : audit_maillages.py montre que les 21 488 .meshc du jeu passent la conversion de DECA, mais
 pas que le resultat est juste. Deux doutes dans deca/ff_adf_amf.py :
-  - convert_R32_UNIT_VEC_AS_FLOAT (normales et tangentes de 18 231 maillages) calcule la troisieme composante avec
+  - [corrige le 22/10 : mesure 14-maillages, 2 v - 1 avec z corrige, mediane 0,982] convert_R32_UNIT_VEC_AS_FLOAT
+    (normales et tangentes de 18 231 maillages) calculait la troisieme composante avec
     (1.0 / 256*256), soit 1.0 : z vaut x. Le codage habituel de trois octets dans un flottant est
     f = c0 / 256 + c1 + 256 c2 : x = frac(f), y = frac(f / 256), z = frac(f / 65536), dans [0, 1[ ; reste a savoir si
     le jeu les ramene a [-1, 1] (2 v - 1), ce que DECA ne fait pas ;
@@ -18,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 DECODAGES = ('deca', 'z_corrige', 'z_corrige_2v-1')
+# 'deca_avant_22_10' : l'ancien decodage, pour memoire (score median 0,22 sur COTW)
 TOLERANCE_BOITE = 0.01      # part de la diagonale de la boite
 SOMMETS_MAX = 300_000       # par fichier : les LOD suivants ne sont pas mesures au-dela (duree)
 
@@ -66,7 +68,13 @@ def decoder_unit_vec(f: np.ndarray, mode: str) -> np.ndarray:
     """Vecteur code dans un flottant (R32_UNIT_VEC_AS_FLOAT) selon un decodage candidat (voir le docstring)."""
     f = np.asarray(f, dtype=np.float64)
     if mode == 'deca':
-        v = np.stack([f, f / 256.0, f], axis=-1)            # (1.0 / 256*256) == 1.0 dans ff_adf_amf
+        # le code de DECA tel qu'il est (corrige le 22/10 d'apres la mesure 14-maillages)
+        from deca.ff_adf_amf import convert_R32_UNIT_VEC_AS_FLOAT
+        v = np.zeros((len(f), 3), dtype=np.float64)
+        convert_R32_UNIT_VEC_AS_FLOAT(v, f, None, False)
+        return v
+    if mode == 'deca_avant_22_10':
+        v = np.stack([f, f / 256.0, f], axis=-1)            # (1.0 / 256*256) == 1.0 dans l'ancien ff_adf_amf
     else:
         v = np.stack([f, f / 256.0, f / 65536.0], axis=-1)
     v = v - np.floor(v)

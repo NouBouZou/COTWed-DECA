@@ -150,6 +150,106 @@ class TestFormats(unittest.TestCase):
         self.assertEqual(out[1, 2], 64512.0)        # 2^15 x (1 + 31/32)
 
 
+class TestUnitVec(unittest.TestCase):
+    def test_unit_vec_round_trip(self):
+        rng = np.random.default_rng(5)
+        v = rng.normal(size=(1000, 3))
+        v /= np.linalg.norm(v, axis=1)[:, None]
+        f = np.zeros(1000, dtype=np.float32)
+        A.convert_R32_UNIT_VEC_AS_FLOAT(f, v, None, True)
+        out = np.zeros((1000, 3), dtype=np.float64)
+        A.convert_R32_UNIT_VEC_AS_FLOAT(out, f, None, False)
+        # x : 7 bits utiles seulement quand z est grand (flottant 32 bits vers 65536 : pas de 2^-7), comme dans le jeu
+        self.assertLess(float(np.max(np.abs(out - v))), 3.2 / 256)
+
+    def test_unit_vec_known_value(self):
+        f = np.array([128 / 256.0 + 255 + 256.0 * 0], dtype=np.float32)    # c = (128, 255, 0)
+        out = np.zeros((1, 3))
+        A.convert_R32_UNIT_VEC_AS_FLOAT(out, f, None, False)
+        # les octets du dessous debordent sur y et z (moins de 1/256) : y = (255 + 0,5) / 256, z = 255,5 / 65536
+        np.testing.assert_allclose(out[0], [0.0, 2 * 255.5 / 256 - 1.0, 2 * 255.5 / 65536 - 1.0], atol=1e-6)
+
+
+class TestMateriaux(unittest.TestCase):
+    """Deca3dModelc.add_to_gltf avec un modele fabrique (AmfModel remplace) : les RenderBlockId releves par
+    16-materiaux recoivent un materiau glTF."""
+
+    def exporter(self, materiaux):
+        import pygltflib as pyg
+        from deca import ff_adf_amf_gltf as G
+
+        class Mat:
+            def __init__(self, name, bloc, textures, attrs):
+                self.name, self.renderBlockId, self.textures, self.attributes = name, bloc, textures, attrs
+
+        class Modele:
+            def __init__(self, *_a):
+                self.mesh = b'm.meshc'
+                self.materials = [Mat(*m) for m in materiaux]
+
+        class Node:
+            file_type = 'adf'
+
+        class Vfs:
+            class logger:
+                messages = []
+
+                @classmethod
+                def log(cls, m, *a):
+                    cls.messages.append(str(m))
+                warning = log
+
+            def nodes_where_match(self, v_path=None):
+                return [Node()]
+
+        class AdfDb:
+            def read_node(self, _vfs, _node):
+                class A:
+                    table_instance_full_values = [None]
+                return A()
+
+        class Db:
+            def __init__(self):
+                self.n = 0
+
+            def gltf_add_texture(self, _g, vp):
+                if not vp:
+                    return None
+                self.n += 1
+                return self.n - 1
+
+            def gltf_add_meshc(self, _g, _m):
+                return {0: []}
+
+        gltf = pyg.GLTF2()
+        ancien = G.AmfModel
+        G.AmfModel = Modele
+        try:
+            G.Deca3dModelc(b'x.modelc').add_to_gltf(Vfs(), AdfDb(), Db(), gltf)
+        finally:
+            G.AmfModel = ancien
+        return gltf, Vfs.logger.messages
+
+    def test_new_render_blocks_get_a_material(self):
+        tex = [b'a_dif.ddsc', b'a_nrm.ddsc', b'a_mpm.ddsc', b'', b'a_rgb.ddsc']
+        gltf, logs = self.exporter([
+            (b'peau', b'CharacterSkin', tex, {'DoubleSided': True}),
+            (b'arme', b'WeaponCamo', tex, {}),
+            (b'vitre', b'Window', tex, {}),
+            (b'carbone', b'GeneralMkIII', [b'c_dif.ddsc', b'c_glo.ddsc', b'c_met.ddsc', b'c_nrm.ddsc'], {}),
+            (b'inconnu', b'Truc', tex, {}),
+        ])
+        mats = {m.name: m for m in gltf.materials}
+        self.assertEqual(set(mats), {'peau', 'arme', 'vitre', 'carbone'})
+        self.assertTrue(mats['peau'].doubleSided)
+        self.assertEqual(mats['peau'].pbrMetallicRoughness.baseColorTexture.index, 0)
+        self.assertEqual(mats['peau'].normalTexture.index, 1)
+        self.assertEqual(mats['arme'].emissiveFactor, [0.0, 0.0, 0.0])      # [4] = masque de camouflage
+        self.assertEqual(mats['vitre'].alphaMode, 'BLEND')
+        self.assertIsNotNone(mats['carbone'].normalTexture)
+        self.assertTrue(any('Unhandled RenderBlockId' in m and 'Truc' in m for m in logs))
+
+
 class TestReformat(unittest.TestCase):
     def test_packed_streams_through_deca_reformat(self):
         """Positions R32G32B32 + couleur R10G10B10A2_UNORM + normale R11G11B10_FLOAT + indices d'os
@@ -246,7 +346,11 @@ class TestGeometrie(unittest.TestCase):
                             ([-1, -1, -1], [1, 1, 1]))
         self.assertGreater(m['normale:z_corrige_2v-1'], 0.98)
         self.assertLess(m['normale:z_corrige'], 0.9)
-        self.assertLess(m['normale:deca'], 0.9)
+        self.assertGreater(m['normale:deca'], 0.98)                 # DECA corrige le 22/10
+        f = self.GM._flux(self.mesh, self.buffers.vertexBuffers, self.mesh.streamAttributes[1], 'f4')
+        ancien = self.GM.decoder_unit_vec(f, 'deca_avant_22_10')
+        self.assertLess(self.GM.score(ancien, self.GM.normales_des_faces(
+            self.GM.positions(self.mesh, self.buffers.vertexBuffers), self.tri)), 0.9)
         self.assertEqual(m['boite'], 1.0)
         # faces dans l'autre sens : score negatif
         self.mesh.subMeshes[0].indexCount = len(self.tri) * 3
@@ -289,18 +393,18 @@ class TestAudit(unittest.TestCase):
         self.assertEqual(AM.suffixe_texture('models/w/rifle_01_dif.ddsc'), 'dif')
         self.assertEqual(AM.suffixe_texture(''), '(vide)')
         self.assertEqual(AM.suffixe_texture('models/w/rifle_01.ddsc'), '(autre)')
-        mats = [('a.modelc', 'WeaponCamo', ['w/a_dif.ddsc', 'w/a_nrm.ddsc', ''], {'UseCamo': True, 'Scale': 0.5}),
-                ('b.modelc', 'WeaponCamo', ['w/b_dif.ddsc', 'w/b_nrm.ddsc', 'w/b_mpm.ddsc'], {'UseCamo': False}),
+        mats = [('a.modelc', 'BlocInconnu', ['w/a_dif.ddsc', 'w/a_nrm.ddsc', ''], {'UseCamo': True, 'Scale': 0.5}),
+                ('b.modelc', 'BlocInconnu', ['w/b_dif.ddsc', 'w/b_nrm.ddsc', 'w/b_mpm.ddsc'], {'UseCamo': False}),
                 ('b.modelc', 'GeneralR2', ['w/c_dif.ddsc'], {})]
         with tempfile.TemporaryDirectory() as d:
             c = AM.ecrire_materiaux(Path(d), mats, 'P', 1.0, 2)
             md = (Path(d) / 'materiaux.md').read_text(encoding='utf-8')
             data = json.loads((Path(d) / 'materiaux.json').read_text(encoding='utf-8'))
-        self.assertEqual(c['WeaponCamo'], 2)
-        self.assertIn('## WeaponCamo (2 materiaux, 2 modeles, **non traite par l\'export**)', md)
+        self.assertEqual(c['BlocInconnu'], 2)
+        self.assertIn('## BlocInconnu (2 materiaux, 2 modeles, **non traite par l\'export**)', md)
         self.assertIn('| 2 | (vide) 50 %, mpm 50 % |', md)
         self.assertIn('| UseCamo | True (1), False (1) |', md)
-        self.assertEqual(data['WeaponCamo']['emplacements']['0']['roles'], {'dif': 2})
+        self.assertEqual(data['BlocInconnu']['emplacements']['0']['roles'], {'dif': 2})
         self.assertTrue(data['GeneralR2']['traite'])
 
     def test_just_cause(self):
