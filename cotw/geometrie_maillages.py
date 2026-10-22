@@ -131,7 +131,8 @@ def dans_boite(pos: np.ndarray, bmin, bmax, tolerance: float = TOLERANCE_BOITE) 
 
 def mesurer(mesh, vertex_buffers, index_buffers, boite=None) -> Dict[str, float]:
     """Scores d'un AmfMesh (avant la conversion de DECA). Cles : boite, normale:<decodage>, tangent_space,
-    tangente_orthogonale:<decodage> (moyenne de |t . n|, 0 attendu), sommets."""
+    tangente_orthogonale:<decodage> (moyenne de |t . n|, 0 attendu), os_hors_table, poids_ecart (mesurer_os),
+    sommets."""
     out: Dict[str, float] = {'sommets': float(mesh.vertexCount)}
     pos = positions(mesh, vertex_buffers)
     if pos is None:
@@ -162,6 +163,7 @@ def mesurer(mesh, vertex_buffers, index_buffers, boite=None) -> Dict[str, float]
                     if np.any(ok):
                         out['tangente_orthogonale:' + mode] = float(np.mean(np.abs(np.sum(
                             n[ok] / nn[ok, None] * t[ok] / tn[ok, None], axis=1))))
+    mesurer_os(mesh, vertex_buffers, out)
     sa_ts = _attribut(mesh, b'AmfUsage_TangentSpace', b'AmfFormat_R8G8B8A8_TANGENT_SPACE')
     if sa_ts is not None:
         from deca.ff_adf_amf import convert_R8G8B8A8_TANGENT_SPACE
@@ -173,6 +175,29 @@ def mesurer(mesh, vertex_buffers, index_buffers, boite=None) -> Dict[str, float]
             if s is not None:
                 out['tangent_space'] = s
     return out
+
+
+def mesurer_os(mesh, vertex_buffers, out: Dict[str, float]):
+    """Indices et poids d'os (R8G8B8A8_UINT / R8G8B8A8_UNORM) : os_hors_table = part des sommets qui citent, avec un
+    poids non nul, un os au-dela de la table BoneIndexLookup du maillage (0 attendu) ; poids_ecart = moyenne de
+    |somme des poids - 1| (0 attendu ; DECA remplace un jeu de poids nuls par (1, 0, 0, 0) pour le glTF)."""
+    sa_i = _attribut(mesh, b'AmfUsage_BoneIndex', b'AmfFormat_R8G8B8A8_UINT')
+    sa_w = _attribut(mesh, b'AmfUsage_BoneWeight', b'AmfFormat_R8G8B8A8_UNORM')
+    if sa_i is None or sa_w is None:
+        return
+    idx = _flux(mesh, vertex_buffers, sa_i, '4u1')
+    w = _flux(mesh, vertex_buffers, sa_w, '4u1')
+    if idx is None or w is None:
+        return
+    w = w.astype(np.float64) / 255.0
+    table = len(mesh.boneIndexLookup or [])
+    if table:
+        hors = np.any((idx >= table) & (w > 0), axis=1)
+        out['os_hors_table'] = float(np.mean(hors))
+    somme = w.sum(axis=1)
+    nonnul = somme > 0
+    if np.any(nonnul):
+        out['poids_ecart'] = float(np.mean(np.abs(somme[nonnul] - 1.0)))
 
 
 def cumuler(mesures: List[Dict[str, float]]) -> Dict[str, float]:

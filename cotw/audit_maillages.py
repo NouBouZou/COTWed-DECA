@@ -83,7 +83,8 @@ class Resultat:
 
 
 CLES_GEO = ('boite', 'normale:deca', 'normale:z_corrige', 'normale:z_corrige_2v-1', 'tangente_orthogonale:deca',
-            'tangente_orthogonale:z_corrige', 'tangente_orthogonale:z_corrige_2v-1', 'tangent_space')
+            'tangente_orthogonale:z_corrige', 'tangente_orthogonale:z_corrige_2v-1', 'tangent_space',
+            'os_hors_table', 'poids_ecart')
 
 
 def _txt(b) -> str:
@@ -411,8 +412,10 @@ def vraisemblance(resultats: List[Resultat]) -> List[str]:
     L = ['## Vraisemblance des sommets (geometrie_maillages.py)', '',
          'Normales : moyenne du produit scalaire entre la normale lue et celle des faces (1 = juste, 0 = sans rapport, '
          '-1 = faces dans l\'autre sens). Tangentes : moyenne de |t . n| (0 attendu). Boite : part des sommets dans la '
-         'boite englobante de l\'en-tete.', '',
-         '| Mesure | Fichiers | Q1 | Mediane | Q3 | Part >= 0,9 (boite : >= 0,99 ; tangentes : <= 0,1) |',
+         'boite englobante de l\'en-tete. Os : part des sommets qui citent un os hors de la table du maillage (0 '
+         'attendu) ; ecart moyen de la somme des poids a 1.', '',
+         '| Mesure | Fichiers | Q1 | Mediane | Q3 | Part >= 0,9 (boite : >= 0,99 ; tangentes : <= 0,1 ; '
+         'os hors table : = 0 ; ecart des poids : <= 0,02) |',
          '|---|---:|---:|---:|---:|---:|']
     for k in CLES_GEO:
         v = np.array([r.geo[k] for r in resultats if r.geo.get(k) is not None])
@@ -422,6 +425,10 @@ def vraisemblance(resultats: List[Resultat]) -> List[str]:
             part = np.mean(v >= 0.99)
         elif k.startswith('tangente_orthogonale'):
             part = np.mean(v <= 0.1)
+        elif k == 'os_hors_table':
+            part = np.mean(v == 0.0)
+        elif k == 'poids_ecart':
+            part = np.mean(v <= 0.02)
         else:
             part = np.mean(v >= 0.9)
         q1, med, q3 = np.percentile(v, [25, 50, 75])

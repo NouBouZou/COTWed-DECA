@@ -86,6 +86,12 @@ class Collecte:
         # (categorie, hash) -> {famille de fichiers (familles.py): occurrences}, pour CATEGORIES_FAMILLES
         self.par_famille: Dict[Tuple[str, int], collections.Counter] = {}
         self.noms_sur_place: Dict[Tuple[str, int], str] = {}     # nom lu dans le fichier lui-meme (chaine RTPC)
+        # (2026-10-22) pointeurs ADF par type : (type pointeur, type vise) -> [occurrences, non nuls, fichiers]
+        self.pointeurs_types: Dict[Tuple[str, str], list] = {}
+        self.pointeurs_exemples: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}   # -> [(fichier, valeur)]
+        # types de proprietes RTPC : type -> occurrences ; types 15 et 16 (sens inconnu) : exemples
+        self.types_rtpc = collections.Counter()
+        self.rtpc_rares: Dict[int, List[Tuple[str, int, int, int]]] = {}   # type -> [(fichier, noeud, prop, valeur)]
 
     def ajouter(self, cat: str, h: int, chemin: str, sur_place: bool, vus: set, fam: Optional[str] = None,
                 nom: Optional[str] = None):
@@ -135,6 +141,45 @@ class Collecte:
                 mine.update(f)
         for key, nom in autre.noms_sur_place.items():
             self.noms_sur_place.setdefault(key, nom)
+        for key, v in autre.pointeurs_types.items():
+            e = self.pointeurs_types.setdefault(key, [0, 0, 0])
+            for i in range(3):
+                e[i] += v[i]
+        for key, ex in autre.pointeurs_exemples.items():
+            mine = self.pointeurs_exemples.setdefault(key, [])
+            mine.extend(ex[:max(0, EXEMPLES_MAX - len(mine))])
+        self.types_rtpc.update(autre.types_rtpc)
+        for t, ex in autre.rtpc_rares.items():
+            mine = self.rtpc_rares.setdefault(t, [])
+            mine.extend(ex[:max(0, EXEMPLES_MAX * 4 - len(mine))])
+
+
+EXEMPLES_MAX = 5
+RX_POINTEUR = None
+
+
+def noter_pointeur(note: str, chemin: str, c: Collecte, vus: set):
+    """Note de DECA pour un pointeur ADF (metatype 2) : 'NOTE: <type>: <valeur 16 hex> to <type vise 8 hex>'."""
+    global RX_POINTEUR
+    import re
+    if RX_POINTEUR is None:
+        RX_POINTEUR = re.compile(r'NOTE: (.*): ([0-9a-f]{16}) to ([0-9a-f]{8})')
+    m = RX_POINTEUR.match(note)
+    nom = m.group(1) if m else '?'
+    if len(nom) > 3 and nom[:2] in ("b'", 'b"') and nom[-1] == nom[1]:
+        nom = nom[2:-1]           # DECA formate le nom du type (bytes) tel quel : b'Nom'
+    key = (nom, m.group(3)) if m else ('?', '?')
+    valeur = m.group(2) if m else ''
+    e = c.pointeurs_types.setdefault(key, [0, 0, 0])
+    e[0] += 1
+    if valeur and int(valeur, 16):
+        e[1] += 1
+    if ('ptr',) + key not in vus:
+        vus.add(('ptr',) + key)
+        e[2] += 1
+        ex = c.pointeurs_exemples.setdefault(key, [])
+        if len(ex) < EXEMPLES_MAX:
+            ex.append((chemin, valeur))
 
 
 def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
@@ -155,11 +200,18 @@ def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
                 chaines.setdefault(int(hash32_func(b)) & 0xFFFFFFFF, b.decode('utf-8', errors='replace'))
     vus = set()
     fam = FA.famille(chemin)
+    from deca.ff_rtpc import k_type_unk_15, k_type_unk_16
     for i, n in enumerate(noeuds):
         if i and n.name_hash:     # la racine n'a pas de nom
             h = n.name_hash & 0xFFFFFFFF
             c.ajouter('rtpc_noeud', h, chemin, h in chaines, vus, fam, chaines.get(h))
         for p in n.prop_table:
+            c.types_rtpc[p.type] += 1
+            if p.type in (k_type_unk_15, k_type_unk_16):
+                ex = c.rtpc_rares.setdefault(p.type, [])
+                if len(ex) < EXEMPLES_MAX * 4:
+                    ex.append((chemin, n.name_hash & 0xFFFFFFFF, p.name_hash & 0xFFFFFFFF,
+                               int(p.data if isinstance(p.data, int) else (p.data_raw or 0)) & 0xFFFFFFFF))
             if p.name_hash:
                 h = p.name_hash & 0xFFFFFFFF
                 c.ajouter('rtpc_propriete', h, chemin, h in chaines, vus, fam, chaines.get(h))
@@ -202,6 +254,7 @@ def collecter_adf(adf, chemin: str, c: Collecte):
                 pile.extend(v)
         elif isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], str) and v[1].startswith('NOTE:'):
             c.pointeurs += 1
+            noter_pointeur(v[1], chemin, c, vus)
         elif isinstance(v, str) and v.startswith('!!!MISSING TYPE'):
             c.types_manquants[v.split(' in ')[0].split()[-1]] += 1
 
@@ -393,9 +446,47 @@ def comparer(ancien: Path, b: Dict[str, dict], echantillon: int) -> List[str]:
     return L
 
 
+def ecrire_echantillons(out_dir: Path, c: Collecte, projet: Optional[str] = None):
+    """pointeurs_adf.csv, rtpc_types_rares.csv et extraire_echantillons.bat : des fichiers ADF a pointeurs (par type)
+    et des RTPC a proprietes de type 15 ou 16, pour la suite de la lecture (2026-10-22)."""
+    with open(out_dir / 'pointeurs_adf.csv', 'w', encoding='utf-8-sig', newline='') as f:
+        w = csv.writer(f, delimiter=';')
+        w.writerow(['type_pointeur', 'type_vise', 'occurrences', 'non_nuls', 'fichiers', 'exemples'])
+        for (tp, tv), (n, nn, nf) in sorted(c.pointeurs_types.items(), key=lambda kv: -kv[1][0]):
+            w.writerow([tp, tv, n, nn, nf, ' | '.join('{} @{}'.format(a, b) for a, b in
+                                                       c.pointeurs_exemples.get((tp, tv), []))])
+    with open(out_dir / 'rtpc_types_rares.csv', 'w', encoding='utf-8-sig', newline='') as f:
+        w = csv.writer(f, delimiter=';')
+        w.writerow(['type', 'fichier', 'noeud', 'propriete', 'valeur'])
+        for t, ex in sorted(c.rtpc_rares.items()):
+            for fi, nd, pr, v in ex:
+                w.writerow([t, fi, '{:08x}'.format(nd), '{:08x}'.format(pr), v])
+    chemins = []
+    for ex in c.pointeurs_exemples.values():
+        chemins += [a for a, _b in ex[:2]]
+    for ex in c.rtpc_rares.values():
+        chemins += sorted({a for a, *_r in ex})[:5]
+    nommes = sorted({x for x in chemins if not x.startswith('(sans nom)')})
+    hashes = sorted({x.split()[-1] for x in chemins if x.startswith('(sans nom)')})
+    repo = Path(__file__).resolve().parent.parent
+    lignes = ['@echo off', 'rem Echantillons : ADF a pointeurs, RTPC a types 15 / 16 (audit_noms_internes.py). DECA ferme.',
+              'cd /d "{}"'.format(repo),
+              'if exist venv\\Scripts\\activate.bat (call venv\\Scripts\\activate.bat) else '
+              '(echo venv introuvable dans %CD% & exit /b 1)']
+    projet = projet or '%PROJET%'
+    for i in range(0, len(nommes), 20):
+        lignes.append('python cotw\\extraire.py "{}" {} --sortie "{}" --a-plat'.format(
+            projet, ' '.join(nommes[i:i + 20]), out_dir / 'echantillons'))
+    if hashes:
+        lignes.append('python cotw\\extraire.py "{}" --hashes {} --sortie "{}" --a-plat'.format(
+            projet, ' '.join(hashes), out_dir / 'echantillons'))
+    with open(out_dir / 'extraire_echantillons.bat', 'w', encoding='utf-8', newline='\r\n') as f:
+        f.write('\n'.join(lignes) + '\n')
+
+
 def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select: int, echantillon: int,
                    limite: int = 40, ancien: Optional[Path] = None,
-                   noms: Optional[Dict[Tuple[str, int], List[str]]] = None):
+                   noms: Optional[Dict[Tuple[str, int], List[str]]] = None, projet: Optional[str] = None):
     out_dir.mkdir(parents=True, exist_ok=True)
     inconnus = [((cat, h), v) for (cat, h), v in c.occ.items() if statut[(cat, h)] == 'inconnu']
     inconnus.sort(key=lambda kv: (-kv[1][0], kv[0]))
@@ -432,7 +523,9 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
                'duree_s': round(duree, 1),
                'familles': len({fam for f in c.par_famille.values() for fam in f}),
                'noms_par_famille': lignes_vocab}
+    metrics['types_rtpc'] = {str(t): n for t, n in sorted(c.types_rtpc.items())}
     (out_dir / 'metrics.json').write_text(json.dumps(metrics, indent=1, ensure_ascii=False), encoding='utf-8')
+    ecrire_echantillons(out_dir, c, projet)
 
     L = ['# Audit des noms internes (N2)', '',
          '- Fichiers lus : {} ({}) sur {} selectionnes{} ; echecs : {} ; duree : {:.0f} s'.format(
@@ -461,6 +554,17 @@ def ecrire_sorties(out_dir: Path, c: Collecte, statut, b, duree: float, n_select
           '- Valeurs differees de type manquant : {}'.format(sum(c.types_manquants.values()) or 0)]
     for t, n in c.types_manquants.most_common(10):
         L.append('  - {} : {}'.format(t, n))
+    if c.pointeurs_types:
+        L += ['', '| Type pointeur | Type vise | Occurrences | Non nuls | Fichiers | Exemple |', '|---|---|---:|---:|---:|---|']
+        for (tp, tv), (n, nn, nf) in sorted(c.pointeurs_types.items(), key=lambda kv: -kv[1][0])[:30]:
+            ex = c.pointeurs_exemples.get((tp, tv), [('', '')])[0]
+            L.append('| {} | {} | {} | {} | {} | `{}` |'.format(tp, tv, n, nn, nf, ex[0]))
+    L += ['', '## RTPC : types de proprietes', '', '| Type | Occurrences |', '|---:|---:|']
+    L += ['| {} | {} |'.format(t, n) for t, n in sorted(c.types_rtpc.items())]
+    for t, ex in sorted(c.rtpc_rares.items()):
+        L += ['', 'Type {} (sens inconnu) : exemples (fichier, noeud, propriete, valeur) :'.format(t), '']
+        L += ['- `{}` : noeud {:08x}, propriete {:08x}, valeur {} (0x{:08x})'.format(f, nd, pr, v, v)
+              for f, nd, pr, v in ex[:12]]
     L += ['', '## Familles de fichiers les plus touchees (occurrences non resolues sur place)', '',
           '| Categorie | Extension | Occurrences |', '|---|---|---:|']
     for (cat, ext), n in c.familles.most_common(25):
@@ -528,7 +632,7 @@ def main(argv=None):
     b = bilan(total, statut)
     noms = noms_connus(vfs, total, statut)
     L = ecrire_sorties(Path(args.out), total, statut, b, time.time() - t0, len(choix), args.echantillon,
-                       ancien=Path(args.compare) if args.compare else None, noms=noms)
+                       ancien=Path(args.compare) if args.compare else None, noms=noms, projet=args.projet)
     print('\n'.join(L[:L.index('## Enumerations ADF')]))
     print('\nResultats : {}'.format(Path(args.out)))
     return 0

@@ -358,6 +358,21 @@ class TestGeometrie(unittest.TestCase):
         m2 = self.GM.mesurer(self.mesh, inv.vertexBuffers, inv.indexBuffers)
         self.assertLess(m2['normale:z_corrige_2v-1'], -0.98)
 
+    def test_bones(self):
+        n = 4
+        idx = np.array([[0, 1, 0, 0], [2, 0, 0, 0], [5, 0, 0, 0], [1, 2, 0, 0]], dtype=np.uint8)
+        w = np.array([[128, 127, 0, 0], [255, 0, 0, 0], [255, 0, 0, 0], [200, 55, 0, 0]], dtype=np.uint8)
+        stride = 8
+        data = b''.join(idx[i].tobytes() + w[i].tobytes() for i in range(n))
+        attrs = [attr(b'AmfUsage_BoneIndex', b'AmfFormat_R8G8B8A8_UINT', 0, stride),
+                 attr(b'AmfUsage_BoneWeight', b'AmfFormat_R8G8B8A8_UNORM', 4, stride)]
+        m = maillage(n, attrs, [stride], [0, 1, 2])
+        m.boneIndexLookup = [10, 11, 12]
+        out = {}
+        self.GM.mesurer_os(m, tampons(b'', [data]).vertexBuffers, out)
+        self.assertAlmostEqual(out['os_hors_table'], 0.25)        # l'os 5 n'est pas dans une table de 3
+        self.assertAlmostEqual(out['poids_ecart'], 0.0)
+
     def test_cumuler(self):
         c = self.GM.cumuler([{'sommets': 1.0, 'a': 1.0}, {'sommets': 3.0, 'a': 0.0, 'b': 2.0}])
         self.assertAlmostEqual(c['a'], 0.25)

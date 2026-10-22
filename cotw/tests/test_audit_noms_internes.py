@@ -157,6 +157,64 @@ class TestAuditNomsInternes(unittest.TestCase):
         self.assertNotIn('**Attention**', rapport)
 
 
+class TestEchantillons(unittest.TestCase):
+    """Releve des pointeurs ADF et des types de proprietes RTPC (2026-10-22)."""
+
+    def test_pointer_note(self):
+        c, vus = A.Collecte(), set()
+        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000010 to 1234abcd", 'a.adf', c, vus)
+        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000000 to 1234abcd", 'a.adf', c, vus)
+        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000020 to 1234abcd", 'b.adf', c, set())
+        A.noter_pointeur('illisible', 'c.adf', c, set())
+        self.assertEqual(c.pointeurs_types[('SomePtr', '1234abcd')], [3, 2, 2])   # occurrences, non nuls, fichiers
+        self.assertEqual(c.pointeurs_exemples[('SomePtr', '1234abcd')],
+                         [('a.adf', '0000000000000010'), ('b.adf', '0000000000000020')])
+        self.assertEqual(c.pointeurs_types[('?', '?')], [1, 0, 1])
+
+    def test_rtpc_types(self):
+        from deca.ff_rtpc import k_type_unk_15, k_type_unk_16
+        noeud = W.make_node('n', [W.make_prop('a', k_type_u32, 1), W.make_prop('b', k_type_unk_15, 7),
+                                  W.make_prop('c', k_type_unk_16, 0xfffffffe)])
+        r = Rtpc()
+        r.version = 1
+        r.root_node = W.make_node(0, [], [noeud])
+        c = A.Collecte()
+        A.collecter_rtpc(W.rtpc_to_binary(r), 'x/y.bin', c)
+        self.assertEqual(dict(c.types_rtpc), {k_type_u32: 1, k_type_unk_15: 1, k_type_unk_16: 1})
+        self.assertEqual(c.rtpc_rares[k_type_unk_15], [('x/y.bin', h32('n'), h32('b'), 7)])
+        self.assertEqual(c.rtpc_rares[k_type_unk_16], [('x/y.bin', h32('n'), h32('c'), 0xfffffffe)])
+        # fusion de deux lots
+        d = A.Collecte()
+        d.fusionner(c)
+        d.fusionner(c)
+        self.assertEqual(d.types_rtpc[k_type_unk_15], 2)
+        self.assertEqual(len(d.rtpc_rares[k_type_unk_15]), 2)
+
+    def test_sample_files(self):
+        from deca.ff_rtpc import k_type_unk_15
+        c = A.Collecte()
+        A.noter_pointeur("NOTE: b'P': 0000000000000010 to 0000beef", 'gfx/a.adf', c, set())
+        A.noter_pointeur("NOTE: b'P': 0000000000000010 to 0000beef", '(sans nom) 0123abcd', c, set())
+        c.rtpc_rares[k_type_unk_15] = [('settings/z.bin', 1, 2, 3)]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            A.ecrire_echantillons(out, c, 'D:\\projet')
+            with open(out / 'pointeurs_adf.csv', encoding='utf-8-sig') as f:
+                lignes = list(csv.DictReader(f, delimiter=';'))
+            self.assertEqual(len(lignes), 1)
+            self.assertEqual((lignes[0]['type_pointeur'], lignes[0]['type_vise'], lignes[0]['occurrences'],
+                              lignes[0]['fichiers']), ('P', '0000beef', '2', '2'))
+            with open(out / 'rtpc_types_rares.csv', encoding='utf-8-sig') as f:
+                rares = list(csv.DictReader(f, delimiter=';'))
+            self.assertEqual(rares, [{'type': str(k_type_unk_15), 'fichier': 'settings/z.bin', 'noeud': '00000001',
+                                      'propriete': '00000002', 'valeur': '3'}])
+            bat = (out / 'extraire_echantillons.bat').read_bytes().decode('utf-8')
+            self.assertIn('\r\n', bat)
+            self.assertNotIn('%PROJET%', bat)
+            self.assertIn('python cotw\\extraire.py "D:\\projet" gfx/a.adf settings/z.bin --sortie', bat)
+            self.assertIn('--hashes 0123abcd', bat)
+
+
 if __name__ == '__main__':
     if '--spawn' in sys.argv:
         sys.argv.remove('--spawn')
