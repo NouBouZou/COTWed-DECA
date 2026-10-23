@@ -1,15 +1,11 @@
 from typing import Optional
-import xml.etree.ElementTree as ElementTree
 from .path import UniPath
 from .util import remove_prefix_if_present
 from .ff_avtx import image_load, ddsc_write_to_dds, ddsc_write_to_png, ddsc_clean
 from .ff_adf import *
 from .ff_adf_amf import *
 import pygltflib as pyg
-import scipy.spatial.transform as sst
 import copy
-import subprocess
-import sys
 
 def _get_or_none(index, list_data):
     if index < len(list_data):
@@ -186,6 +182,49 @@ class Deca3dTexture:
         return self.gltf_id
 
 
+def load_meshc(vfs: VfsDatabase, adf_db: AdfDatabase, v_path):
+    """AmfMeshHeader and AmfMeshBuffers of a .meshc, with the buffers of its .hrmeshc appended, before
+    amf_meshc_reformat (the raw vertex formats of the file). Shared by the export and the audits of COTWed DECA."""
+    mesh_adf = adf_db.read_node(vfs, node_of_type(vfs, v_path, TYPES_ADF_NODE)[0])
+    assert len(mesh_adf.table_instance) == 2
+    # 0xea60065d - gz/hp, 0x7A2C9B73 - rg2, 0x6f841426 - hp (also)
+    assert mesh_adf.table_instance[0].type_hash in {0xea60065d, 0x7A2C9B73, 0x6f841426}
+    # 0x67b3a453 - gz, 0xe6834477 - hp, 0x0E1C0800 - rg2
+    assert mesh_adf.table_instance[1].type_hash in {0x67b3a453, 0xe6834477, 0x0E1C0800}
+    mesh_header = AmfMeshHeader(
+        mesh_adf,
+        mesh_adf.table_instance_full_values[0],
+        merged_buffers=mesh_adf.table_instance[0].type_hash in {0x7A2C9B73})
+    mesh_buffers = AmfMeshBuffers(
+        mesh_adf,
+        mesh_adf.table_instance_full_values[1],
+        merged_buffers=mesh_adf.table_instance[1].type_hash in {0x0E1C0800})
+
+    hrmesh_vpath = mesh_header.highLodPath
+    hrmesh_vpath2 = remove_prefix_if_present(b'intermediate/', hrmesh_vpath)
+    hrmesh_node = None
+
+    hrmesh_nodes = node_of_type(vfs, hrmesh_vpath, TYPES_ADF_NODE)
+    if hrmesh_nodes:
+        hrmesh_node = hrmesh_nodes[0]
+    elif hrmesh_vpath2 is not None:
+        hrmesh_nodes = node_of_type(vfs, hrmesh_vpath2, TYPES_ADF_NODE)
+        if hrmesh_nodes:
+            hrmesh_node = hrmesh_nodes[0]
+
+    if hrmesh_node is not None:
+        hrmesh_adf = adf_db.read_node(vfs, hrmesh_node)
+        assert len(hrmesh_adf.table_instance) == 1
+        # assert hrmesh_adf.table_instance[0].type_hash == 0x67b3a453
+        hrmesh_buffers = AmfMeshBuffers(
+            hrmesh_adf,
+            hrmesh_adf.table_instance_full_values[0],
+            merged_buffers=mesh_adf.table_instance[1].type_hash in {0x0E1C0800})
+        mesh_buffers.indexBuffers = mesh_buffers.indexBuffers + hrmesh_buffers.indexBuffers
+        mesh_buffers.vertexBuffers = mesh_buffers.vertexBuffers + hrmesh_buffers.vertexBuffers
+    return mesh_header, mesh_buffers
+
+
 class Deca3dMeshc:
     # The mesh is never stored in the gltf directly
     # The mesh stores it's accessors, buffer views, and buffers in the gltf when used
@@ -197,43 +236,7 @@ class Deca3dMeshc:
     def add_to_gltf(self, vfs: VfsDatabase, adf_db: AdfDatabase, db: Deca3dDatabase, gltf: pyg.GLTF2):
         if self.meshes is None:
             vfs.logger.log('Setup Meshc: {}'.format(self.v_path))
-            mesh_adf = adf_db.read_node(vfs, node_of_type(vfs, self.v_path, TYPES_ADF_NODE)[0])
-            assert len(mesh_adf.table_instance) == 2
-            # 0xea60065d - gz/hp, 0x7A2C9B73 - rg2, 0x6f841426 - hp (also)
-            assert mesh_adf.table_instance[0].type_hash in {0xea60065d, 0x7A2C9B73, 0x6f841426}
-            # 0x67b3a453 - gz, 0xe6834477 - hp, 0x0E1C0800 - rg2
-            assert mesh_adf.table_instance[1].type_hash in {0x67b3a453, 0xe6834477, 0x0E1C0800}
-            mesh_header = AmfMeshHeader(
-                mesh_adf,
-                mesh_adf.table_instance_full_values[0],
-                merged_buffers=mesh_adf.table_instance[0].type_hash in {0x7A2C9B73})
-            mesh_buffers = AmfMeshBuffers(
-                mesh_adf,
-                mesh_adf.table_instance_full_values[1],
-                merged_buffers=mesh_adf.table_instance[1].type_hash in {0x0E1C0800})
-
-            hrmesh_vpath = mesh_header.highLodPath
-            hrmesh_vpath2 = remove_prefix_if_present(b'intermediate/', hrmesh_vpath)
-            hrmesh_node = None
-
-            hrmesh_nodes = node_of_type(vfs, hrmesh_vpath, TYPES_ADF_NODE)
-            if hrmesh_nodes:
-                hrmesh_node = hrmesh_nodes[0]
-            elif hrmesh_vpath2 is not None:
-                hrmesh_nodes = node_of_type(vfs, hrmesh_vpath2, TYPES_ADF_NODE)
-                if hrmesh_nodes:
-                    hrmesh_node = hrmesh_nodes[0]
-
-            if hrmesh_node is not None:
-                hrmesh_adf = adf_db.read_node(vfs, hrmesh_node)
-                assert len(hrmesh_adf.table_instance) == 1
-                # assert hrmesh_adf.table_instance[0].type_hash == 0x67b3a453
-                hrmesh_buffers = AmfMeshBuffers(
-                    hrmesh_adf,
-                    hrmesh_adf.table_instance_full_values[0],
-                    merged_buffers=mesh_adf.table_instance[1].type_hash in {0x0E1C0800})
-                mesh_buffers.indexBuffers = mesh_buffers.indexBuffers + hrmesh_buffers.indexBuffers
-                mesh_buffers.vertexBuffers = mesh_buffers.vertexBuffers + hrmesh_buffers.vertexBuffers
+            mesh_header, mesh_buffers = load_meshc(vfs, adf_db, self.v_path)
 
             # reformat buffers for GLTF
             amf_meshc_reformat(mesh_header, mesh_buffers)
@@ -698,7 +701,42 @@ class Deca3dModelc:
         return self.models
 
 
+def quaternion_matrix(q) -> np.ndarray:
+    """3x3 rotation of a unit quaternion (x, y, z, w), the order of Havok (hkQuaternion) and glTF."""
+    x, y, z, w = (float(v) for v in q)
+    n = x * x + y * y + z * z + w * w
+    s = 2.0 / n if n > 0.0 else 0.0
+    return np.array([
+        [1.0 - s * (y * y + z * z), s * (x * y - z * w), s * (x * z + y * w)],
+        [s * (x * y + z * w), 1.0 - s * (x * x + z * z), s * (y * z - x * w)],
+        [s * (x * z - y * w), s * (y * z + x * w), 1.0 - s * (x * x + y * y)]])
+
+
+def bone_transform(bone: dict):
+    """(translation, rotation xyzw, scale) of a bone of ff_havok.decode_skeleton; identity without a reference pose."""
+    return (list(bone.get('translation') or (0.0, 0.0, 0.0)), list(bone.get('rotation') or (0.0, 0.0, 0.0, 1.0)),
+            list(bone.get('scale') or (1.0, 1.0, 1.0)))
+
+
+def skeleton_matrices(bones):
+    """Local and model-space (world) 4x4 matrices of the reference pose: world = world(parent) @ T @ R @ S.
+    A parent index that is negative or not before the bone makes it a root (Havok orders parents first)."""
+    local, world = [], []
+    for i, bone in enumerate(bones):
+        t, r, sc = bone_transform(bone)
+        m = np.eye(4)
+        m[0:3, 0:3] = quaternion_matrix(r) @ np.diag(sc)
+        m[0:3, 3] = t
+        local.append(m)
+        p = bone.get('parent')
+        world.append(world[p] @ m if p is not None and 0 <= p < i else m)
+    return local, world
+
+
 class Deca3dHkSkeleton:
+    """Skin of a skeleton (.bsk, Havok packfile), read by deca.ff_havok (COTWed DECA, 2026-10-23). DECA ran the
+    external bin2xml tool (cpp/bin2xml, HavokLib) and parsed its XML; the reference pose is the same: translation,
+    rotation (x, y, z, w) and scale of each bone, relative to its parent."""
     def __init__(self, v_path, scene):
         self.v_path = v_path
         self.scene = scene
@@ -706,163 +744,75 @@ class Deca3dHkSkeleton:
 
     def add_to_gltf(self, vfs: VfsDatabase, adf_db: AdfDatabase, db: Deca3dDatabase, gltf: pyg.GLTF2):
         if self.skeleton is None:
-            vfs.logger.log('Setup Modelc: {}'.format(self.v_path))
+            from . import ff_havok
+            vfs.logger.log('Setup Skeleton: {}'.format(self.v_path))
 
-            # get baked skeleton filename
-            v_path = self.v_path
-            v_path = UniPath.splitext(v_path)
-            v_path = v_path[0] + b'.bsk'
+            # baked skeleton file name
+            v_path = UniPath.splitext(self.v_path)[0] + b'.bsk'
             fn = v_path.decode('utf-8')
             if db.flat_file_layout:
                 fn = fn.replace('/', '_')
             ppath_skel_uri = UniPath.join(db.resource_prefix_uri, fn)
             ppath_skel_raw = UniPath.join(db.resource_prefix_abs, fn)
-            ppath_skel_xml = ppath_skel_raw + '.xml'
 
-            if not UniPath.isfile(ppath_skel_raw):
-                vnodes = node_of_type(vfs, v_path, TYPES_HAVOK_NODE)
-
-                if len(vnodes) == 0:
-                    raise EDecaFileMissing('Not Mapped: {}'.format(v_path))
-
-                vnode = vnodes[0]
-                with vfs.file_obj_from(vnode) as f:
-                    buffer = f.read()
-
-                dir_path = UniPath.dirname(ppath_skel_raw)
-                os.makedirs(dir_path, exist_ok=True)
-                with open(ppath_skel_raw, 'wb') as f:
-                    f.write(buffer)
-
-            exe_path, exe_name = UniPath.split(sys.argv[0])
-            bin_path = UniPath.normpath(UniPath.join("./", exe_path, "..", "..", "..", "root", "bin"))
-
-            cmd = '{} {} {}'.format(
-                UniPath.join(bin_path, 'bin2xml'),
-                ppath_skel_raw,
-                ppath_skel_xml,
-            )
-
-            run_out = None
-
-            if not UniPath.isfile(ppath_skel_xml):
-                run_out = subprocess.run(cmd, shell=True, capture_output=True)
-
-            if not UniPath.isfile(ppath_skel_xml):
-                if run_out is None:
-                    stdout = 'stdout MISSING'
-                    stderr = 'stderr MISSING'
-                else:
-                    stdout = run_out.stdout
-                    stderr = run_out.stderr
-
-                raise EDecaFileMissing('Not Mapped: {}, CMD: {}, SO: {}, SE: {}'.format(ppath_skel_xml, cmd, stdout, stderr))
-
-            # TODO this is a hack
-            tree = ElementTree.parse(ppath_skel_xml)
-            root = tree.getroot()
-
-            skel = None
-            for child in root[0]:
-                if child.tag == 'hkobject' and child.attrib.get('class', '') == 'hkaSkeleton':
-                    skel = child
-                    break
-
-            if skel is None:
-                raise EDecaErrorParse('Error parsing: {}'.format(ppath_skel_xml))
-
-            parents = []
-            bone_info = []
-            poses = []
-            num_bones = 0
-            for child in skel:
-                if child.attrib['name'] == 'parentIndices':
-                    txt = child.text
-                    txt = txt.replace('\t', ' ').replace('\n', ' ').split(' ')
-                    parents = [int(v) for v in txt if len(v) > 0]
-                if child.attrib['name'] == 'bones':
-                    num_bones = int(child.attrib['numelements'])
-                    for i in range(num_bones):
-                        bone_info.append([child[i][0].text, child[i][1].text, ])
-                if child.attrib['name'] == 'referencePose':
-                    txt = child.text.replace('\t', ' ').replace('\n', ' ').replace('(', ' ').replace(')', ' ')
-                    txt = txt.split(' ')
-                    poses = [float(v) for v in txt if len(v) > 0]
-
-            poses = np.array(poses).reshape((num_bones, 10))
-            bones = [[v0[0], v0[1], v1, (v2[0:3], v2[3:7], v2[7:10])] for v0, v1, v2 in zip(bone_info, parents, poses)]
+            vnodes = node_of_type(vfs, v_path, TYPES_HAVOK_NODE)
+            if len(vnodes) == 0:
+                raise EDecaFileMissing('Not Mapped: {}'.format(v_path))
+            with vfs.file_obj_from(vnodes[0]) as f:
+                buffer = f.read()
+            try:
+                skels = ff_havok.skeletons(buffer)
+            except ff_havok.EHavok as exc:
+                raise EDecaErrorParse('Error parsing: {}: {}'.format(v_path, exc))
+            if not skels or not skels[0]['bones']:
+                raise EDecaErrorParse('Error parsing: {}: no hkaSkeleton with bones'.format(v_path))
+            bones = skels[0]['bones']
+            _local, world = skeleton_matrices(bones)
 
             bone_nodes = []
-            bone_inv_matrix = []
             for bi, bone in enumerate(bones):
-                name = bone[0]
-                pidx = bone[2]
-                translate = bone[3][0]
-                rotate = bone[3][1]
-                scale = bone[3][2]
+                translate, rotate, scale = bone_transform(bone)
+                pidx = bone.get('parent')
                 bnode = pyg.Node()
                 bnode_idx = len(gltf.nodes)
                 gltf.nodes.append(bnode)
 
-                # nodes are not connect to other hierchy so must be added to scene
-                #   manually, so root nodes must be added manually
-                if pidx < 0:
+                # bones are not connected to the rest of the hierarchy: root bones are added to the scene
+                if pidx is None or not 0 <= pidx < bi:
                     self.scene.nodes.append(bnode_idx)
-                bone_nodes.append([bnode_idx, bnode])
-                bnode.name = name
-                bnode.translation = list(translate)
-                bnode.rotation = list(rotate)
-                bnode.scale = list(scale)
-                if 0 <= pidx < len(bone_nodes):
-                    bone_nodes[pidx][1].children.append(bnode_idx)
-
-                m_translate = np.eye(4)
-                m_rotate = np.eye(4)
-                m_scale = np.eye(4)
-
-                m_translate[0:3, 3] = translate
-                m_rotate[0:3, 0:3] = sst.Rotation(rotate).as_matrix()
-                m_scale[0, 0] = scale[0]
-                m_scale[1, 1] = scale[1]
-                m_scale[2, 2] = scale[2]
-
-                b_matrix = m_translate @ m_rotate @ m_scale
-                if 0 <= pidx < len(bone_nodes):
-                    imatrix_parent = bone_inv_matrix[pidx]
                 else:
-                    imatrix_parent = np.eye(4)
-                imatrix = np.linalg.inv(b_matrix) @ imatrix_parent
-                bone_inv_matrix.append(imatrix)
+                    bone_nodes[pidx][1].children.append(bnode_idx)
+                bone_nodes.append([bnode_idx, bnode])
+                bnode.name = bone['name']
+                bnode.translation = [float(v) for v in translate]
+                bnode.rotation = [float(v) for v in rotate]
+                bnode.scale = [float(v) for v in scale]
 
-            # write ibm matricies
+            # inverse bind matrices, column major
             fn = ppath_skel_raw + '.ibm.dat'
+            os.makedirs(UniPath.dirname(fn), exist_ok=True)
             with open(fn, 'wb') as f:
-                for mat in bone_inv_matrix:
-                    mat2 = mat.astype(dtype=np.float32)
-                    mat2 = mat2.transpose()
-                    mat2_bytes = mat2.tobytes()
-                    f.write(mat2_bytes)
-                    # print(mat2)
+                for mat in world:
+                    f.write(np.linalg.inv(mat).astype(dtype=np.float32).transpose().tobytes())
 
             # setup accessor
             buffer = pyg.Buffer()
             buffer.uri = ppath_skel_uri + '.ibm.dat'
-            buffer.byteLength = 16 * 4 * len(bone_inv_matrix)
+            buffer.byteLength = 16 * 4 * len(world)
             buffer_idx = len(gltf.buffers)
             gltf.buffers.append(buffer)
 
             buffer_view = pyg.BufferView()
             buffer_view.buffer = buffer_idx
             buffer_view.byteOffset = 0
-            # buffer_view.byteStride = 16 * 4
-            buffer_view.byteLength = 16 * 4 * len(bone_inv_matrix)
+            buffer_view.byteLength = 16 * 4 * len(world)
             buffer_view_idx = len(gltf.bufferViews)
             gltf.bufferViews.append(buffer_view)
 
             accessor = pyg.Accessor()
             accessor.bufferView = buffer_view_idx
             accessor.byteOffset = 0
-            accessor.count = len(bone_inv_matrix)
+            accessor.count = len(world)
             accessor.type = "MAT4"
             accessor.componentType = pyg.FLOAT
 

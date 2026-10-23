@@ -139,6 +139,29 @@ class TestAuditNomsInternes(unittest.TestCase):
     def test_pool(self):
         self.check(*self.run_audit(2))
 
+    def test_resume_after_a_failed_write(self):
+        """Une ecriture qui echoue laisse erreur.txt et reprise.pkl ; --reprendre refait les sorties sans relire."""
+        out = Path(self.tmp.name, 'out_reprise')
+        vrai = A.ecrire_echantillons
+        def casse(*_a, **_k):
+            raise RuntimeError('ecriture cassee')
+        A.ecrire_echantillons = casse
+        try:
+            self.assertEqual(A.main([self.project, '--out', str(out), '--processus', '1']), 1)
+        finally:
+            A.ecrire_echantillons = vrai
+        self.assertIn('ecriture cassee', (out / 'erreur.txt').read_text(encoding='utf-8'))
+        self.assertTrue((out / 'reprise.pkl').exists())
+        self.assertFalse((out / 'rapport.md').exists())
+        # la reprise ne relit rien : un projet qui n'existe pas suffit
+        self.assertEqual(A.main(['/projet/absent', '--out', str(out), '--reprendre', str(out / 'reprise.pkl')]), 0)
+        self.assertFalse((out / 'erreur.txt').exists())
+        self.assertFalse((out / 'reprise.pkl').exists())
+        metrics = json.loads((out / 'metrics.json').read_text(encoding='utf-8'))
+        with open(out / 'inconnus.csv', encoding='utf-8-sig') as f:
+            inconnus = list(csv.DictReader(f, delimiter=';'))
+        self.check(metrics, inconnus, (out / 'rapport.md').read_text(encoding='utf-8'))
+
     def test_compare_with_previous_audit(self):
         metrics, _inconnus, _rapport = self.run_audit(1)
         self.assertIn('date', metrics)
@@ -166,7 +189,9 @@ class TestEchantillons(unittest.TestCase):
         A.noter_pointeur("NOTE: b'SomePtr': 0000000000000000 to 1234abcd", 'a.adf', c, vus)
         A.noter_pointeur("NOTE: b'SomePtr': 0000000000000020 to 1234abcd", 'b.adf', c, set())
         A.noter_pointeur('illisible', 'c.adf', c, set())
-        self.assertEqual(c.pointeurs_types[('SomePtr', '1234abcd')], [3, 2, 2])   # occurrences, non nuls, fichiers
+        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000000 to 1234abcd", 'd.adf', c, set())
+        self.assertEqual(c.pointeurs_types[('SomePtr', '1234abcd')], [4, 2, 3])   # occurrences, non nuls, fichiers
+        # exemples : un par fichier, pointeurs non nuls seulement
         self.assertEqual(c.pointeurs_exemples[('SomePtr', '1234abcd')],
                          [('a.adf', '0000000000000010'), ('b.adf', '0000000000000020')])
         self.assertEqual(c.pointeurs_types[('?', '?')], [1, 0, 1])

@@ -106,9 +106,10 @@ def build(objects_fn) -> bytes:
     return bytes(header + sections + cn + data)
 
 
-def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0)) -> bytes:
+def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None) -> bytes:
     """Racine -> conteneur d'animation -> squelette, animation spline (une piste d'annotation par os), liaison
-    (pistes -> hash16 du nom d'os, particularite d'APEX)."""
+    (pistes -> hash16 du nom d'os, particularite d'APEX). poses : par os, (translation, rotation xyzw, echelle) ;
+    par defaut translation (i, 0.5, 0), sans rotation ni echelle."""
     def objects(d: Data):
         objs = []
         # hkRootLevelContainer
@@ -144,7 +145,11 @@ def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0)) -> bytes:
         d.align()
         pose = d.reserve(48 * len(bones))
         for i in range(len(bones)):
-            d.put(pose + 48 * i, '<12f', float(i), 0.5, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0)
+            if poses is None:
+                d.put(pose + 48 * i, '<12f', float(i), 0.5, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0)
+            else:
+                t, r, sc = poses[i]
+                d.put(pose + 48 * i, '<12f', *t, 0, *r, *sc, 0)
         d.array(sk + 56, pose, len(bones))
         d.glob.append((refs, sk))
         objs.append((sk, 'hkaSkeleton'))

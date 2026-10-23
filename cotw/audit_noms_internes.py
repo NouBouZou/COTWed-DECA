@@ -37,6 +37,11 @@ Usage, depuis la racine du depot, environnement virtuel active, DECA ferme :
     python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out ... --echantillon 2000      (essai rapide)
     python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out D:\\dev\\audits\\03-noms-internes ^
         --compare D:\\dev\\audits\\02-noms-internes\\metrics.json     (evolution par categorie)
+
+Reprise (2026-10-23) : la lecture prend une demi-heure. Avant d'ecrire les sorties, l'audit enregistre ce qu'il a lu
+dans <out>\\reprise.pkl (efface quand tout est ecrit). Si l'ecriture echoue, la trace va dans <out>\\erreur.txt et
+les sorties se refont en quelques secondes, sans relire les fichiers :
+    python cotw\\audit_noms_internes.py D:\\dev\\work\\hp --out ... --reprendre ...\\reprise.pkl [--compare ...]
 """
 import argparse
 import collections
@@ -44,9 +49,11 @@ import csv
 import json
 import multiprocessing
 import os
+import pickle
 import random
 import sys
 import time
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -177,6 +184,9 @@ def noter_pointeur(note: str, chemin: str, c: Collecte, vus: set):
     if ('ptr',) + key not in vus:
         vus.add(('ptr',) + key)
         e[2] += 1
+    # exemples : un par fichier, et seulement des pointeurs non nuls (les seuls qui menent quelque part)
+    if valeur and int(valeur, 16) and ('ptrex',) + key not in vus:
+        vus.add(('ptrex',) + key)
         ex = c.pointeurs_exemples.setdefault(key, [])
         if len(ex) < EXEMPLES_MAX:
             ex.append((chemin, valeur))
@@ -605,7 +615,26 @@ def main(argv=None):
                     help='processus de lecture (defaut : 3/4 des coeurs, comme DECA)')
     ap.add_argument('--lot', type=int, default=200, help='fichiers par lot envoye a un processus')
     ap.add_argument('--compare', help='metrics.json d\'un audit precedent : evolution par categorie dans le rapport')
+    ap.add_argument('--reprendre', help='reprise.pkl d\'un audit dont l\'ecriture a echoue : sorties sans relecture')
     args = ap.parse_args(argv)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    try:
+        return _main(args, out)
+    except Exception:
+        (out / 'erreur.txt').write_text(traceback.format_exc(), encoding='utf-8')
+        print(traceback.format_exc())
+        print('ERREUR : trace dans {}'.format(out / 'erreur.txt'))
+        if (out / 'reprise.pkl').exists():
+            print('Sorties sans relire les fichiers : --reprendre {}'.format(out / 'reprise.pkl'))
+        return 1
+
+
+def _main(args, out: Path) -> int:
+    if args.reprendre:
+        total, statut, b, noms, n_select, duree, args.echantillon = lire_reprise(Path(args.reprendre))
+        print('Reprise de {} : {} fichiers lus'.format(args.reprendre, sum(total.fichiers.values())), flush=True)
+        return _sorties(args, out, total, statut, b, noms, n_select, duree, Path(args.reprendre))
 
     types = []
     if 'rtpc' in args.types:
@@ -631,10 +660,37 @@ def main(argv=None):
     statut = resoudre(vfs, total)
     b = bilan(total, statut)
     noms = noms_connus(vfs, total, statut)
-    L = ecrire_sorties(Path(args.out), total, statut, b, time.time() - t0, len(choix), args.echantillon,
+    duree = time.time() - t0
+    reprise = out / 'reprise.pkl'
+    ecrire_reprise(reprise, total, statut, b, noms, len(choix), duree, args.echantillon)
+    return _sorties(args, out, total, statut, b, noms, len(choix), duree, reprise)
+
+
+def ecrire_reprise(chemin: Path, total: Collecte, statut, b, noms, n_select: int, duree: float, echantillon: int):
+    """Ce que l'audit a lu, pour refaire les sorties sans relire (--reprendre). La Collecte est enregistree par ses
+    attributs : le fichier se relit que le script tourne en __main__ ou soit importe."""
+    with open(chemin, 'wb') as f:
+        pickle.dump({'collecte': vars(total), 'statut': statut, 'bilan': b, 'noms': noms, 'selectionnes': n_select,
+                     'duree': duree, 'echantillon': echantillon}, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+def lire_reprise(chemin: Path):
+    with open(chemin, 'rb') as f:
+        d = pickle.load(f)
+    total = Collecte()
+    total.__dict__.update(d['collecte'])
+    return total, d['statut'], d['bilan'], d['noms'], d['selectionnes'], d['duree'], d['echantillon']
+
+
+def _sorties(args, out: Path, total, statut, b, noms, n_select: int, duree: float, reprise: Path) -> int:
+    L = ecrire_sorties(out, total, statut, b, duree, n_select, args.echantillon,
                        ancien=Path(args.compare) if args.compare else None, noms=noms, projet=args.projet)
-    print('\n'.join(L[:L.index('## Enumerations ADF')]))
-    print('\nResultats : {}'.format(Path(args.out)))
+    for fichier in (out / 'erreur.txt', reprise):
+        if fichier.exists() and fichier.resolve().parent == out.resolve():
+            fichier.unlink()
+    texte = '\n'.join(L[:L.index('## Enumerations ADF')]) + '\n\nResultats : {}'.format(out)
+    # la console Windows (cp1252) ne sait pas tout afficher : le rapport complet est dans rapport.md
+    print(texte.encode(sys.stdout.encoding or 'utf-8', errors='replace').decode(sys.stdout.encoding or 'utf-8'))
     return 0
 
 

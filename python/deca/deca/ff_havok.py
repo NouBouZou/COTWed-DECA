@@ -388,6 +388,13 @@ def decode(pf: Packfile, o: HkObject) -> dict:
     return decode_generic(pf, o)
 
 
+def skeletons(data: bytes) -> List[dict]:
+    """Every hkaSkeleton of a packfile (decode_skeleton), in file order. Used by the glTF export (2026-10-23), which
+    needed the external bin2xml tool before."""
+    pf = Packfile(data)
+    return [decode_skeleton(pf, o) for o in pf.objects if o.class_name == 'hkaSkeleton']
+
+
 def is_packfile(data: bytes) -> bool:
     return data[:8] == MAGIC
 

@@ -67,6 +67,11 @@ class Types:
         self.name(name)
         self.specs.append((9, size, size, type_hash, name, 0x48c5294d, None, 0))
 
+    def pointer(self, name, type_hash, target):
+        """Pointeur (metatype 2, 8 octets) vers le type target : DECA lit un u64 et le note sans le suivre."""
+        self.name(name)
+        self.specs.append((2, 8, 8, type_hash, name, target, None, 0))
+
     def enum(self, name, type_hash, members):
         """Enumeration (metatype 8, 4 octets) ; members : (nom, valeur), dans l'ordre du fichier."""
         self.name(name)
