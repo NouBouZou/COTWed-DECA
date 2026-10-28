@@ -158,6 +158,7 @@ def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng, placement: Optional[n
     w = GM._flux(mesh, vertex_buffers, sa_w, '4u1')
     if pos is None or idx is None or w is None:
         return None
+    brut = pos
     if placement is not None:
         pos = pos @ placement[0:3, 0:3].T + placement[0:3, 3]
     w = w.astype(np.float64)
@@ -203,7 +204,7 @@ def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng, placement: Optional[n
     rang_h = np.sum(d < d_has[:, None], axis=1)
     # hypothese 'repere de l'os' : le sommet serait donne dans le repere de son os dominant (piece rapportee)
     m = sq.mondes[dom]
-    v_loc = np.einsum('nij,nj->ni', m[:, 0:3, 0:3], pos[choix]) + m[:, 0:3, 3]
+    v_loc = np.einsum('nij,nj->ni', m[:, 0:3, 0:3], brut[choix]) + m[:, 0:3, 3]     # sommets du fichier, non places
     d_loc = sq.distances(v_loc)
     rang_l = np.sum(d_loc < d_loc[np.arange(len(choix)), dom][:, None], axis=1)
     out.update(tires=int(len(choix)), rang=int(np.sum(rang < RANG)), temoin=int(np.sum(rang_h < RANG)),
@@ -242,7 +243,7 @@ class Resultat:
     COLONNES = ['modele', 'squelette', 'attache', 'statut', 'detail', 'sources', 'classes', 'exemple', 'os',
                 'maillages_os',
                 'table_max', 'sommets', 'hors_squelette', 'rang5', 'rang5_temoin', 'distance', 'rang5_repere_os',
-                'pivot', 'pivot_temoin', 'os_dominants', 'principaux']
+                'pivot', 'pivot_temoin', 'os_dominants', 'principaux', 'rang5_attache', 'rang5_attache_temoin']
 
     def __init__(self, modele: bytes, squelette: bytes, attache: bytes = b'', local: tuple = ()):
         self.cle = (modele, squelette, attache, local)
@@ -262,6 +263,8 @@ class Resultat:
         self.pivot_temoin: Optional[float] = None
         self.os_dominants = 0
         self.principaux = ''
+        self.rang5_attache: Optional[float] = None
+        self.rang5_attache_temoin: Optional[float] = None
 
     def ligne(self):
         def f(v):
@@ -321,6 +324,27 @@ def groupe_complet(header, buffers):
                and all(i < len(buffers.vertexBuffers) for i in m.vertexBufferIndices) for m in lg.meshes):
             return lg
     return None
+
+
+def mesurer_attache(mesh, vertex_buffers, sq: Squelette, placement: np.ndarray, os_attache: int, rng
+                    ) -> Optional[Tuple[int, int, int]]:
+    """Piece rapportee (avec ou sans flux d'os) : sommets places (monde de l'os d'attache fois matrice locale), puis
+    (tires, os d'attache parmi les RANG os les plus proches, idem pour un os au hasard). C'est l'os d'attache qui
+    compte : l'export pose la piece rigide sur lui, et l'os de la peau du maillage n'est qu'un modele (une meme
+    cartouche, peinte sur bullet_01, pend a bullet_02... bullet_05). None sans positions."""
+    import geometrie_maillages as GM
+    pos = GM.positions(mesh, vertex_buffers)
+    if pos is None or not len(pos) or not len(sq):
+        return None
+    pos = pos @ placement[0:3, 0:3].T + placement[0:3, 3]
+    choix = np.arange(len(pos))
+    if len(choix) > SOMMETS_PAR_MAILLAGE:
+        choix = np.sort(rng.choice(choix, SOMMETS_PAR_MAILLAGE, replace=False))
+    d = sq.distances(pos[choix])
+    rang = np.sum(d < d[:, os_attache][:, None], axis=1)
+    hasard = rng.integers(0, len(sq), size=len(choix))
+    rang_h = np.sum(d < d[np.arange(len(choix)), hasard][:, None], axis=1)
+    return len(choix), int(np.sum(rang < RANG)), int(np.sum(rang_h < RANG))
 
 
 def placement_attache(sq: Squelette, attache: bytes, local: tuple) -> np.ndarray:
@@ -383,10 +407,23 @@ def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes, attache: bytes 
             groupes.update(res['groupes'])
             pivot += res['pivot']
             pivot_t += res['pivot_temoin']
+        if placement is not None:
+            a_tires = a_rang = a_temoin = 0
+            os_attache = sq.noms.index(_txt(attache))
+            for m in lg.meshes:
+                res_a = mesurer_attache(m, buffers.vertexBuffers, sq, placement, os_attache, rng)
+                if res_a is not None:
+                    a_tires += res_a[0]
+                    a_rang += res_a[1]
+                    a_temoin += res_a[2]
+            if a_tires:
+                r.rang5_attache, r.rang5_attache_temoin = a_rang / a_tires, a_temoin / a_tires
         if details:
             ecrire_details(Path(details), r, sq, model.mesh, [detail_maillage(m, buffers.vertexBuffers)
                                                               for m in lg.meshes])
         if not r.maillages_os:
+            if r.rang5_attache is not None:
+                return r        # piece rapportee sans flux d'os (hausse, munition) : mesuree par son os d'attache
             raise Statut('sans_os', _txt(model.mesh))
         r.hors_squelette = hors / r.sommets if r.sommets else 0.0
         if tires:
@@ -490,11 +527,14 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
           'taille du squelette. Os hors squelette : part des sommets dont l\'os depasse le squelette (0 '
           'attendu). rang5_repere_os : rang5 si les sommets etaient donnes dans le repere de leur os dominant. '
           'Pivot (pieces rigides, armes) : part des sommets dont la piece (sommets d\'un meme os dominant) contient '
-          'l\'articulation de son os, a 5 % de la taille du squelette pres ; temoin : un os au hasard.'.format(RANG),
+          'l\'articulation de son os, a 5 % de la taille du squelette pres ; temoin : un os au hasard. '
+          'rang5_attache (pieces rapportees, avec ou sans os) : part des sommets places dont l\'os d\'attache est '
+          'parmi les {} os les plus proches ; temoin : un os au hasard.'.format(RANG, RANG),
           '',
           '| Mesure | Couples | Q1 | Mediane | Q3 | Part >= 0,8 (distance : <= 0,1 ; hors : = 0) |',
           '|---|---:|---:|---:|---:|---:|']
-    for k in ('rang5', 'rang5_temoin', 'rang5_repere_os', 'pivot', 'pivot_temoin', 'distance', 'hors_squelette'):
+    for k in ('rang5', 'rang5_temoin', 'rang5_repere_os', 'pivot', 'pivot_temoin', 'distance', 'hors_squelette',
+              'rang5_attache', 'rang5_attache_temoin'):
         v = np.array([getattr(r, k) for r in resultats if getattr(r, k) is not None], dtype=np.float64)
         if not len(v):
             continue
@@ -526,6 +566,21 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
             L.append('| `{}` | `{}` | {} | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {} |'.format(
                 r.modele, r.squelette, r.attache, r.os, r.rang5, r.rang5_temoin, r.rang5_repere_os, r.pivot,
                 r.principaux))
+    rapportees = [r for r in resultats if r.rang5_attache is not None]
+    if rapportees:
+        L += ['', '## Pieces rapportees, mesurees sur leur os d\'attache', '',
+              '| Pieces | Couples | rang5_attache | temoin | Part >= 0,8 |', '|---|---:|---:|---:|---:|']
+        for nom, rs in (('avec flux d\'os', [r for r in rapportees if r.maillages_os]),
+                        ('sans flux d\'os', [r for r in rapportees if not r.maillages_os]), ('toutes', rapportees)):
+            if rs:
+                v = np.array([r.rang5_attache for r in rs])
+                L.append('| {} | {} | {:.3f} | {:.3f} | {:.1f} % |'.format(
+                    nom, len(rs), float(np.median(v)), float(np.median([r.rang5_attache_temoin for r in rs])),
+                    100.0 * float(np.mean(v >= 0.8))))
+        L += ['', '| Modele | Squelette | Attache | Os de la peau | rang5_attache | temoin |', '|---|---|---|---|---:|---:|']
+        for r in sorted(rapportees, key=lambda r: r.rang5_attache)[:15]:
+            L.append('| `{}` | `{}` | {} | {} | {:.3f} | {:.3f} |'.format(
+                r.modele, r.squelette, r.attache, r.principaux or '-', r.rang5_attache, r.rang5_attache_temoin))
     autres = [r for r in resultats if r.statut not in ('ok',)]
     if autres:
         L += ['', '## Exemples par statut', '']

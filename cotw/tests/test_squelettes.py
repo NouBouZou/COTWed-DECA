@@ -211,6 +211,22 @@ class TestPeau(unittest.TestCase):
         self.assertEqual(brut['pivot'], 0)
         self.assertEqual((place['rang'], place['pivot']), (20, 20))
 
+    def test_attachment_measured_on_its_attach_bone(self):
+        """Une meme piece (peinte sur l'os 7) pend a l'os 1 : mesuree sur l'os d'attache, avec ou sans flux d'os."""
+        locaux = [(x - i - (0.5 if i < 11 else 0.0), y, z) for (x, y, z), i in zip(self.points, self.os) if i == 7]
+        local = (1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0, 0.5, 0, 0, 1.0)
+        m, vb = maillage_a_os(locaux, [7] * len(locaux), list(range(12)))
+        place = AS.placement_attache(self.sq, b'b1', local)
+        tires, rang, temoin = AS.mesurer_attache(m, vb, self.sq, place, 1, np.random.default_rng(1))
+        self.assertEqual((tires, rang), (20, 20))
+        self.assertLess(temoin, 20)
+        self.assertEqual(AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1), place)['rang'], 0)   # os 7
+        # sans flux d'os (hausse, munition) : positions seules
+        sans = maillage(len(locaux), [attr(b'AmfUsage_Position', b'AmfFormat_R32G32B32_FLOAT', 0, 12)], [12],
+                        [0, 1, 2])
+        vb2 = [types.SimpleNamespace(data=b''.join(struct.pack('<3f', *p) for p in locaux))]
+        self.assertEqual(AS.mesurer_attache(sans, vb2, self.sq, place, 1, np.random.default_rng(1))[:2], (20, 20))
+
     def test_details(self):
         import json
         m, vb = maillage_a_os(self.points, self.os, list(range(12)))
