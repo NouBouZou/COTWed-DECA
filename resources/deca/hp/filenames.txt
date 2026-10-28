@@ -92210,3 +92210,5 @@ worlds/world5/locations/hp_nh/z00/mission_locations/sm14180.nl
 worlds/world5/locations/hp_nh/z00/mission_locations/sm14180.fmod_guids
 worlds/world5/locations/hp_nh/z00/mission_locations/sm14180.stringlookup
 worlds/world5/locations/hp_nh/z00/mission_locations/sm14180.blo
+textures/reticles/reticle_circle_m.ddsc
+textures/reticles/reticle_dot_m.ddsc

@@ -8208,3 +8208,20 @@
 0xffef5f2d	32	ow_landmark_salvador_010.done	evenements_fichiers	0.6	rtpc_event|1 ; worlds/world4/global/global.blo
 0xfff16b5f	32	mm2230_doc_m_xx_20.play	evenements_fichiers	1.7	rtpc_event|2-9 ; worlds/base/locations/pacific_northwest/z00/mission_locations/mm2230.blo
 0xfffe785e	32	alberta_mm19140_dia130_010.done	evenements_fichiers	0.6	rtpc_event|1 ; worlds/world6/locations/hp_alberta/z00/mission_locations/mm19140_2.blo
+# 2026-10-28 : capture a l'execution (hash32 du jeu crochete, cotw/dictionnaires/capture_jeu.txt) ; evenements des couches sonores globales, proprietes des reserve_#.bin
+0x74dad31a	32	world_item_hashes_0	capture	0.015	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0xfbdf9362	32	world_item_hashes_1	capture	0.015	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0xfba5e23d	32	world_item_hashes_2	capture	0.015	rtpc_propriete|100-999 ; settings/hp_settings/reserve_0.bin
+0x1b9fe412	32	world_item_hashes_4	capture	0.015	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xd0e3205c	32	world_item_hashes_3	capture	0.015	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x9f22516c	32	animal_spawn_event_0	capture	0.015	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0xcb62f61f	32	world_item_hashes_5	capture	0.015	rtpc_propriete|10-99 ; settings/hp_settings/reserve_0.bin
+0x7ec8b4f4	32	animal_spawn_event_1	capture	0.015	rtpc_propriete|1 ; settings/hp_settings/reserve_1.bin
+0xfa781d46	32	sfx_ui_mission_complete	capture	0.42	rtpc_event|10-99 ; worlds/world4/locations/hp_trophyworld_3/global_sound_layers_trophyworld_3.blo
+0x1706fea0	32	exit_to_main	capture	0.42	rtpc_event|10-99 ; worlds/world6/locations/hp_nepal/towers/lookout_nepal_07.blo
+0x00e893a2	32	sfx_ui_wheel_select_weapon	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
+0x1578ad67	32	sfx_ui_objective_complete	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
+0xac64e4b7	32	sfx_ui_wheel_hover_weapon	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
+0xc84cd0e0	32	sfx_ui_hover	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
+0xde8700ce	32	sfx_ui_wheel_activate	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
+0xe13cb474	32	sfx_ui_selection_positive	capture	0.42	rtpc_event|1 ; global/global_sound_layers.blo
