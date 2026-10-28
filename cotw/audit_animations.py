@@ -32,14 +32,17 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _projet  # noqa: E402
 
-SEUIL_ROTATION = 1e-3        # radians : au-dela, la continuite entre blocs est jugee rompue
+# Au-dela, la continuite entre blocs est jugee rompue. 21-animations : sans THREECOMP40, ecart maximal 4,9e-6 rad ;
+# avec, 4,9e-3 rad et 2 mm en translation (memes animations) : tolerance de l'ajustement des splines a la compression,
+# pas une erreur de lecture.
+SEUIL_ROTATION = 1e-2        # radians
 SEUIL_TRANSLATION = 1e-2     # unites du jeu (metres)
 
 
 class Resultat:
     COLONNES = ['fichier', 'index', 'statut', 'detail', 'classe', 'images', 'pistes', 'pistes_flottantes', 'blocs',
                 'duree', 'fins_justes', 'ecart_rotation', 'ecart_translation', 'ecart_echelle', 'norme_quaternions',
-                'quantifications', 'liaison']
+                'quaternions_compactes', 'compactes_coherents', 'masques_flottants', 'quantifications', 'liaison']
 
     def __init__(self, fichier: str, index: int):
         self.fichier, self.index = fichier, index
@@ -51,6 +54,9 @@ class Resultat:
         self.ecart_translation: Optional[float] = None
         self.ecart_echelle: Optional[float] = None
         self.norme_quaternions: Optional[float] = None
+        self.quaternions_compactes = 0
+        self.compactes_coherents = 0
+        self.masques_flottants = ''
         self.quantifications = collections.Counter()
         self.liaison = ''
 
@@ -97,6 +103,8 @@ def auditer_fichier(data: bytes, chemin: str) -> List[Resultat]:
             r.ecart_translation = d['continuity']['translation']
             r.ecart_echelle = d['continuity']['scale']
             r.norme_quaternions = d['quaternion_norm_error']
+            r.quaternions_compactes, r.compactes_coherents = d['packed_quaternions']
+            r.masques_flottants = ' '.join('{:02x}:{}'.format(m, n) for m, n in sorted(d['float_masks'].items()))
             if not all(fins):
                 r.statut = 'fin_de_bloc_fausse'
             elif r.ecart_rotation > SEUIL_ROTATION or r.ecart_translation > SEUIL_TRANSLATION:
@@ -161,7 +169,9 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
          '- **Animations a splines decodees sans defaut : {} / {}** ({:.1f} %)'.format(
              len(ok), len(anims), 100.0 * len(ok) / max(1, len(anims))),
          '- Images : {} ; pistes x images : {}'.format(sum(r.images for r in anims),
-                                                      sum(r.images * r.pistes for r in anims)), '',
+                                                      sum(r.images * r.pistes for r in anims)),
+         '- Dont {} avec des pistes de flottants : pistes d\'os decodees, pistes de flottants ignorees (disposition '
+         'a etablir)'.format(sum(1 for r in ok if r.pistes_flottantes)), '',
          '| Statut | Animations ou fichiers |', '|---|---:|']
     L += ['| {} | {} |'.format(s, n) for s, n in statuts.most_common()]
     quant = collections.Counter()
@@ -174,14 +184,30 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
         L.append('| {} | {} | {} | {} |'.format({0: '8 bits', 1: '16 bits'}.get(a, a), noms_r.get(b, b),
                                                {0: '8 bits', 1: '16 bits'}.get(c, c), n))
     L += ['', '## Continuite entre blocs (animations a plusieurs blocs)', '',
-          '| Ecart | Animations | Mediane | 99e centile | Maximum |', '|---|---:|---:|---:|---:|']
-    for k, nom in (('ecart_rotation', 'rotation (rad)'), ('ecart_translation', 'translation'),
-                   ('ecart_echelle', 'echelle'), ('norme_quaternions', 'ecart de norme des quaternions stockes (toutes)')):
-        v = np.array([getattr(r, k) for r in anims if getattr(r, k) is not None
-                      and (r.blocs > 1 or k == 'norme_quaternions')])
-        if len(v):
-            L.append('| {} | {} | {:.3g} | {:.3g} | {:.3g} |'.format(nom, len(v), float(np.median(v)),
-                                                                    float(np.percentile(v, 99)), float(v.max())))
+          '| Animations | Ecart | Nombre | Mediane | 99e centile | Maximum |', '|---|---|---:|---:|---:|---:|']
+    for groupe, sel in (('sans THREECOMP40', [r for r in anims if not r.quaternions_compactes]),
+                        ('avec THREECOMP40', [r for r in anims if r.quaternions_compactes])):
+        for k, nom in (('ecart_rotation', 'rotation (rad)'), ('ecart_translation', 'translation'),
+                       ('ecart_echelle', 'echelle'),
+                       ('norme_quaternions', 'norme des quaternions stockes - 1 (toutes)')):
+            v = np.array([getattr(r, k) for r in sel if getattr(r, k) is not None
+                          and (r.blocs > 1 or k == 'norme_quaternions')])
+            if len(v):
+                L.append('| {} | {} | {} | {:.3g} | {:.3g} | {:.3g} |'.format(
+                    groupe, nom, len(v), float(np.median(v)), float(np.percentile(v, 99)), float(v.max())))
+    lus = sum(r.quaternions_compactes for r in anims)
+    if lus:
+        coh = sum(r.compactes_coherents for r in anims)
+        L += ['', '- Quaternions compactes (THREECOMP40 / 48) : {} lus, {:.2f} % avec la composante reconstruite la '
+              'plus grande (100 % attendu si le decodage est juste)'.format(lus, 100.0 * coh / lus)]
+    masques = collections.Counter()
+    for r in anims:
+        for m in r.masques_flottants.split():
+            k, n = m.split(':')
+            masques[k] += int(n)
+    if masques:
+        L += ['- Masques des pistes de flottants (octet : pistes x blocs) : {}'.format(
+            ' '.join('{}:{}'.format(k, n) for k, n in masques.most_common(12)))]
     pistes_f = sum(1 for r in anims if r.pistes_flottantes)
     L += ['', '- Animations a pistes de flottants : {}'.format(pistes_f),
           '- Liaisons : {}'.format(dict(collections.Counter(r.liaison or '(aucune)' for r in anims)))]

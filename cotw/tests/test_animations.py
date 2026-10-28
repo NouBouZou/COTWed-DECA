@@ -73,7 +73,7 @@ class TestQuaternions(unittest.TestCase):
             A.read_quaternion(b'\0' * 8, 0, 0)          # POLAR32 : pas encore vu dans COTW
 
 
-def animation_bytes():
+def animation_bytes(floats: int = 0):
     """3 os, 7 images, blocs de 4 images (le bloc 1 commence a l'image 3, partagee).
     Root : position statique (x, z), rotation statique non compressee ; Spine : position et rotation sur des splines
     lineaires ; Tip : rotation statique THREECOMP48, sans position."""
@@ -85,7 +85,8 @@ def animation_bytes():
                 {'position': ('spline', 1, k, pos), 'rotation': ('spline', 1, k, quats, 5)},
                 {'rotation': ('static', norm((0.1, 0.2, 0.3, 0.9)), 2)}]
     return HF.skeleton_and_animation(bones=('Root', 'Spine', 'Tip'), parents=(-1, 0, 1),
-                                     spline={'frames': 7, 'per_block': 4, 'blocks': [bloc(0), bloc(3)]})
+                                     spline={'frames': 7, 'per_block': 4, 'blocks': [bloc(0), bloc(3)],
+                                             'floats': floats})
 
 
 class TestDecode(unittest.TestCase):
@@ -117,6 +118,18 @@ class TestDecode(unittest.TestCase):
         # image 3 partagee par les deux blocs
         self.assertLess(d['continuity']['rotation'], 1e-6)
         self.assertLess(d['continuity']['translation'], 1e-3)
+
+    def test_float_tracks_are_skipped(self):
+        """Masques : 4 x 3 + 3 octets, donnees d'os a partir de 16 ; les pistes de flottants suivent, non lues."""
+        pf = H.Packfile(animation_bytes(floats=3))
+        (o, _b), = A.animations_of(pf)
+        d = A.decode(pf, o)
+        self.assertEqual(d['float_tracks'], 3)
+        self.assertEqual(dict(d['float_masks']), {0xf0: 6})
+        self.assertTrue(all(b['end_ok'] for b in d['blocks']))
+        np.testing.assert_allclose(d['translations'], self.d['translations'])
+        np.testing.assert_allclose(d['rotations'], self.d['rotations'])
+        self.assertEqual(d['packed_quaternions'], (2, 2))      # THREECOMP48 de Tip, un par bloc
 
     def test_bones_by_binding(self):
         self.assertEqual(A.track_bones(self.d, self.binding, ['Tip', 'Root', 'Spine']), [1, 2, 0])

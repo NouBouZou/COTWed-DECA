@@ -133,7 +133,7 @@ def quat_threecomp48(q) -> bytes:
     return struct.pack('<3H', x, y, z)
 
 
-def encode_block(tracks) -> bytes:
+def encode_block(tracks, n_floats: int = 0) -> bytes:
     """Bloc de hkaSplineCompressedAnimation (disposition : deca/ff_havok_anim.py). tracks : liste de dicts
     position : None | ('static', {axe: valeur}) | ('spline', degre, noeuds, points (n + 1) x 3, toutes les composantes) ;
     rotation : None | ('static', q, quantification) | ('spline', degre, noeuds, quaternions, quantification) ;
@@ -145,7 +145,8 @@ def encode_block(tracks) -> bytes:
         while (len(masks_size_hint) + len(body)) % n:
             body.append(0)
 
-    masks_size_hint = b'\0' * (4 * len(tracks))
+    # masques des pistes d'os, un octet par piste de flottants, puis les donnees a partir d'un multiple de 4
+    masks_size_hint = b'\0' * (4 * len(tracks) + n_floats + (-(4 * len(tracks) + n_floats)) % 4)
 
     def quat(q, quant):
         if quant == 5:
@@ -188,6 +189,8 @@ def encode_block(tracks) -> bytes:
                 body += quat(q, quant)
             align(4)
         masks += bytes([1 | (quant << 2) | (1 << 6), pt, rt, 0])
+    masks += b'\xf0' * n_floats
+    masks += b'\0' * ((-len(masks)) % 4)
     return bytes(masks) + bytes(body)
 
 
@@ -244,18 +247,20 @@ def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None,
         d.put(an + 16, '<IfII', 3, 1.5, len(bones), 0)
         d.put(an + 56, '<4I3f', 46, 1, 256, 4, 1.5, 1 / 1.5, 1 / 30)
         if spline is not None:
-            blocs = [encode_block(b) for b in spline['blocks']]
+            n_floats = spline.get('floats', 0)
+            blocs = [encode_block(b, n_floats) for b in spline['blocks']]
             per = spline['per_block']
             d.put(an + 20, '<f', (spline['frames'] - 1) / 30)
-            d.put(an + 56, '<4I3f', spline['frames'], len(blocs), per, 4 * len(bones), (per - 1) / 30, 30 / (per - 1),
-                  1 / 30)
+            d.put(an + 28, '<I', n_floats)
+            d.put(an + 56, '<4I3f', spline['frames'], len(blocs), per, 4 * len(bones) + n_floats, (per - 1) / 30,
+                  30 / (per - 1), 1 / 30)
             d.align()
             data = d.here()
             debuts, fins = [], []
             for blk in blocs:
                 debuts.append(d.here() - data)
                 fins.append(len(blk))
-                d.buf += blk
+                d.buf += blk + b'\x5a' * (8 * n_floats)       # donnees des pistes de flottants (non lues)
                 d.align()
             taille = d.here() - data
             d.array(an + 152, data, taille)
