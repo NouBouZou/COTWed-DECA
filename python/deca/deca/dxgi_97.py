@@ -1,5 +1,6 @@
 from numba import njit
 import numpy as np
+from .fast_file import raise_error
 
 """
     reference:
@@ -264,8 +265,12 @@ def process_image_97(image, buffer, n_buffer, nx, ny):
     indexes_secondary = [0] * 16
 
     pos = 0
-    bnx = max(1, nx // 4)
-    bny = max(1, ny // 4)
+    # COTWed DECA : ceil(nx / 4) blocs par ligne (defaut D3 : nx // 4 decalait les lignes d'un niveau de largeur non
+    # multiple de 4) ; les pixels hors de l'image ne sont pas ecrits.
+    bnx = max(1, (nx + 3) // 4)
+    bny = max(1, (ny + 3) // 4)
+    if n_buffer < 16 * bnx * bny:
+        raise_error()
     for yi in range(bny):
         for xi in range(bnx):
             # print(' '.join(['{}'.format(v) for v in buffer[pos:pos+16]]))
@@ -417,10 +422,11 @@ def process_image_97(image, buffer, n_buffer, nx, ny):
                     elif rotation == 3:
                         a, b = b, a
 
-                    image[oy + syi, ox + sxi, 0] = r
-                    image[oy + syi, ox + sxi, 1] = g
-                    image[oy + syi, ox + sxi, 2] = b
-                    image[oy + syi, ox + sxi, 3] = a
+                    if oy + syi < image.shape[0] and ox + sxi < image.shape[1]:
+                        image[oy + syi, ox + sxi, 0] = r
+                        image[oy + syi, ox + sxi, 1] = g
+                        image[oy + syi, ox + sxi, 2] = b
+                        image[oy + syi, ox + sxi, 3] = a
 
                     texel_idx += 1
 

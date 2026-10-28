@@ -21,18 +21,17 @@ principal des pixels du bloc ponderes par leur alpha, puis affinees par moindres
 couleur0 > couleur1, pour que les decodeurs qui traitent le bloc couleur comme du BC1 (deca.dxgi) lisent la meme
 chose que le jeu. Mesure : 8 dB de mieux que l'encodeur DXT5 de Pillow 12.2 sur les memes images.
 Controle du fichier produit, en deux lectures :
-  - decodage de reference (decoder_bc3, ce module, regles de Direct3D : 565 etendu par recopie des bits de poids
-    fort, 4 couleurs toujours, arrondis) : chaque niveau compare a l'image voulue, PSNR sur les couleurs des pixels
+  - decodage de reference (decoder_bc3, ce module, regles de Direct3D : extremites 565 en UNORM r / 31, g / 63,
+    interpolees puis arrondies, 4 couleurs toujours) : chaque niveau compare a l'image voulue, PSNR sur les couleurs des pixels
     d'alpha >= 128 et sur l'alpha ; 33 dB au moins pour le niveau 0 (s'il a au moins 128 px de haut, comme les
     icones du jeu), 24 dB pour les niveaux reduits jusqu'a 20x10 ;
     les niveaux plus petits (quelques pixels) ne sont pas notes ;
-  - lecture par deca.ff_avtx (meme forme que le modele, decodeur independant) : elle doit concorder avec la
-    reference, a l'approximation de deca.dxgi pres (565 etendu par simple decalage, r << 3 : 255 lu 248, et
-    divisions tronquees) : 8 d'ecart au plus en couleur, 1 en alpha. Une erreur de disposition des bits ou des
-    blocs donnerait bien plus.
+  - lecture par deca.ff_avtx (meme forme que le modele, decodeur independant, deca/dxgi_bc.py) : elle doit egaler
+    la reference, pixel pour pixel. Avant le 2026-10-28, deca.dxgi etendait le 565 par decalage (255 lu 248) et
+    tronquait ses divisions : 8 d'ecart etaient admis.
 Mesure sur les 6 icones relevees, reencodees depuis leur propre niveau 0 : niveau 0 a 45 a 49 dB, niveaux reduits
 29 a 33 dB (les niveaux du jeu eux-memes, compares a une reduction de leur niveau 0 : 27 a 31 dB). Le decodage de
-reference concorde avec deca.dxgi sur les icones du jeu (ecart maximal 7 en couleur, 1 en alpha).
+reference concordait avec l'ancien deca.dxgi sur les icones du jeu (ecart maximal 7 en couleur, 1 en alpha).
 
 Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\icone.py lire D:\\dev\\audits\\icones\\textures\\ui\\items\\ammo\\equipment_ammo_243_sp_01_alpha.ddsc --png sp.png
@@ -55,8 +54,8 @@ PSNR_MIN = 33.0          # niveau 0 : en dessous, compression jugee mauvaise (ic
 COTE_MIN_NIVEAU_0 = 128  # ... s'il mesure au moins 128 px de haut ; plus petit, il est aussi dense qu'un niveau reduit
 PSNR_MIN_NIVEAUX = 24.0  # niveaux reduits : plus de detail par bloc, donc plus d'ecart (le jeu lui-meme : 27 a 31 dB)
 COTE_MIN_CONTROLE = 8    # niveaux dont le petit cote est plus court : non notes (10x5 et moins)
-ECART_DECA_COULEUR = 8   # deca.dxgi etend le 565 par decalage (jusqu'a 7 de moins) et tronque ses divisions
-ECART_DECA_ALPHA = 1     # deca.dxgi tronque les divisions de l'alpha
+ECART_DECA_COULEUR = 0   # deca.dxgi (dxgi_bc) suit les memes regles depuis le 2026-10-28 (avant : 8, defauts D1 et D4)
+ECART_DECA_ALPHA = 0
 
 
 class EIcone(Exception):
@@ -194,10 +193,12 @@ def _565(c: np.ndarray) -> np.ndarray:
 
 
 def _565_rgb(v: np.ndarray) -> np.ndarray:
+    """Extremite 565 -> RGB dans [0, 255], en flottant : UNORM 5 / 6 bits (r / 31, g / 63), comme Direct3D et DirectXTex ;
+    l'arrondi vient apres l'interpolation."""
     r = (v >> 11) & 31
     g = (v >> 5) & 63
     b = v & 31
-    return np.stack([(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)], axis=-1).astype(np.float32)
+    return np.stack([r * (255.0 / 31), g * (255.0 / 63), b * (255.0 / 31)], axis=-1).astype(np.float64)
 
 
 def _alpha_bloc(a: np.ndarray) -> np.ndarray:
@@ -377,9 +378,7 @@ def controler(data: bytes, modele: bytes, attendu: List[np.ndarray]) -> List[str
         h, w = want.shape[:2]
         if min(h, w) < COTE_MIN_CONTROLE:
             continue                                    # 1 a 3 blocs : quelques pixels, PSNR sans signification
-        # deca.dxgi ne decode que les blocs entiers (largeur // 4) : concordance sur la zone qu'il decode
-        hh, ww = (h // 4) * 4, (w // 4) * 4
-        diff = np.abs(got[:hh, :ww].astype(np.int16) - ref[:hh, :ww].astype(np.int16))
+        diff = np.abs(got[:h, :w].astype(np.int16) - ref[:h, :w].astype(np.int16))
         if diff[..., :3].max() > ECART_DECA_COULEUR or diff[..., 3].max() > ECART_DECA_ALPHA:
             raise EIcone('controle : niveau {} ({}x{}) lu autrement par DECA (ecart {} en couleur, {} en alpha) : '
                          'erreur d\'encodage'.format(k, w, h, diff[..., :3].max(), diff[..., 3].max()))

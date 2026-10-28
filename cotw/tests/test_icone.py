@@ -124,13 +124,14 @@ class TestEncoder(unittest.TestCase):
             self.assertTrue(c0 > c1 or (c0 == c1 and idx == 0), (c0, c1, idx))
 
     def test_deca_reads_like_the_reference(self):
-        """deca.dxgi etend le 565 par decalage (255 lu 248) : a cela pres, meme image que le decodage de reference."""
+        """deca.dxgi (dxgi_bc, depuis le 2026-10-28) : meme image que le decodage de reference, tous niveaux ; le blanc
+        est lu 255 (l'ancien decodeur, qui etendait le 565 par decalage, le lisait 248)."""
         rgba = np.zeros((4, 4, 4), dtype=np.uint8)
         rgba[...] = (255, 255, 255, 255)
-        self.assertEqual(I.lire(I.ddsc_bc3(rgba, 1))[0][0, 0].tolist(), [248, 252, 248, 255])
+        self.assertEqual(I.lire(I.ddsc_bc3(rgba, 1))[0][0, 0].tolist(), [255, 255, 255, 255])
         rgba = T.cartouches(128, 64)
         data = I.ddsc_bc3(rgba, 7)
-        for ref, deca in list(zip(I.decoder(data), I.lire(data)))[:4]:
+        for ref, deca in zip(I.decoder(data), I.lire(data)):
             diff = np.abs(ref.astype(int) - deca.astype(int))
             self.assertLessEqual(diff[..., :3].max(), I.ECART_DECA_COULEUR)
             self.assertLessEqual(diff[..., 3].max(), I.ECART_DECA_ALPHA)

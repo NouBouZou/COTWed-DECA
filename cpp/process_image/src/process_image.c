@@ -1,4 +1,14 @@
 // gcc -fPIC -shared -O3 process_image.c -o process_image.so
+//
+// Version C (facultative) de deca.dxgi.process_image : DECA l'utilise si process_image.dll / .so est trouve, sinon
+// les decodeurs Python (numba). Les formats non traites ici rendent -1 et DECA retombe sur Python.
+//
+// COTWed DECA (2026-10-28) : BC1 a BC5 refaits pour donner exactement les memes pixels que deca/dxgi_bc.py (regles
+// de Direct3D ; voir ce module) : extremites 565 en UNORM (r / 31, g / 63) interpolees puis arrondies (defauts D1
+// et D4), 4 couleurs toujours en BC2 / BC3 (D2), ceil(nx / 4) blocs par ligne et pixels hors image non ecrits (D3),
+// alpha 4 bits du BC2 x 17. Largeur d'une ligne de l'image : max(4, nx) pixels (ff_avtx.load_mip alloue au moins
+// 4 x 4) ; avant, les formats non compresses ecrivaient avec un pas de nx, faux pour un niveau de moins de 4 pixels.
+// Donnee trop courte : -3 (rien n'est ecrit).
 
 #ifdef __cplusplus
 extern "C" {
@@ -15,6 +25,132 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long long u64;
 
+static u32 rd16(u8 const * p) { return (u32)p[0] | ((u32)p[1] << 8); }
+static u32 rd32(u8 const * p) { return rd16(p) | (rd16(p + 2) << 16); }
+static u64 rd48(u8 const * p) { return (u64)rd32(p) | ((u64)rd16(p + 4) << 32); }
+
+// round(num * 255 / den), demie arrondie vers le haut
+static u8 unorm8(u32 num, u32 den) { return (u8)((510u * num + den) / (2u * den)); }
+
+// palette RGBA (4 x 4) d'un bloc couleur ; always_four : BC2 et BC3
+static void color_palette(u32 c0, u32 c1, int always_four, u8 * colors)
+{
+    int four = always_four || c0 > c1;
+    for(u32 i = 0; i < 3; ++i)
+    {
+        u32 a, b, m;
+        if(i == 0) { a = (c0 >> 11) & 0x1F; b = (c1 >> 11) & 0x1F; m = 31; }
+        else if(i == 1) { a = (c0 >> 5) & 0x3F; b = (c1 >> 5) & 0x3F; m = 63; }
+        else { a = c0 & 0x1F; b = c1 & 0x1F; m = 31; }
+        colors[0*4 + i] = unorm8(a, m);
+        colors[1*4 + i] = unorm8(b, m);
+        if(four)
+        {
+            colors[2*4 + i] = unorm8(2 * a + b, 3 * m);
+            colors[3*4 + i] = unorm8(a + 2 * b, 3 * m);
+        }
+        else
+        {
+            colors[2*4 + i] = unorm8(a + b, 2 * m);
+            colors[3*4 + i] = 0;
+        }
+    }
+    colors[0*4 + 3] = 255;
+    colors[1*4 + 3] = 255;
+    colors[2*4 + 3] = 255;
+    colors[3*4 + 3] = four ? 255 : 0;
+}
+
+// palette (8) d'un bloc alpha / BC4 UNORM
+static void alpha_palette(u32 a0, u32 a1, u8 * pal)
+{
+    pal[0] = (u8)a0;
+    pal[1] = (u8)a1;
+    if(a0 > a1)
+    {
+        for(u32 k = 1; k < 7; ++k)
+            pal[1 + k] = (u8)(((7 - k) * a0 + k * a1 + 3) / 7);
+    }
+    else
+    {
+        for(u32 k = 1; k < 5; ++k)
+            pal[1 + k] = (u8)(((5 - k) * a0 + k * a1 + 2) / 5);
+        pal[6] = 0;
+        pal[7] = 255;
+    }
+}
+
+static void put(u8 * img, u32 w, u32 h, u32 x, u32 y, u32 c, u8 v)
+{
+    if(x < w && y < h)
+        img[(y * w + x) * 4 + c] = v;
+}
+
+// BC1 (kind 1), BC2 (2), BC3 (3), BC4 UNORM (4), BC5 UNORM (5)
+static int decode_bc(u8 * img, u8 const * src, u32 src_sz, u32 nx, u32 ny, int kind)
+{
+    u32 w = nx < 4 ? 4 : nx;
+    u32 h = ny < 4 ? 4 : ny;
+    u32 bnx = (nx + 3) / 4; if(bnx == 0) bnx = 1;
+    u32 bny = (ny + 3) / 4; if(bny == 0) bny = 1;
+    u32 bs = (kind == 1 || kind == 4) ? 8 : 16;
+    if((u64)src_sz < (u64)bnx * bny * bs)
+        return -3;
+    u8 colors[16];
+    u8 pal[2][8];
+    for(u32 yi = 0; yi < bny; ++yi)
+    {
+        for(u32 xi = 0; xi < bnx; ++xi, src += bs)
+        {
+            u32 ox = xi * 4, oy = yi * 4;
+            if(kind <= 3)
+            {
+                u8 const * cb = kind == 1 ? src : src + 8;
+                color_palette(rd16(cb), rd16(cb + 2), kind != 1, colors);
+                u32 idx = rd32(cb + 4);
+                u64 aidx = 0;
+                if(kind == 3)
+                {
+                    alpha_palette(src[0], src[1], pal[0]);
+                    aidx = rd48(src + 2);
+                }
+                for(u32 p = 0; p < 16; ++p)
+                {
+                    u32 k = (idx >> (2 * p)) & 3;
+                    u32 x = ox + p % 4, y = oy + p / 4;
+                    for(u32 c = 0; c < 3; ++c)
+                        put(img, w, h, x, y, c, colors[k * 4 + c]);
+                    u8 a = colors[k * 4 + 3];
+                    if(kind == 2)
+                        a = (u8)(((src[p / 2] >> (4 * (p % 2))) & 0xF) * 17);
+                    else if(kind == 3)
+                        a = pal[0][(aidx >> (3 * p)) & 7];
+                    put(img, w, h, x, y, 3, a);
+                }
+            }
+            else
+            {
+                u32 nch = kind == 4 ? 1 : 2;
+                u64 idx[2] = {0, 0};
+                for(u32 ch = 0; ch < nch; ++ch)
+                {
+                    alpha_palette(src[8 * ch], src[8 * ch + 1], pal[ch]);
+                    idx[ch] = rd48(src + 8 * ch + 2);
+                }
+                for(u32 p = 0; p < 16; ++p)
+                {
+                    u32 x = ox + p % 4, y = oy + p / 4;
+                    put(img, w, h, x, y, 0, pal[0][(idx[0] >> (3 * p)) & 7]);
+                    put(img, w, h, x, y, 1, nch == 2 ? pal[1][(idx[1] >> (3 * p)) & 7] : 0);
+                    put(img, w, h, x, y, 2, 0);
+                    put(img, w, h, x, y, 3, 255);
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 DLLEXPORT
 int process_image(
     u8 * dst_image_buf,
@@ -26,512 +162,77 @@ int process_image(
     u32 pixel_format
     )
 {
+    u32 stride = nx < 4 ? 4 : nx;  // pixels par ligne de l'image de destination
+    (void)dst_image_sz;
     switch(pixel_format)
     {
-
-        case 10:
+        case 10:  // R16G16B16A16 : octet de poids fort (DECA appelle la version Python pour ce format)
             {
-                u8 * optr = (u8 *)dst_image_buf;
-                u16 const * iptr = (u16 const*)src_buffer_buf;
-                //TODO check lengths for buffer overruns
+                if((u64)src_buffer_sz < (u64)nx * ny * 8) return -3;
+                u8 const * iptr = src_buffer_buf;
                 for(u32 yi = 0; yi < ny; ++yi)
                 {
-                    for(u32 xi = 0; xi < nx; ++xi)
+                    u8 * optr = dst_image_buf + (u64)yi * stride * 4;
+                    for(u32 xi = 0; xi < nx; ++xi, iptr += 8, optr += 4)
                     {
-                        *optr = *iptr >> 8; optr += 1; iptr += 1;
-                        *optr = *iptr >> 8; optr += 1; iptr += 1;
-                        *optr = *iptr >> 8; optr += 1; iptr += 1;
-                        *optr = *iptr >> 8; optr += 1; iptr += 1;
+                        optr[0] = iptr[1];
+                        optr[1] = iptr[3];
+                        optr[2] = iptr[5];
+                        optr[3] = iptr[7];
                     }
                 }
                 return 0;
             }
-            break;
-        case 26:
+        case 26:  // R11G11B10 : bits de poids fort (DECA appelle la version Python pour ce format)
             {
-                u8 * optr = (u8 *)dst_image_buf;
-                u32 const * iptr = (u32 const*)src_buffer_buf;
-                //TODO check lengths for buffer overruns
+                if((u64)src_buffer_sz < (u64)nx * ny * 4) return -3;
+                u8 const * iptr = src_buffer_buf;
                 for(u32 yi = 0; yi < ny; ++yi)
                 {
-                    for(u32 xi = 0; xi < nx; ++xi)
+                    u8 * optr = dst_image_buf + (u64)yi * stride * 4;
+                    for(u32 xi = 0; xi < nx; ++xi, iptr += 4, optr += 4)
                     {
-                        optr[0] = ((*iptr >> 21) & 0x07ff) >> 3;
-                        optr[1] = ((*iptr >> 10) & 0x07ff) >> 3;
-                        optr[2] = ((*iptr >> 0) & 0x03ff) >> 2;
+                        u32 v = rd32(iptr);
+                        optr[0] = (u8)(((v >> 21) & 0x07ff) >> 3);
+                        optr[1] = (u8)(((v >> 10) & 0x07ff) >> 3);
+                        optr[2] = (u8)(((v >> 0) & 0x03ff) >> 2);
                         optr[3] = 0xFF;
-                        optr += 4;
-                        iptr += 1;
                     }
                 }
                 return 0;
             }
-            break;
-        case 28:
+        case 28:  // R8G8B8A8
+        case 87:  // B8G8R8A8
             {
-                u8 * optr = dst_image_buf;
+                if((u64)src_buffer_sz < (u64)nx * ny * 4) return -3;
                 u8 const * iptr = src_buffer_buf;
-                //TODO check lengths for buffer overruns
+                int bgr = pixel_format == 87;
                 for(u32 yi = 0; yi < ny; ++yi)
                 {
-                    for(u32 xi = 0; xi < nx; ++xi)
+                    u8 * optr = dst_image_buf + (u64)yi * stride * 4;
+                    for(u32 xi = 0; xi < nx; ++xi, iptr += 4, optr += 4)
                     {
-                        optr[0] = iptr[0];
+                        optr[0] = iptr[bgr ? 2 : 0];
                         optr[1] = iptr[1];
-                        optr[2] = iptr[2];
+                        optr[2] = iptr[bgr ? 0 : 2];
                         optr[3] = iptr[3];
-                        optr += 4;
-                        iptr += 4;
                     }
                 }
                 return 0;
             }
-            break;
-        case 87:
-            {
-                u8 * optr = dst_image_buf;
-                u8 const * iptr = src_buffer_buf;
-                //TODO check lengths for buffer overruns
-                for(u32 yi = 0; yi < ny; ++yi)
-                {
-                    for(u32 xi = 0; xi < nx; ++xi)
-                    {
-                        optr[0] = iptr[2];
-                        optr[1] = iptr[1];
-                        optr[2] = iptr[0];
-                        optr[3] = iptr[3];
-                        optr += 4;
-                        iptr += 4;
-                    }
-                }
-                return 0;
-            }
-            break;
-        case 71:
-            {
-                if(nx < 4) nx = 4;
-                if(ny < 4) ny = 4;
-                u32 bnx = nx >> 2;
-                u32 bny = ny >> 2;
-                u8 const * iptr = src_buffer_buf;
-                for(u32 yo = 0; yo < bny; ++yo)
-                {
-                    for(u32 xo = 0;  xo < bnx; ++xo)
-                    {
-                        u16 color0 = *((u16 const*)(iptr + 0));
-                        u16 color1 = *((u16 const*)(iptr + 2));
-                        u32 cidx = *((u32 const*)(iptr + 4));
-                        iptr += 8;
-
-                        u8 colors8[16];
-                        u32 const* colors = (u32 const*)colors8;
-
-                        colors8[0*4 + 0] = ((color0 >> 11) & 0x1F) << 3;
-                        colors8[0*4 + 1] = ((color0 >>  5) & 0x3F) << 2;
-                        colors8[0*4 + 2] = ((color0 >>  0) & 0x1F) << 3;
-                        colors8[0*4 + 3] = 0xFF;
-                        colors8[1*4 + 0] = ((color1 >> 11) & 0x1F) << 3;
-                        colors8[1*4 + 1] = ((color1 >>  5) & 0x3F) << 2;
-                        colors8[1*4 + 2] = ((color1 >>  0) & 0x1F) << 3;
-                        colors8[1*4 + 3] = 0xFF;
-
-                        if(color0 > color1)
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (2 * (u16)colors8[0*4 + i] + (u16)colors8[1*4 + i]) / 3;
-                                colors8[3*4 + i] = ((u16)colors8[0*4 + i] + 2 * (u16)colors8[1*4 + i]) / 3;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-                            colors8[3*4 + 3] = 0xFF;
-                        }
-                        else
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (colors8[0*4 + i] + colors8[1*4 + i]) >> 1;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-
-                            colors8[3*4 + 0] = 0;
-                            colors8[3*4 + 1] = 0;
-                            colors8[3*4 + 2] = 0;
-                            colors8[3*4 + 3] = 0;
-                        }
-
-                        for(u32 yi = 0; yi < 4; ++yi)
-                        {
-                            u8 * optr = dst_image_buf;
-                            optr += xo * 4 * 4;  // block offset in X
-                            optr += yo * 4 * 4 * nx; // block offset in Y
-                            optr += yi * 4 * nx; // pixel offset in Y
-                            for(u32 xi = 0; xi < 4; ++xi)
-                            {
-                                *((u32*)optr) = colors[cidx & 0x3];
-                                cidx = cidx >> 2;
-                                optr += 4;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-        case 74:
-            {
-                if(nx < 4) nx = 4;
-                if(ny < 4) ny = 4;
-                u32 bnx = nx >> 2;
-                u32 bny = ny >> 2;
-                u8 const * iptr = src_buffer_buf;
-                for(u32 yo = 0; yo < bny; ++yo)
-                {
-                    for(u32 xo = 0;  xo < bnx; ++xo)
-                    {
-                        u64 alpha = *((u64 const*)(iptr + 0));
-                        iptr += 8;
-
-                        u16 color0 = *((u16 const*)(iptr + 0));
-                        u16 color1 = *((u16 const*)(iptr + 2));
-                        u32 cidx = *((u32 const*)(iptr + 4));
-                        iptr += 8;
-
-                        u8 colors8[16];
-                        u32 const* colors = (u32 const*)colors8;
-
-                        colors8[0*4 + 0] = ((color0 >> 11) & 0x1F) << 3;
-                        colors8[0*4 + 1] = ((color0 >>  5) & 0x3F) << 2;
-                        colors8[0*4 + 2] = ((color0 >>  0) & 0x1F) << 3;
-                        colors8[0*4 + 3] = 0xFF;
-                        colors8[1*4 + 0] = ((color1 >> 11) & 0x1F) << 3;
-                        colors8[1*4 + 1] = ((color1 >>  5) & 0x3F) << 2;
-                        colors8[1*4 + 2] = ((color1 >>  0) & 0x1F) << 3;
-                        colors8[1*4 + 3] = 0xFF;
-
-                        if(color0 > color1)
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (2 * (u16)colors8[0*4 + i] + (u16)colors8[1*4 + i]) / 3;
-                                colors8[3*4 + i] = ((u16)colors8[0*4 + i] + 2 * (u16)colors8[1*4 + i]) / 3;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-                            colors8[3*4 + 3] = 0xFF;
-                        }
-                        else
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (colors8[0*4 + i] + colors8[1*4 + i]) >> 1;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-
-                            colors8[3*4 + 0] = 0;
-                            colors8[3*4 + 1] = 0;
-                            colors8[3*4 + 2] = 0;
-                            colors8[3*4 + 3] = 0;
-                        }
-
-                        for(u32 yi = 0; yi < 4; ++yi)
-                        {
-                            u8 * optr = dst_image_buf;
-                            optr += xo * 4 * 4;  // block offset in X
-                            optr += yo * 4 * 4 * nx; // block offset in Y
-                            optr += yi * 4 * nx; // pixel offset in Y
-                            for(u32 xi = 0; xi < 4; ++xi)
-                            {
-                                *((u32*)optr) = colors[cidx & 0x3];
-                                cidx = cidx >> 2;
-
-                                *(optr + 3) = (alpha & 0x0f) << 4;
-                                alpha = alpha >> 4;
-
-                                optr += 4;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-        case 77:
-            {
-                if(nx < 4) nx = 4;
-                if(ny < 4) ny = 4;
-                u32 bnx = nx >> 2;
-                u32 bny = ny >> 2;
-                u8 const * iptr = src_buffer_buf;
-                for(u32 yo = 0; yo < bny; ++yo)
-                {
-                    for(u32 xo = 0;  xo < bnx; ++xo)
-                    {
-                        u8 const alpha_0 = *((u8 const*)(iptr + 0));
-                        u8 const alpha_1 = *((u8 const*)(iptr + 1));
-                        u64 const a0 = *((u16 const*)(iptr + 2));
-                        u64 const a1 = *((u16 const*)(iptr + 4));
-                        u64 const a2 = *((u16 const*)(iptr + 6));
-                        u64 aidx = a2 << 32 | a1 << 16 | a0;
-                        iptr += 8;
-
-                        u8 alpha[8];
-
-                        alpha[0] = alpha_0;
-                        alpha[1] = alpha_1;
-                        if(alpha_0 > alpha_1)
-                        {
-                            // 6 interpolated alpha values.
-                            alpha[2] = (6 * (u16)alpha_0 + 1 * (u16)alpha_1) / 7;  // bit code 010
-                            alpha[3] = (5 * (u16)alpha_0 + 2 * (u16)alpha_1) / 7;  // bit code 011
-                            alpha[4] = (4 * (u16)alpha_0 + 3 * (u16)alpha_1) / 7;  // bit code 100
-                            alpha[5] = (3 * (u16)alpha_0 + 4 * (u16)alpha_1) / 7;  // bit code 101
-                            alpha[6] = (2 * (u16)alpha_0 + 5 * (u16)alpha_1) / 7;  // bit code 110
-                            alpha[7] = (1 * (u16)alpha_0 + 6 * (u16)alpha_1) / 7;  // bit code 111
-                        }
-                        else
-                        {
-                            // 4 interpolated alpha values.
-                            alpha[2] = (4 * (u16)alpha_0 + 1 * (u16)alpha_1) / 5;  // bit code 010
-                            alpha[3] = (3 * (u16)alpha_0 + 2 * (u16)alpha_1) / 5;  // bit code 011
-                            alpha[4] = (2 * (u16)alpha_0 + 3 * (u16)alpha_1) / 5;  // bit code 100
-                            alpha[5] = (1 * (u16)alpha_0 + 4 * (u16)alpha_1) / 5;  // bit code 101
-                            alpha[6] = 0;  // bit code 110
-                            alpha[7] = 255;  // bit code 111
-                        }
-
-                        u16 color0 = *((u16 const*)(iptr + 0));
-                        u16 color1 = *((u16 const*)(iptr + 2));
-                        u32 cidx = *((u32 const*)(iptr + 4));
-                        iptr += 8;
-
-                        u8 colors8[16];
-                        u32 const* colors = (u32 const*)colors8;
-
-                        colors8[0*4 + 0] = ((color0 >> 11) & 0x1F) << 3;
-                        colors8[0*4 + 1] = ((color0 >>  5) & 0x3F) << 2;
-                        colors8[0*4 + 2] = ((color0 >>  0) & 0x1F) << 3;
-                        colors8[0*4 + 3] = 0xFF;
-                        colors8[1*4 + 0] = ((color1 >> 11) & 0x1F) << 3;
-                        colors8[1*4 + 1] = ((color1 >>  5) & 0x3F) << 2;
-                        colors8[1*4 + 2] = ((color1 >>  0) & 0x1F) << 3;
-                        colors8[1*4 + 3] = 0xFF;
-
-                        if(color0 > color1)
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (2 * (u16)colors8[0*4 + i] + (u16)colors8[1*4 + i]) / 3;
-                                colors8[3*4 + i] = ((u16)colors8[0*4 + i] + 2 * (u16)colors8[1*4 + i]) / 3;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-                            colors8[3*4 + 3] = 0xFF;
-                        }
-                        else
-                        {
-                            for(u32 i = 0; i < 3; ++i)
-                            {
-                                colors8[2*4 + i] = (colors8[0*4 + i] + colors8[1*4 + i]) >> 1;
-                            }
-                            colors8[2*4 + 3] = 0xFF;
-
-                            colors8[3*4 + 0] = 0;
-                            colors8[3*4 + 1] = 0;
-                            colors8[3*4 + 2] = 0;
-                            colors8[3*4 + 3] = 0;
-                        }
-
-                        for(u32 yi = 0; yi < 4; ++yi)
-                        {
-                            u8 * optr = dst_image_buf;
-                            optr += xo * 4 * 4;  // block offset in X
-                            optr += yo * 4 * 4 * nx; // block offset in Y
-                            optr += yi * 4 * nx; // pixel offset in Y
-                            for(u32 xi = 0; xi < 4; ++xi)
-                            {
-                                *((u32*)optr) = colors[cidx & 0x3];
-                                cidx = cidx >> 2;
-
-                                *(optr + 3) = alpha[aidx & 0x7];
-                                aidx = aidx >> 3;
-
-                                optr += 4;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-        case 80:
-            {
-                if(nx < 4) nx = 4;
-                if(ny < 4) ny = 4;
-                u32 bnx = nx >> 2;
-                u32 bny = ny >> 2;
-                u8 const * iptr = src_buffer_buf;
-                for(u32 yo = 0; yo < bny; ++yo)
-                {
-                    for(u32 xo = 0;  xo < bnx; ++xo)
-                    {
-                        u8 const red_0 = *((u8 const*)(iptr + 0));
-                        u8 const red_1 = *((u8 const*)(iptr + 1));
-                        u64 const r0 = *((u16 const*)(iptr + 2));
-                        u64 const r1 = *((u16 const*)(iptr + 4));
-                        u64 const r2 = *((u16 const*)(iptr + 6));
-                        u64 ridx = r2 << 32 | r1 << 16 | r0;
-                        iptr += 8;
-
-                        u8 red[8];
-
-                        red[0] = red_0;
-                        red[1] = red_1;
-                        if(red_0 > red_1)
-                        {
-                            // 6 interpolated red values.
-                            red[2] = (6 * (u16)red_0 + 1 * (u16)red_1) / 7;  // bit code 010
-                            red[3] = (5 * (u16)red_0 + 2 * (u16)red_1) / 7;  // bit code 011
-                            red[4] = (4 * (u16)red_0 + 3 * (u16)red_1) / 7;  // bit code 100
-                            red[5] = (3 * (u16)red_0 + 4 * (u16)red_1) / 7;  // bit code 101
-                            red[6] = (2 * (u16)red_0 + 5 * (u16)red_1) / 7;  // bit code 110
-                            red[7] = (1 * (u16)red_0 + 6 * (u16)red_1) / 7;  // bit code 111
-                        }
-                        else
-                        {
-                            // 4 interpolated red values.
-                            red[2] = (4 * (u16)red_0 + 1 * (u16)red_1) / 5;  // bit code 010
-                            red[3] = (3 * (u16)red_0 + 2 * (u16)red_1) / 5;  // bit code 011
-                            red[4] = (2 * (u16)red_0 + 3 * (u16)red_1) / 5;  // bit code 100
-                            red[5] = (1 * (u16)red_0 + 4 * (u16)red_1) / 5;  // bit code 101
-                            red[6] = 0;  // bit code 110
-                            red[7] = 255;  // bit code 111
-                        }
-
-                        for(u32 yi = 0; yi < 4; ++yi)
-                        {
-                            u8 * optr = dst_image_buf;
-                            optr += xo * 4 * 4;  // block offset in X
-                            optr += yo * 4 * 4 * nx; // block offset in Y
-                            optr += yi * 4 * nx; // pixel offset in Y
-                            for(u32 xi = 0; xi < 4; ++xi)
-                            {
-                                *(optr + 0) = red[ridx & 0x3];
-                                *(optr + 1) = 0;
-                                *(optr + 2) = 0;
-                                *(optr + 3) = 255;
-
-                                ridx = ridx >> 3;
-                                optr += 4;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-        case 83:
-            {
-                if(nx < 4) nx = 4;
-                if(ny < 4) ny = 4;
-                u32 bnx = nx >> 2;
-                u32 bny = ny >> 2;
-                u8 const * iptr = src_buffer_buf;
-                for(u32 yo = 0; yo < bny; ++yo)
-                {
-                    for(u32 xo = 0;  xo < bnx; ++xo)
-                    {
-                        u8 const red_0 = *((u8 const*)(iptr + 0));
-                        u8 const red_1 = *((u8 const*)(iptr + 1));
-                        u64 const r0 = *((u16 const*)(iptr + 2));
-                        u64 const r1 = *((u16 const*)(iptr + 4));
-                        u64 const r2 = *((u16 const*)(iptr + 6));
-                        u64 ridx = r2 << 32 | r1 << 16 | r0;
-                        iptr += 8;
-
-                        u8 red[8];
-
-                        red[0] = red_0;
-                        red[1] = red_1;
-                        if(red_0 > red_1)
-                        {
-                            // 6 interpolated red values.
-                            red[2] = (6 * (u16)red_0 + 1 * (u16)red_1) / 7;  // bit code 010
-                            red[3] = (5 * (u16)red_0 + 2 * (u16)red_1) / 7;  // bit code 011
-                            red[4] = (4 * (u16)red_0 + 3 * (u16)red_1) / 7;  // bit code 100
-                            red[5] = (3 * (u16)red_0 + 4 * (u16)red_1) / 7;  // bit code 101
-                            red[6] = (2 * (u16)red_0 + 5 * (u16)red_1) / 7;  // bit code 110
-                            red[7] = (1 * (u16)red_0 + 6 * (u16)red_1) / 7;  // bit code 111
-                        }
-                        else
-                        {
-                            // 4 interpolated red values.
-                            red[2] = (4 * (u16)red_0 + 1 * (u16)red_1) / 5;  // bit code 010
-                            red[3] = (3 * (u16)red_0 + 2 * (u16)red_1) / 5;  // bit code 011
-                            red[4] = (2 * (u16)red_0 + 3 * (u16)red_1) / 5;  // bit code 100
-                            red[5] = (1 * (u16)red_0 + 4 * (u16)red_1) / 5;  // bit code 101
-                            red[6] = 0;  // bit code 110
-                            red[7] = 255;  // bit code 111
-                        }
-
-                        u8 const green_0 = *((u8 const*)(iptr + 0));
-                        u8 const green_1 = *((u8 const*)(iptr + 1));
-                        u64 const g0 = *((u16 const*)(iptr + 2));
-                        u64 const g1 = *((u16 const*)(iptr + 4));
-                        u64 const g2 = *((u16 const*)(iptr + 6));
-                        u64 gidx = g2 << 32 | g1 << 16 | g0;
-                        iptr += 8;
-
-                        u8 green[8];
-
-                        green[0] = green_0;
-                        green[1] = green_1;
-                        if(green_0 > green_1)
-                        {
-                            // 6 interpolated green values.
-                            green[2] = (6 * (u16)green_0 + 1 * (u16)green_1) / 7;  // bit code 010
-                            green[3] = (5 * (u16)green_0 + 2 * (u16)green_1) / 7;  // bit code 011
-                            green[4] = (4 * (u16)green_0 + 3 * (u16)green_1) / 7;  // bit code 100
-                            green[5] = (3 * (u16)green_0 + 4 * (u16)green_1) / 7;  // bit code 101
-                            green[6] = (2 * (u16)green_0 + 5 * (u16)green_1) / 7;  // bit code 110
-                            green[7] = (1 * (u16)green_0 + 6 * (u16)green_1) / 7;  // bit code 111
-                        }
-                        else
-                        {
-                            // 4 interpolated green values.
-                            green[2] = (4 * (u16)green_0 + 1 * (u16)green_1) / 5;  // bit code 010
-                            green[3] = (3 * (u16)green_0 + 2 * (u16)green_1) / 5;  // bit code 011
-                            green[4] = (2 * (u16)green_0 + 3 * (u16)green_1) / 5;  // bit code 100
-                            green[5] = (1 * (u16)green_0 + 4 * (u16)green_1) / 5;  // bit code 101
-                            green[6] = 0;  // bit code 110
-                            green[7] = 255;  // bit code 111
-                        }
-
-                        for(u32 yi = 0; yi < 4; ++yi)
-                        {
-                            u8 * optr = dst_image_buf;
-                            optr += xo * 4 * 4;  // block offset in X
-                            optr += yo * 4 * 4 * nx; // block offset in Y
-                            optr += yi * 4 * nx; // pixel offset in Y
-                            for(u32 xi = 0; xi < 4; ++xi)
-                            {
-                                *(optr + 0) = red[ridx & 0x3];
-                                *(optr + 1) = green[gidx & 0x3];
-                                *(optr + 2) = 0;
-                                *(optr + 3) = 255;
-
-                                ridx = ridx >> 3;
-                                gidx = gidx >> 3;
-                                optr += 4;
-                            }
-                        }
-                    }
-                }
-                return 0;
-            }
-            break;
-
+        case 70: case 71: case 72:
+            return decode_bc(dst_image_buf, src_buffer_buf, src_buffer_sz, nx, ny, 1);
+        case 73: case 74: case 75:
+            return decode_bc(dst_image_buf, src_buffer_buf, src_buffer_sz, nx, ny, 2);
+        case 76: case 77: case 78:
+            return decode_bc(dst_image_buf, src_buffer_buf, src_buffer_sz, nx, ny, 3);
+        case 79: case 80:
+            return decode_bc(dst_image_buf, src_buffer_buf, src_buffer_sz, nx, ny, 4);
+        case 82: case 83:
+            return decode_bc(dst_image_buf, src_buffer_buf, src_buffer_sz, nx, ny, 5);
         default:
-            return -1; // FORMAT NOT HANDLED
+            return -1; // format non traite : DECA retombe sur la version Python (SNORM, BC6H, BC7, flottants...)
     }
-    return -2; //OTHER ERROR
 }
 
 #ifdef __cplusplus
