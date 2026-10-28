@@ -133,7 +133,35 @@ def quat_threecomp48(q) -> bytes:
     return struct.pack('<3H', x, y, z)
 
 
-def encode_block(tracks, n_floats: int = 0) -> bytes:
+def float_mask(spec) -> int:
+    """Masque d'une piste de flottants : 0x03 statique, 0x12 spline sur 16 bits (les seuls vus dans COTW)."""
+    return 0x03 if spec[0] == 'static' else 0x12
+
+
+def encode_floats(floats, debut: int) -> bytes:
+    """Donnees des pistes de flottants d'un bloc, ecrites a l'offset debut du bloc (alignements relatifs au bloc).
+    floats : ('static', valeur) | ('spline', degre, noeuds, valeurs)."""
+    body = bytearray()
+
+    def align(n):
+        while (debut + len(body)) % n:
+            body.append(0)
+    for f in floats:
+        if f[0] == 'static':
+            body += struct.pack('<f', f[1])
+        else:
+            _k, degree, knots, values = f
+            body += struct.pack('<HB', len(values) - 1, degree) + bytes(knots)
+            align(4)
+            lo, hi = min(values), max(values)
+            body += struct.pack('<2f', lo, hi)
+            for v in values:
+                body += struct.pack('<H', int(round((v - lo) / (hi - lo) * 65535)) if hi > lo else 0)
+            align(4)
+    return bytes(body)
+
+
+def encode_block(tracks, n_floats: int = 0, float_masks: bytes = b'') -> bytes:
     """Bloc de hkaSplineCompressedAnimation (disposition : deca/ff_havok_anim.py). tracks : liste de dicts
     position : None | ('static', {axe: valeur}) | ('spline', degre, noeuds, points (n + 1) x 3, toutes les composantes) ;
     rotation : None | ('static', q, quantification) | ('spline', degre, noeuds, quaternions, quantification) ;
@@ -189,7 +217,7 @@ def encode_block(tracks, n_floats: int = 0) -> bytes:
                 body += quat(q, quant)
             align(4)
         masks += bytes([1 | (quant << 2) | (1 << 6), pt, rt, 0])
-    masks += b'\xf0' * n_floats
+    masks += (float_masks or b'\x03' * n_floats)[:n_floats]
     masks += b'\0' * ((-len(masks)) % 4)
     return bytes(masks) + bytes(body)
 
@@ -247,8 +275,11 @@ def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None,
         d.put(an + 16, '<IfII', 3, 1.5, len(bones), 0)
         d.put(an + 56, '<4I3f', 46, 1, 256, 4, 1.5, 1 / 1.5, 1 / 30)
         if spline is not None:
-            n_floats = spline.get('floats', 0)
-            blocs = [encode_block(b, n_floats) for b in spline['blocks']]
+            flottants = spline.get('float_blocks') or [[('static', 0.0)] * spline.get('floats', 0)
+                                                        for _b in spline['blocks']]
+            n_floats = len(flottants[0])
+            blocs = [encode_block(b, n_floats, bytes(float_mask(f) for f in fl))
+                     for b, fl in zip(spline['blocks'], flottants)]
             per = spline['per_block']
             d.put(an + 20, '<f', (spline['frames'] - 1) / 30)
             d.put(an + 28, '<I', n_floats)
@@ -257,10 +288,10 @@ def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None,
             d.align()
             data = d.here()
             debuts, fins = [], []
-            for blk in blocs:
+            for blk, fl in zip(blocs, flottants):
                 debuts.append(d.here() - data)
                 fins.append(len(blk))
-                d.buf += blk + b'\x5a' * (8 * n_floats)       # donnees des pistes de flottants (non lues)
+                d.buf += blk + encode_floats(fl, len(blk))
                 d.align()
             taille = d.here() - data
             d.array(an + 152, data, taille)

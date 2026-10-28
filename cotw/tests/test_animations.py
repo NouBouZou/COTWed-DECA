@@ -73,7 +73,7 @@ class TestQuaternions(unittest.TestCase):
             A.read_quaternion(b'\0' * 8, 0, 0)          # POLAR32 : pas encore vu dans COTW
 
 
-def animation_bytes(floats: int = 0):
+def animation_bytes(floats: int = 0, float_blocks=None):
     """3 os, 7 images, blocs de 4 images (le bloc 1 commence a l'image 3, partagee).
     Root : position statique (x, z), rotation statique non compressee ; Spine : position et rotation sur des splines
     lineaires ; Tip : rotation statique THREECOMP48, sans position."""
@@ -86,7 +86,7 @@ def animation_bytes(floats: int = 0):
                 {'rotation': ('static', norm((0.1, 0.2, 0.3, 0.9)), 2)}]
     return HF.skeleton_and_animation(bones=('Root', 'Spine', 'Tip'), parents=(-1, 0, 1),
                                      spline={'frames': 7, 'per_block': 4, 'blocks': [bloc(0), bloc(3)],
-                                             'floats': floats})
+                                             'floats': floats, 'float_blocks': float_blocks})
 
 
 class TestDecode(unittest.TestCase):
@@ -119,14 +119,21 @@ class TestDecode(unittest.TestCase):
         self.assertLess(d['continuity']['rotation'], 1e-6)
         self.assertLess(d['continuity']['translation'], 1e-3)
 
-    def test_float_tracks_are_skipped(self):
-        """Masques : 4 x 3 + 3 octets, donnees d'os a partir de 16 ; les pistes de flottants suivent, non lues."""
-        pf = H.Packfile(animation_bytes(floats=3))
+    def test_float_tracks(self):
+        """Masques : 4 x 3 + 3 octets, donnees d'os a partir de 16 ; puis les pistes de flottants : une statique
+        (0x03), une spline lineaire sur 16 bits (0x12), une statique."""
+        k = [0, 0, 1, 2, 3, 3]
+        fl = [[('static', 0.25), ('spline', 1, k, [0.0, 0.5, 1.0, 0.5]), ('static', 0.0)],
+              [('static', 0.25), ('spline', 1, k, [0.5, 0.0, 0.0, 1.0]), ('static', 0.0)]]
+        pf = H.Packfile(animation_bytes(float_blocks=fl))
         (o, _b), = A.animations_of(pf)
         d = A.decode(pf, o)
         self.assertEqual(d['float_tracks'], 3)
-        self.assertEqual(dict(d['float_masks']), {0xf0: 6})
-        self.assertTrue(all(b['end_ok'] for b in d['blocks']))
+        self.assertEqual(dict(d['float_masks']), {0x03: 4, 0x12: 2})
+        self.assertTrue(all(b['end_ok'] and b['float_end_ok'] for b in d['blocks']))
+        np.testing.assert_allclose(d['floats'][:, 0], 0.25)
+        np.testing.assert_allclose(d['floats'][:, 1], [0.0, 0.5, 1.0, 0.5, 0.0, 0.0, 1.0], atol=1e-4)
+        np.testing.assert_allclose(d['floats'][:, 2], 0.0)
         np.testing.assert_allclose(d['translations'], self.d['translations'])
         np.testing.assert_allclose(d['rotations'], self.d['rotations'])
         self.assertEqual(d['packed_quaternions'], (2, 2))      # THREECOMP48 de Tip, un par bloc

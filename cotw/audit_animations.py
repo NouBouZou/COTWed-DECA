@@ -42,7 +42,8 @@ SEUIL_TRANSLATION = 1e-2     # unites du jeu (metres)
 class Resultat:
     COLONNES = ['fichier', 'index', 'statut', 'detail', 'classe', 'images', 'pistes', 'pistes_flottantes', 'blocs',
                 'duree', 'fins_justes', 'ecart_rotation', 'ecart_translation', 'ecart_echelle', 'norme_quaternions',
-                'quaternions_compactes', 'compactes_coherents', 'masques_flottants', 'quantifications', 'liaison']
+                'quaternions_compactes', 'compactes_coherents', 'masques_flottants', 'fins_flottants',
+                'flottant_max', 'quantifications', 'liaison']
 
     def __init__(self, fichier: str, index: int):
         self.fichier, self.index = fichier, index
@@ -57,6 +58,8 @@ class Resultat:
         self.quaternions_compactes = 0
         self.compactes_coherents = 0
         self.masques_flottants = ''
+        self.fins_flottants = ''
+        self.flottant_max: Optional[float] = None
         self.quantifications = collections.Counter()
         self.liaison = ''
 
@@ -99,6 +102,10 @@ def auditer_fichier(data: bytes, chemin: str) -> List[Resultat]:
             r.quantifications = d['quantizations']
             fins = [b['end_ok'] for b in d['blocks']]
             r.fins_justes = '{}/{}'.format(sum(fins), len(fins))
+            fins_f = [b['float_end_ok'] for b in d['blocks']]
+            if r.pistes_flottantes:
+                r.fins_flottants = '{}/{}'.format(sum(fins_f), len(fins_f))
+                r.flottant_max = float(abs(d['floats']).max()) if d['floats'].size else 0.0
             r.ecart_rotation = d['continuity']['rotation']
             r.ecart_translation = d['continuity']['translation']
             r.ecart_echelle = d['continuity']['scale']
@@ -107,6 +114,8 @@ def auditer_fichier(data: bytes, chemin: str) -> List[Resultat]:
             r.masques_flottants = ' '.join('{:02x}:{}'.format(m, n) for m, n in sorted(d['float_masks'].items()))
             if not all(fins):
                 r.statut = 'fin_de_bloc_fausse'
+            elif not all(fins_f):
+                r.statut = 'flottants_fin_fausse'
             elif r.ecart_rotation > SEUIL_ROTATION or r.ecart_translation > SEUIL_TRANSLATION:
                 r.statut = 'discontinue'
         except ff_havok_anim.EHavokAnim as exc:
@@ -170,8 +179,8 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
              len(ok), len(anims), 100.0 * len(ok) / max(1, len(anims))),
          '- Images : {} ; pistes x images : {}'.format(sum(r.images for r in anims),
                                                       sum(r.images * r.pistes for r in anims)),
-         '- Dont {} avec des pistes de flottants : pistes d\'os decodees, pistes de flottants ignorees (disposition '
-         'a etablir)'.format(sum(1 for r in ok if r.pistes_flottantes)), '',
+         '- Dont {} avec des pistes de flottants, dont la fin des donnees tombe sur la fin du bloc (disposition '
+         'supposee : deca/ff_havok_anim.py)'.format(sum(1 for r in ok if r.pistes_flottantes)), '',
          '| Statut | Animations ou fichiers |', '|---|---:|']
     L += ['| {} | {} |'.format(s, n) for s, n in statuts.most_common()]
     quant = collections.Counter()
@@ -185,8 +194,8 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
                                                {0: '8 bits', 1: '16 bits'}.get(c, c), n))
     L += ['', '## Continuite entre blocs (animations a plusieurs blocs)', '',
           '| Animations | Ecart | Nombre | Mediane | 99e centile | Maximum |', '|---|---|---:|---:|---:|---:|']
-    for groupe, sel in (('sans THREECOMP40', [r for r in anims if not r.quaternions_compactes]),
-                        ('avec THREECOMP40', [r for r in anims if r.quaternions_compactes])):
+    for groupe, sel in (('rotations non compressees', [r for r in anims if not r.quaternions_compactes]),
+                        ('avec THREECOMP40 / 48', [r for r in anims if r.quaternions_compactes])):
         for k, nom in (('ecart_rotation', 'rotation (rad)'), ('ecart_translation', 'translation'),
                        ('ecart_echelle', 'echelle'),
                        ('norme_quaternions', 'norme des quaternions stockes - 1 (toutes)')):
@@ -206,8 +215,12 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
             k, n = m.split(':')
             masques[k] += int(n)
     if masques:
+        valeurs = np.array([r.flottant_max for r in anims if r.flottant_max is not None])
         L += ['- Masques des pistes de flottants (octet : pistes x blocs) : {}'.format(
-            ' '.join('{}:{}'.format(k, n) for k, n in masques.most_common(12)))]
+            ' '.join('{}:{}'.format(k, n) for k, n in masques.most_common(12))),
+              '- Valeur absolue maximale des pistes de flottants, par animation : mediane {:.3g}, maximum {:.3g} ; '
+              '{} animations ou toutes valent 0'.format(float(np.median(valeurs)), float(valeurs.max()),
+                                                       int(np.sum(valeurs == 0)))]
     pistes_f = sum(1 for r in anims if r.pistes_flottantes)
     L += ['', '- Animations a pistes de flottants : {}'.format(pistes_f),
           '- Liaisons : {}'.format(dict(collections.Counter(r.liaison or '(aucune)' for r in anims)))]

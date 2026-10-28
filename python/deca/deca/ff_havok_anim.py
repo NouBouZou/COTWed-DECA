@@ -27,7 +27,11 @@ ff_havok reads the object (frames, blocks, offsets) but left m_data opaque. Its 
       missing                  : position 0, rotation identity, scale 1
     the transform data ends at m_floatBlockOffsets[b] (relative to the block), where the float tracks begin.
   With float tracks, the masks take 4 * transform tracks + float tracks bytes ; the transform data starts at the next
-  multiple of 4 (21-animations: 2 107 animations of animals, dogs and birds have 1 to 82 float tracks).
+  multiple of 4 (23-animations: every block of the 2 107 animations with float tracks then ends where expected).
+  Float tracks (1 to 82, animals, dogs, birds) start at m_floatBlockOffsets[b] ; their mask byte has the flags of a
+  position component : 0x01 static, 0x10 spline, and 0x02 for 16-bit values (8 bits without) [hypothesis from the
+  game's masks, 0x03 and 0x12 only : the end of the float data, padded to 16, must be the next block]. Static : f32.
+  Spline : u16 n, u8 degree, knots, align 4, f32 min, f32 max, n + 1 quantized values, align 4.
   A value at a frame is the B-spline (de Boor) of its control points at the frame number within the block ; a
   rotation is normalized after evaluation.
 
@@ -35,8 +39,7 @@ Checked on the samples: every block ends exactly at m_floatBlockOffsets ; uncomp
 last frame of a block equals the first frame of the next one. COTW quantizes nearly every track as 16-bit
 position / UNCOMPRESSED rotation / 16-bit scale ; THREECOMP40 and THREECOMP48 are decoded as the usual Havok
 packing (3 components of 12 or 15 bits, index of the dropped largest component, sign) ; POLAR32, THREECOMP24,
-STRAIGHT16 are not decoded (EHavokAnim), none being seen yet ; float tracks are skipped (the transform tracks of
-their animations are decoded) until their layout is known.
+STRAIGHT16 are not decoded (EHavokAnim), none being seen yet.
 """
 import math
 import struct
@@ -250,11 +253,33 @@ class BlockReader:
         return Curve('default', value=np.array([0.0, 0.0, 0.0, 1.0]))
 
 
+def read_floats(data: bytes, start: int, end: int, p: int, masks: bytes) -> Tuple[List[Curve], int]:
+    """Float tracks of a block, from p (absolute) ; returns their curves (dimension 1) and the end (absolute)."""
+    r = BlockReader(data, start, end)
+    r.p = p
+    curves = []
+    for m in masks:
+        if m & 0xF0:
+            n, degree, knots = r.knots()
+            r.align(4)
+            lo, hi = r.take('<2f')
+            fmt, top = ('<H', 65535.0) if m & 0x02 else ('<B', 255.0)
+            points = np.array([[lo + (hi - lo) * (r.take(fmt)[0] / top)] for _c in range(n + 1)])
+            r.align(4)
+            curves.append(Curve('spline', degree=degree, knots=knots, points=points))
+        elif m & 0x0F:
+            curves.append(Curve('static', value=np.array([r.take('<f')[0]])))
+        else:
+            curves.append(Curve('default', value=np.zeros(1)))
+    return curves, r.p
+
+
 def read_block(data: bytes, start: int, end: int, n_tracks: int, n_floats: int, masks_size: int,
                transform_end: Optional[int] = None) -> Tuple[List[Tuple[Curve, Curve, Curve]], dict]:
     """Curves (position, rotation, scale) of each transform track of a block, and facts: quantizations seen,
-    end of the transform data (relative to the block) and whether it is the expected one, float track masks
-    (their data, after the transform data, is not read), packed quaternions (read, coherent)."""
+    end of the transform data (relative to the block) and whether it is the expected one, float track masks and
+    curves, end of the float data and whether the block ends there (padding to 16), packed quaternions (read,
+    coherent)."""
     masks = [data[start + 4 * t:start + 4 * t + 4] for t in range(n_tracks)]
     float_masks = bytes(data[start + 4 * n_tracks:start + 4 * n_tracks + n_floats])
     r = BlockReader(data, start, end)
@@ -269,8 +294,19 @@ def read_block(data: bytes, start: int, end: int, n_tracks: int, n_floats: int, 
         scale = r.vector(st, qs, 1.0)
         tracks.append((position, rotation, scale))
     fin = r.p - start
-    return tracks, {'quantizations': quant, 'end': fin, 'float_masks': float_masks, 'packed': tuple(r.packed),
-                    'end_ok': transform_end is None or _align(fin, 4) == _align(transform_end, 4)}
+    facts = {'quantizations': quant, 'end': fin, 'float_masks': float_masks, 'packed': tuple(r.packed),
+             'end_ok': transform_end is None or _align(fin, 4) == _align(transform_end, 4),
+             'floats': [], 'float_end': None, 'float_end_ok': True}
+    if n_floats:
+        p = start + (transform_end if transform_end is not None else _align(fin, 4))
+        try:
+            facts['floats'], f_end = read_floats(data, start, end, p, float_masks)
+            facts['float_end'] = f_end - start
+            facts['float_end_ok'] = _align(f_end - start, 16) >= end - start - 15 and f_end <= end
+        except EHavokAnim:
+            facts['floats'] = [Curve('default', value=np.zeros(1)) for _m in float_masks]
+            facts['float_end_ok'] = False
+    return tracks, facts
 
 
 def decode(pf, o) -> Dict[str, object]:
@@ -280,7 +316,8 @@ def decode(pf, o) -> Dict[str, object]:
     blocks (per block: frames, end, end_ok), quantizations (Counter of (position, rotation, scale)),
     continuity (largest gap between the last frame of a block and the first of the next: rotation angle in
     radians, translation, scale), quaternion_norm_error (largest | |q| - 1 | of the stored quaternions, before the
-    normalization), float_tracks (count; not decoded), float_masks (Counter of their mask bytes),
+    normalization), float_tracks (count), float_masks (Counter of their mask bytes), floats (frames, float
+    tracks) (blocks[].float_end_ok: the float data ends where the block does),
     packed_quaternions (THREECOMP40 / 48 read, and how many have their rebuilt component the largest)."""
     import collections
     from . import ff_havok
@@ -299,6 +336,7 @@ def decode(pf, o) -> Dict[str, object]:
     trans = np.zeros((n_frames, n_tracks, 3))
     rots = np.zeros((n_frames, n_tracks, 4))
     scales = np.ones((n_frames, n_tracks, 3))
+    floats = np.zeros((n_frames, n_floats))
     blocks = []
     quant = collections.Counter()
     float_masks = collections.Counter()
@@ -337,12 +375,16 @@ def decode(pf, o) -> Dict[str, object]:
         trans[first:first + frames] = t
         rots[first:first + frames] = q
         scales[first:first + frames] = sc
-        blocks.append({'frames': frames, 'end': facts['end'], 'end_ok': facts['end_ok']})
+        if n_floats:
+            floats[first:first + frames] = np.concatenate([c.evaluate(frames) for c in facts['floats']], axis=1)
+        blocks.append({'frames': frames, 'end': facts['end'], 'end_ok': facts['end_ok'],
+                       'float_end': facts['float_end'], 'float_end_ok': facts['float_end_ok']})
     return {'translations': trans, 'rotations': rots, 'scales': scales,
             'track_names': [a['name'] for a in info['annotationTracks']],
             'frame_duration': info['frameDuration'], 'duration': info['duration'], 'blocks': blocks,
             'quantizations': quant, 'continuity': gaps, 'quaternion_norm_error': norm_error,
-            'float_tracks': n_floats, 'float_masks': float_masks, 'packed_quaternions': tuple(packed)}
+            'float_tracks': n_floats, 'float_masks': float_masks, 'floats': floats,
+            'packed_quaternions': tuple(packed)}
 
 
 # ---------------------------------------------------------------------------------------------------------
