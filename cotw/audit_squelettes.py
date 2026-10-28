@@ -94,7 +94,8 @@ class Squelette:
         self.noms = [b['name'] for b in bones]
         self.parents = [b.get('parent') for b in bones]
         _local, world = skeleton_matrices(bones)
-        self.articulations = np.array([w[0:3, 3] for w in world], dtype=np.float64).reshape(-1, 3)
+        self.mondes = np.array(world, dtype=np.float64).reshape(-1, 4, 4)
+        self.articulations = self.mondes[:, 0:3, 3].copy()
         n = len(bones)
         enfants: List[List[int]] = [[] for _ in range(n)]
         for i, p in enumerate(self.parents):
@@ -159,10 +160,24 @@ def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng) -> Optional[Dict[str,
     hors = valides & (hors_table | (dominant >= n_os) | (dominant < 0))
     out = {'sommets': int(valides.sum()), 'hors': int(hors.sum()),
            'table_max': int(table.max()) if len(table) else int(local.max(initial=0)),
-           'tires': 0, 'rang': 0, 'temoin': 0, 'distances': []}
+           'tires': 0, 'rang': 0, 'temoin': 0, 'rang_local': 0, 'distances': [], 'groupes': collections.Counter(),
+           'pivot': 0, 'pivot_temoin': 0}
     choix = np.flatnonzero(valides & ~hors)
     if not len(choix) or not n_os:
         return out
+    # pieces rigides (armes) : les sommets d'un meme os dominant forment une piece ; son articulation (pivot) doit
+    # tomber dans la boite de la piece, elargie de 5 % de la taille du squelette ; temoin : un os au hasard
+    marge = 0.05 * sq.taille
+    for b in np.unique(dominant[choix]):
+        pts = pos[choix[dominant[choix] == b]]
+        lo, hi = pts.min(axis=0) - marge, pts.max(axis=0) + marge
+        n = len(pts)
+        out['groupes'][int(b)] += n
+        if np.all((sq.articulations[b] >= lo) & (sq.articulations[b] <= hi)):
+            out['pivot'] += n
+        h = int(rng.integers(0, n_os))
+        if np.all((sq.articulations[h] >= lo) & (sq.articulations[h] <= hi)):
+            out['pivot_temoin'] += n
     if len(choix) > SOMMETS_PAR_MAILLAGE:
         choix = np.sort(rng.choice(choix, SOMMETS_PAR_MAILLAGE, replace=False))
     d = sq.distances(pos[choix])
@@ -172,14 +187,47 @@ def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng) -> Optional[Dict[str,
     hasard = rng.integers(0, n_os, size=len(choix))
     d_has = d[np.arange(len(choix)), hasard]
     rang_h = np.sum(d < d_has[:, None], axis=1)
+    # hypothese 'repere de l'os' : le sommet serait donne dans le repere de son os dominant (piece rapportee)
+    m = sq.mondes[dom]
+    v_loc = np.einsum('nij,nj->ni', m[:, 0:3, 0:3], pos[choix]) + m[:, 0:3, 3]
+    d_loc = sq.distances(v_loc)
+    rang_l = np.sum(d_loc < d_loc[np.arange(len(choix)), dom][:, None], axis=1)
     out.update(tires=int(len(choix)), rang=int(np.sum(rang < RANG)), temoin=int(np.sum(rang_h < RANG)),
-               distances=list(d_dom / sq.taille))
+               rang_local=int(np.sum(rang_l < RANG)), distances=list(d_dom / sq.taille))
+    return out
+
+
+def detail_maillage(mesh, vertex_buffers, n_max: int = 400) -> Optional[dict]:
+    """Pour --details : table, boite et un echantillon de sommets (position, 4 os passes par la table, poids)."""
+    import geometrie_maillages as GM
+    sa_i = GM._attribut(mesh, b'AmfUsage_BoneIndex', b'AmfFormat_R8G8B8A8_UINT')
+    sa_w = GM._attribut(mesh, b'AmfUsage_BoneWeight', b'AmfFormat_R8G8B8A8_UNORM')
+    pos = GM.positions(mesh, vertex_buffers)
+    if pos is None:
+        return None
+    out = {'sommets': int(mesh.vertexCount), 'table': [int(v) for v in (mesh.boneIndexLookup or [])],
+           'min': pos.min(axis=0).tolist(), 'max': pos.max(axis=0).tolist(),
+           'proprietes': {str(k): (v if isinstance(v, (int, float, str)) else repr(v))
+                          for k, v in (mesh.meshProperties or {}).items()}}
+    pas = max(1, len(pos) // n_max)
+    sel = np.arange(0, len(pos), pas)[:n_max]
+    ech = {'p': pos[sel].round(5).tolist()}
+    if sa_i is not None and sa_w is not None:
+        idx = GM._flux(mesh, vertex_buffers, sa_i, '4u1')
+        w = GM._flux(mesh, vertex_buffers, sa_w, '4u1')
+        if idx is not None and w is not None:
+            table = out['table']
+            ech['os'] = [[table[i] if i < len(table) else -1 - int(i) for i in row] if table else row.tolist()
+                         for row in idx[sel].astype(int)]
+            ech['w'] = w[sel].astype(int).tolist()
+    out['echantillon'] = ech
     return out
 
 
 class Resultat:
     COLONNES = ['modele', 'squelette', 'statut', 'detail', 'sources', 'classes', 'exemple', 'os', 'maillages_os',
-                'table_max', 'sommets', 'hors_squelette', 'rang5', 'rang5_temoin', 'distance']
+                'table_max', 'sommets', 'hors_squelette', 'rang5', 'rang5_temoin', 'distance', 'rang5_repere_os',
+                'pivot', 'pivot_temoin', 'os_dominants', 'principaux']
 
     def __init__(self, modele: bytes, squelette: bytes):
         self.cle = (modele, squelette)
@@ -194,6 +242,11 @@ class Resultat:
         self.rang5: Optional[float] = None
         self.rang5_temoin: Optional[float] = None
         self.distance: Optional[float] = None
+        self.rang5_repere_os: Optional[float] = None
+        self.pivot: Optional[float] = None
+        self.pivot_temoin: Optional[float] = None
+        self.os_dominants = 0
+        self.principaux = ''
 
     def ligne(self):
         def f(v):
@@ -233,6 +286,17 @@ def charger_squelette(vfs, chemin: bytes) -> Squelette:
     return sq
 
 
+def ecrire_details(dossier: Path, r: 'Resultat', sq: Squelette, maillage: bytes, maillages: List[Optional[dict]]):
+    import json
+    dossier.mkdir(parents=True, exist_ok=True)
+    nom = r.modele.replace('/', '_').replace('\\', '_') + '__' + Path(r.squelette).stem + '.json'
+    d = {'modele': r.modele, 'squelette': r.squelette, 'maillage': _txt(maillage), 'taille': sq.taille,
+         'os': [{'nom': n, 'parent': p, 'monde': m.round(6).tolist()}
+                for n, p, m in zip(sq.noms, sq.parents, sq.mondes)],
+         'maillages': maillages}
+    (dossier / nom).write_text(json.dumps(d), encoding='utf-8')
+
+
 def groupe_complet(header, buffers):
     """Premier groupe de LOD dont tous les tampons sont presents (le .hrmeshc peut manquer au LOD 0)."""
     for lg in header.lodGroups:
@@ -242,7 +306,8 @@ def groupe_complet(header, buffers):
     return None
 
 
-def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes) -> Resultat:
+def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes, details: Optional[str] = None) -> Resultat:
+    """details : dossier ou ecrire <modele>.json (squelette et sommets) pour une etude a la main."""
     from deca.ff_adf_amf import AmfModel
     from deca.ff_adf_amf_gltf import node_of_type, TYPES_ADF_NODE, load_meshc
     r = Resultat(modele, squelette)
@@ -270,8 +335,9 @@ def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes) -> Resultat:
             raise Statut('tampon_absent', _txt(model.mesh))
         etape = 'mesure'
         rng = np.random.default_rng(GRAINE)
-        hors = tires = rang = temoin = 0
+        hors = tires = rang = temoin = rang_local = pivot = pivot_t = 0
         distances: List[float] = []
+        groupes: collections.Counter = collections.Counter()
         for m in lg.meshes:
             res = mesurer_peau(m, buffers.vertexBuffers, sq, rng)
             if res is None:
@@ -283,13 +349,26 @@ def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes) -> Resultat:
             tires += res['tires']
             rang += res['rang']
             temoin += res['temoin']
+            rang_local += res['rang_local']
             distances += res['distances']
+            groupes.update(res['groupes'])
+            pivot += res['pivot']
+            pivot_t += res['pivot_temoin']
+        if details:
+            ecrire_details(Path(details), r, sq, model.mesh, [detail_maillage(m, buffers.vertexBuffers)
+                                                              for m in lg.meshes])
         if not r.maillages_os:
             raise Statut('sans_os', _txt(model.mesh))
         r.hors_squelette = hors / r.sommets if r.sommets else 0.0
         if tires:
             r.rang5, r.rang5_temoin = rang / tires, temoin / tires
+            r.rang5_repere_os = rang_local / tires
             r.distance = float(np.median(distances))
+            total = sum(groupes.values())
+            r.pivot, r.pivot_temoin = pivot / total, pivot_t / total
+            r.os_dominants = len(groupes)
+            r.principaux = ' '.join('{}:{:.0f}%'.format(sq.noms[b], 100.0 * n / total)
+                                    for b, n in groupes.most_common(3))
         if hors:
             r.statut = 'os_hors_squelette'
     except Statut as st:
@@ -305,13 +384,15 @@ def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes) -> Resultat:
 
 _VFS = None
 _ADF_DB = None
+_DETAILS = {'motif': None, 'dossier': None}
 
 
-def _init_travail(projet: str):
+def _init_travail(projet: str, motif: Optional[str] = None, dossier: Optional[str] = None):
     global _VFS, _ADF_DB
     from deca.ff_adf import AdfDatabase
     _VFS = _projet.open_project(projet)
     _ADF_DB = AdfDatabase(_VFS)
+    _DETAILS['motif'], _DETAILS['dossier'] = motif, dossier
 
 
 def _lot_rtpc(lot: List[Tuple[int, str, str]]):
@@ -328,16 +409,20 @@ def _lot_rtpc(lot: List[Tuple[int, str, str]]):
 
 
 def _lot_couples(lot: List[Tuple[bytes, bytes]]) -> List[Resultat]:
-    return [auditer_couple(_VFS, _ADF_DB, m, s) for m, s in lot]
+    import re
+    motif = _DETAILS['motif']
+    return [auditer_couple(_VFS, _ADF_DB, m, s, _DETAILS['dossier'] if motif and re.search(motif, _txt(m)) else None)
+            for m, s in lot]
 
 
-def _carte(projet: str, fonction, lots, processus: int, nom: str, t0: float):
+def _carte(projet: str, fonction, lots, processus: int, nom: str, t0: float, motif: Optional[str] = None,
+           dossier: Optional[str] = None):
     if processus <= 1:
-        _init_travail(projet)
+        _init_travail(projet, motif, dossier)
         for lot in lots:
             yield fonction(lot)
         return
-    with multiprocessing.Pool(processus, initializer=_init_travail, initargs=(projet,)) as pool:
+    with multiprocessing.Pool(processus, initializer=_init_travail, initargs=(projet, motif, dossier)) as pool:
         for i, res in enumerate(pool.imap_unordered(fonction, lots)):
             if (i + 1) % 25 == 0 or i + 1 == len(lots):
                 print('  {} : {} / {} lots ({:.0f} s)'.format(nom, i + 1, len(lots), time.time() - t0), flush=True)
@@ -372,10 +457,13 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
           'rang5 : part des sommets dont l\'os dominant est parmi les {} os les plus proches (1 = juste) ; temoin : '
           'la meme part pour un os tire au hasard. Distance : mediane de la distance a l\'os dominant, en part de la '
           'taille du squelette. Os hors squelette : part des sommets dont l\'os depasse le squelette (0 '
-          'attendu).'.format(RANG), '',
+          'attendu). rang5_repere_os : rang5 si les sommets etaient donnes dans le repere de leur os dominant. '
+          'Pivot (pieces rigides, armes) : part des sommets dont la piece (sommets d\'un meme os dominant) contient '
+          'l\'articulation de son os, a 5 % de la taille du squelette pres ; temoin : un os au hasard.'.format(RANG),
+          '',
           '| Mesure | Couples | Q1 | Mediane | Q3 | Part >= 0,8 (distance : <= 0,1 ; hors : = 0) |',
           '|---|---:|---:|---:|---:|---:|']
-    for k in ('rang5', 'rang5_temoin', 'distance', 'hors_squelette'):
+    for k in ('rang5', 'rang5_temoin', 'rang5_repere_os', 'pivot', 'pivot_temoin', 'distance', 'hors_squelette'):
         v = np.array([getattr(r, k) for r in resultats if getattr(r, k) is not None], dtype=np.float64)
         if not len(v):
             continue
@@ -388,11 +476,21 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
         q1, med, q3 = np.percentile(v, [25, 50, 75])
         L.append('| {} | {} | {:.3f} | {:.3f} | {:.3f} | {:.1f} % |'.format(k, len(v), q1, med, q3, 100 * part))
     if mesures:
-        L += ['', '## Couples les moins vraisemblables (rang5)', '', '| Modele | Squelette | Os | rang5 | temoin |',
-              '|---|---|---:|---:|---:|']
+        L += ['', '## Par famille de modeles', '', '| Famille | Couples | rang5 | temoin | repere de l\'os | pivot | '
+              'temoin |', '|---|---:|---:|---:|---:|---:|---:|']
+        par_famille = collections.defaultdict(list)
+        for r in mesures:
+            par_famille['/'.join(r.modele.split('/')[:2])].append(r)
+        for fam, rs in sorted(par_famille.items()):
+            L.append('| `{}` | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {:.3f} |'.format(
+                fam, len(rs), *(float(np.median([getattr(r, k) for r in rs])) for k in
+                                ('rang5', 'rang5_temoin', 'rang5_repere_os', 'pivot', 'pivot_temoin'))))
+        L += ['', '## Couples les moins vraisemblables (rang5)', '',
+              '| Modele | Squelette | Os | rang5 | temoin | repere de l\'os | pivot | Os dominants |',
+              '|---|---|---:|---:|---:|---:|---:|---|']
         for r in sorted(mesures, key=lambda r: r.rang5)[:20]:
-            L.append('| `{}` | `{}` | {} | {:.3f} | {:.3f} |'.format(r.modele, r.squelette, r.os, r.rang5,
-                                                                   r.rang5_temoin))
+            L.append('| `{}` | `{}` | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {} |'.format(
+                r.modele, r.squelette, r.os, r.rang5, r.rang5_temoin, r.rang5_repere_os, r.pivot, r.principaux))
     autres = [r for r in resultats if r.statut not in ('ok',)]
     if autres:
         L += ['', '## Exemples par statut', '']
@@ -415,6 +513,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument('--processus', type=int, default=max(1, (os.cpu_count() or 2) * 3 // 4),
                     help='processus de lecture (defaut : 3/4 des coeurs)')
     ap.add_argument('--lot', type=int, default=50, help='fichiers ou couples par lot envoye a un processus')
+    ap.add_argument('--details', help='expression reguliere sur le chemin du modele : squelette et sommets des couples '
+                                      'choisis dans <sortie>\\details\\*.json, pour une etude a la main')
     args = ap.parse_args(argv)
     import audit_noms_internes as ANI
     from audit_maillages import herite_just_cause
@@ -439,7 +539,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     print('{} couples (modele, squelette)'.format(len(cles)), flush=True)
     lots = [cles[i:i + args.lot] for i in range(0, len(cles), args.lot)]
     resultats: List[Resultat] = []
-    for res in _carte(args.projet, _lot_couples, lots, args.processus, 'couples', t0):
+    dossier = str(Path(args.sortie) / 'details') if args.details else None
+    for res in _carte(args.projet, _lot_couples, lots, args.processus, 'couples', t0, args.details, dossier):
         resultats += res
     for r in resultats:
         n, classes, exemple = sources[r.cle]

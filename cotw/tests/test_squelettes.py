@@ -153,6 +153,37 @@ class TestPeau(unittest.TestCase):
         self.assertLess(r['temoin'], 240 * 0.7)
         self.assertLess(float(np.median(r['distances'])), 0.02)
 
+    def test_rigid_parts_and_bone_frame(self):
+        table = list(range(12))
+        m, vb = maillage_a_os(self.points, self.os, table)
+        r = AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1))
+        self.assertEqual(r['pivot'], 240)                       # chaque piece contient l'articulation de son os
+        self.assertLess(r['pivot_temoin'], 240 * 0.5)
+        self.assertEqual(sum(r['groupes'].values()), 240)
+        self.assertEqual(len(r['groupes']), 12)
+        self.assertLess(r['rang_local'], r['rang'])            # donnes dans le repere du modele, pas de l'os
+        # les memes sommets donnes dans le repere de leur os (articulation i en (i, 0, 0), sans rotation)
+        locaux = [(x - o, y, z) for (x, y, z), o in zip(self.points, self.os)]
+        m, vb = maillage_a_os(locaux, self.os, table)
+        r = AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1))
+        self.assertEqual(r['rang_local'], 240)
+        self.assertLess(r['rang'], 240 * 0.5)
+
+    def test_details(self):
+        import json
+        m, vb = maillage_a_os(self.points, self.os, list(range(12)))
+        d = AS.detail_maillage(m, vb, n_max=10)
+        self.assertEqual((d['sommets'], d['table'], len(d['echantillon']['p'])), (240, list(range(12)), 10))
+        self.assertEqual(d['echantillon']['os'][0], [0, 0, 0, 0])
+        self.assertEqual(d['echantillon']['w'][0], [255, 0, 0, 0])
+        r = AS.Resultat(b'models/a/b.modelc', b'animations/s.skeleton')
+        with tempfile.TemporaryDirectory() as tmp:
+            AS.ecrire_details(Path(tmp), r, self.sq, b'models/a/b.meshc', [d])
+            j = json.loads(Path(tmp, 'models_a_b.modelc__s.json').read_text(encoding='utf-8'))
+        self.assertEqual(len(j['os']), 12)
+        self.assertEqual(j['os'][1]['monde'][0][3], 1.0)
+        self.assertEqual(j['maillages'][0]['sommets'], 240)
+
     def test_wrong_table_is_seen(self):
         m, vb = maillage_a_os(self.points, self.os, [11 - k for k in range(12)])     # table a l'envers
         r = AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1))
