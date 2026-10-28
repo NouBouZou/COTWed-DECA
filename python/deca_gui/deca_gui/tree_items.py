@@ -198,7 +198,7 @@ def adf_tree(adf, noms, file_label: str = '') -> TreeItem:
     """Tree of an ADF file read by DECA (deca.ff_adf.Adf with table_instance_full_values)."""
     cotw_tools.ensure_path()
     import citations as CI
-    from deca.ff_adf import AdfValue, MetaType, adf_type_id_to_str
+    from deca.ff_adf import AdfValue, AdfPointer, MetaType, adf_type_id_to_str
     type_map = adf.extended_map_typedef
 
     def tname(type_id) -> str:
@@ -244,6 +244,11 @@ def adf_tree(adf, noms, file_label: str = '') -> TreeItem:
         mt = td.metatype if td is not None else None
         if v.type_id == CI.DEFERRED_TYPE:
             return value_item(label + ' (deferred)', v.value)
+        if isinstance(v.value, AdfPointer):
+            p = v.value
+            load = (lambda p=p: [value_item('*', p.value)]) if p.value is not None else None
+            return TreeItem([label, tname(v.type_id), p.describe(), '@0x{:x}'.format(v.info_offset)], load=load,
+                            payload=v)
         if isinstance(v.value, dict):
             members = list(v.value.items())
 

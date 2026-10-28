@@ -162,34 +162,26 @@ class Collecte:
 
 
 EXEMPLES_MAX = 5
-RX_POINTEUR = None
 
 
-def noter_pointeur(note: str, chemin: str, c: Collecte, vus: set):
-    """Note de DECA pour un pointeur ADF (metatype 2) : 'NOTE: <type>: <valeur 16 hex> to <type vise 8 hex>'."""
-    global RX_POINTEUR
-    import re
-    if RX_POINTEUR is None:
-        RX_POINTEUR = re.compile(r'NOTE: (.*): ([0-9a-f]{16}) to ([0-9a-f]{8})')
-    m = RX_POINTEUR.match(note)
-    nom = m.group(1) if m else '?'
-    if len(nom) > 3 and nom[:2] in ("b'", 'b"') and nom[-1] == nom[1]:
-        nom = nom[2:-1]           # DECA formate le nom du type (bytes) tel quel : b'Nom'
-    key = (nom, m.group(3)) if m else ('?', '?')
-    valeur = m.group(2) if m else ''
+def noter_pointeur(nom_type: str, valeur: int, vise: int, chemin: str, c: Collecte, vus: set):
+    """Pointeur ADF (metatype 2) : nom du type pointeur, valeur brute (u64 : cible relative a l'instance, lien de la
+    chaine de relocation), hash du type vise. Depuis le 28/10, DECA suit les pointeurs (deca.ff_adf.AdfPointer)."""
+    key = (nom_type or '?', '{:08x}'.format(vise & 0xFFFFFFFF))
     e = c.pointeurs_types.setdefault(key, [0, 0, 0])
     e[0] += 1
-    if valeur and int(valeur, 16):
+    cible = valeur & 0xFFFFFFFF
+    if cible:
         e[1] += 1
     if ('ptr',) + key not in vus:
         vus.add(('ptr',) + key)
         e[2] += 1
     # exemples : un par fichier, et seulement des pointeurs non nuls (les seuls qui menent quelque part)
-    if valeur and int(valeur, 16) and ('ptrex',) + key not in vus:
+    if cible and ('ptrex',) + key not in vus:
         vus.add(('ptrex',) + key)
         ex = c.pointeurs_exemples.setdefault(key, [])
         if len(ex) < EXEMPLES_MAX:
-            ex.append((chemin, valeur))
+            ex.append((chemin, '{:016x}'.format(valeur)))
 
 
 def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
@@ -234,7 +226,7 @@ def collecter_rtpc(data: bytes, chemin: str, c: Collecte):
 
 
 def collecter_adf(adf, chemin: str, c: Collecte):
-    from deca.ff_adf import AdfValue
+    from deca.ff_adf import AdfValue, AdfPointer
     types = adf.extended_map_typedef
     vus = set()
     pile = [v for v in adf.table_instance_full_values if v is not None]
@@ -243,6 +235,12 @@ def collecter_adf(adf, chemin: str, c: Collecte):
         if isinstance(v, AdfValue):
             td = types.get(v.type_id)
             meta = td.metatype if td is not None else None
+            if isinstance(v.value, AdfPointer):
+                # la cible est comptee la ou elle est rangee (tableau, structure) : on ne la parcourt pas ici
+                c.pointeurs += 1
+                noter_pointeur(_projet.to_text(td.name) if td is not None else '?', v.value.raw,
+                               td.element_type_hash if td is not None else 0, chemin, c, vus)
+                continue
             if meta == 9 and isinstance(v.value, int):
                 largeur = {4: 32, 6: 48, 8: 64}.get(td.size)
                 if largeur and v.value not in SENTINELLES:
@@ -262,9 +260,6 @@ def collecter_adf(adf, chemin: str, c: Collecte):
         elif isinstance(v, list):
             if v and not isinstance(v[0], (int, float)):
                 pile.extend(v)
-        elif isinstance(v, tuple) and len(v) == 2 and isinstance(v[1], str) and v[1].startswith('NOTE:'):
-            c.pointeurs += 1
-            noter_pointeur(v[1], chemin, c, vus)
         elif isinstance(v, str) and v.startswith('!!!MISSING TYPE'):
             c.types_manquants[v.split(' in ')[0].split()[-1]] += 1
 

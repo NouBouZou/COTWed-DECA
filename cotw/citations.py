@@ -147,6 +147,8 @@ def adf_leaves(adf) -> Iterator[Leaf]:
             mt = td.metatype if td is not None else None
             if v.type_id == DEFERRED_TYPE:
                 yield from walk(v.value, path, ancestors)
+            elif mt == MetaType.Pointer:
+                return      # pointeur suivi (deca.ff_adf.AdfPointer) : sa cible est une feuille la ou elle est rangee
             elif isinstance(v.value, dict):
                 chain = ancestors + [(path, v)]
                 for k, iv in v.value.items():
@@ -178,7 +180,7 @@ def adf_leaves(adf) -> Iterator[Leaf]:
         elif isinstance(v, list):
             for i, iv in enumerate(v):
                 yield from walk(iv, '{}[{}]'.format(path, i), ancestors)
-        # pointeurs (tuples) et valeurs absentes : ignores
+        # valeurs absentes : ignorees
 
     for ins, fv in zip(adf.table_instance, adf.table_instance_full_values):
         name = ins.name.decode('utf-8', 'replace') if isinstance(ins.name, bytes) else str(ins.name)

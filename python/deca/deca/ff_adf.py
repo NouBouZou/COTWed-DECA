@@ -379,6 +379,36 @@ class AdfValue:
         return s
 
 
+class AdfPointer:
+    """Value of an ADF pointer field (metatype 2). COTWed DECA, 2026-10-28.
+
+    The 8 bytes have the layout of the string and array fields (see cotw/adf_ecriture.py): [u32 target offset,
+    relative to the instance][u32 link of the relocation chain, distance to the next pointer field, 0 at the end].
+    A target of 0 is a null pointer. COTW has two pointer types (17-noms-internes): uint32* (3 554 fields, all null)
+    and StatisticDefinition* (1 119 fields of online/onlinestatistics.statisticsc, each pointing to an element of
+    StatisticCollection.StatisticDefinitions).
+
+    value: the pointed value, read with the element type of the pointer type; None for a null pointer, a target
+    outside the instance, a cycle (cycle=True: the target is already being followed) or an unreadable target."""
+    __slots__ = ('raw', 'target', 'link', 'value', 'cycle')
+
+    def __init__(self, raw: int, value=None, cycle=False):
+        self.raw = raw
+        self.target = raw & 0xFFFFFFFF
+        self.link = raw >> 32
+        self.value = value
+        self.cycle = cycle
+
+    def describe(self):
+        if not self.target:
+            return 'null'
+        return '-> 0x{:08x}{}'.format(self.target, ' (cycle)' if self.cycle else (
+            '' if self.value is not None else ' (not read)'))
+
+    def __repr__(self):
+        return 'AdfPointer({}, raw=0x{:016x})'.format(self.describe(), self.raw)
+
+
 def hash_lookup(vfs: VfsDatabase, hash_code, default=None, prefix=''):
     if isinstance(hash_code, int):
         ele = vfs.lookup_equipment_from_hash(hash_code)
@@ -440,7 +470,13 @@ def adf_format(v, vfs: VfsDatabase, type_map, indent=0):
 
             s = s + '  ' * indent + '}\n'
         elif type_def.metatype == MetaType.Pointer:
-            s = s + '  ' * indent + '{}  # {}\n'.format(v.value, value_info)
+            p = v.value
+            if isinstance(p, AdfPointer) and p.value is not None:
+                s = s + '  ' * indent + '# {} {}\n'.format(value_info, p.describe())
+                s = s + adf_format(p.value, vfs, type_map, indent + 1)
+            else:
+                s = s + '  ' * indent + '{}  # {}\n'.format(p.describe() if isinstance(p, AdfPointer) else p,
+                                                           value_info)
         elif type_def.metatype in {MetaType.Array, MetaType.InlineArray}:
             s = s + '  ' * indent + '# ' + value_info + '\n'
             s = s + '  ' * indent + '[\n'
@@ -511,6 +547,8 @@ def adf_format(v, vfs: VfsDatabase, type_map, indent=0):
 def adf_value_extract(v):
     if isinstance(v, AdfValue):
         return adf_value_extract(v.value)
+    elif isinstance(v, AdfPointer):
+        return adf_value_extract(v.value)
     elif isinstance(v, dict):
         n = {}
         for k, iv in v.items():
@@ -524,7 +562,8 @@ def adf_value_extract(v):
 
 def read_instance(
         buffer, n_buffer, buffer_pos, type_id, map_typedef, map_string_hash, abs_offset,
-        bit_offset=None, found_strings=None):
+        bit_offset=None, found_strings=None, followed=None):
+    # followed: offsets of the pointer targets being read (AdfPointer), against cycles
     dpos = buffer_pos
     if type_id == typedef_s8:
         v, buffer_pos = ff_read_s8(buffer, n_buffer, buffer_pos)
@@ -586,7 +625,7 @@ def read_instance(
             try:
                 v, buffer_pos = read_instance(
                     buffer, n_buffer, buffer_pos, v0[2], map_typedef, map_string_hash, abs_offset,
-                    found_strings=found_strings)
+                    found_strings=found_strings, followed=followed)
             except EDecaMissingAdfType as e:
                 v = f"!!!MISSING TYPE:  0x{e.type_id:08x} in 0x{v0[2]:08x}[{v0[1]}]"
             buffer_pos = opos
@@ -716,7 +755,7 @@ def read_instance(
                 nm = m.name_utf8
                 vt, buffer_pos = read_instance(
                     buffer, n_buffer, buffer_pos, m.type_hash, map_typedef, map_string_hash, abs_offset,
-                    bit_offset=m.bit_offset, found_strings=found_strings)
+                    bit_offset=m.bit_offset, found_strings=found_strings, followed=followed)
                 v[nm] = vt
                 # print(nm, vt)
             p1 = buffer_pos
@@ -725,10 +764,21 @@ def read_instance(
             v = AdfValue(v, type_id, p0 + abs_offset)
 
         elif type_def.metatype == 2:  # Pointer
+            # COTWed DECA (2026-10-28): followed, see AdfPointer; DECA kept (raw u64, note)
             v0, buffer_pos = ff_read_u64(buffer, n_buffer, buffer_pos)
-            v = (v0, 'NOTE: {}: {:016x} to {:08x}'.format(type_def.name, v0, type_def.element_type_hash))
-            # TODO not sure how this is used yet, but it's used by effects so lower priority
-            # raise EDecaMissingAdfType(type_id)
+            ptr = AdfPointer(v0)
+            if ptr.target:
+                if followed is not None and ptr.target in followed:
+                    ptr.cycle = True
+                elif ptr.target < n_buffer:
+                    try:
+                        ptr.value, _ = read_instance(
+                            buffer, n_buffer, ptr.target, type_def.element_type_hash, map_typedef, map_string_hash,
+                            abs_offset, found_strings=found_strings,
+                            followed=(followed or frozenset()) | {ptr.target})
+                    except Exception:  # noqa: BLE001 - an unreadable target leaves the pointer unresolved
+                        ptr.value = None
+            v = AdfValue(ptr, type_id, dpos + abs_offset, (ptr.target + abs_offset) if ptr.target else None)
         elif type_def.metatype in {3, 4}:  # Array or Inline Array
             if type_def.metatype == 3:
                 v0, buffer_pos = ff_read_u32s(buffer, n_buffer, buffer_pos, 3)
@@ -782,7 +832,7 @@ def read_instance(
                     v[i], buffer_pos = read_instance(
                         buffer, n_buffer, buffer_pos,
                         type_def.element_type_hash, map_typedef, map_string_hash, abs_offset,
-                        found_strings=found_strings)
+                        found_strings=found_strings, followed=followed)
 
                     p1 = buffer_pos
                     # print(p0, p1, p1-p0)

@@ -185,16 +185,16 @@ class TestEchantillons(unittest.TestCase):
 
     def test_pointer_note(self):
         c, vus = A.Collecte(), set()
-        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000010 to 1234abcd", 'a.adf', c, vus)
-        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000000 to 1234abcd", 'a.adf', c, vus)
-        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000020 to 1234abcd", 'b.adf', c, set())
-        A.noter_pointeur('illisible', 'c.adf', c, set())
-        A.noter_pointeur("NOTE: b'SomePtr': 0000000000000000 to 1234abcd", 'd.adf', c, set())
+        A.noter_pointeur('SomePtr', 0x2800000010, 0x1234abcd, 'a.adf', c, vus)     # cible 0x10, lien 0x28
+        A.noter_pointeur('SomePtr', 0, 0x1234abcd, 'a.adf', c, vus)
+        A.noter_pointeur('SomePtr', 0x20, 0x1234abcd, 'b.adf', c, set())
+        A.noter_pointeur('SomePtr', 0, 0x1234abcd, 'd.adf', c, set())
+        A.noter_pointeur('', 0, 0, 'c.adf', c, set())
         self.assertEqual(c.pointeurs_types[('SomePtr', '1234abcd')], [4, 2, 3])   # occurrences, non nuls, fichiers
         # exemples : un par fichier, pointeurs non nuls seulement
         self.assertEqual(c.pointeurs_exemples[('SomePtr', '1234abcd')],
-                         [('a.adf', '0000000000000010'), ('b.adf', '0000000000000020')])
-        self.assertEqual(c.pointeurs_types[('?', '?')], [1, 0, 1])
+                         [('a.adf', '0000002800000010'), ('b.adf', '0000000000000020')])
+        self.assertEqual(c.pointeurs_types[('?', '00000000')], [1, 0, 1])
 
     def test_rtpc_types(self):
         from deca.ff_rtpc import k_type_unk_15, k_type_unk_16
@@ -218,8 +218,8 @@ class TestEchantillons(unittest.TestCase):
     def test_sample_files(self):
         from deca.ff_rtpc import k_type_unk_15
         c = A.Collecte()
-        A.noter_pointeur("NOTE: b'P': 0000000000000010 to 0000beef", 'gfx/a.adf', c, set())
-        A.noter_pointeur("NOTE: b'P': 0000000000000010 to 0000beef", '(sans nom) 0123abcd', c, set())
+        A.noter_pointeur('P', 0x10, 0xbeef, 'gfx/a.adf', c, set())
+        A.noter_pointeur('P', 0x10, 0xbeef, '(sans nom) 0123abcd', c, set())
         c.rtpc_rares[k_type_unk_15] = [('settings/z.bin', 1, 2, 3)]
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)

@@ -71,7 +71,7 @@ def show(value, kind: str, note: Optional[str], names: Dict[int, List[str]]) -> 
 
 def format_tree(adf, names, max_depth: Optional[int], max_elems: int) -> List[str]:
     """Arbre indente : structures et tableaux de structures, puis valeurs."""
-    from deca.ff_adf import AdfValue, MetaType
+    from deca.ff_adf import AdfValue, AdfPointer, MetaType
     type_map = adf.extended_map_typedef
     lines: List[str] = []
 
@@ -84,6 +84,11 @@ def format_tree(adf, names, max_depth: Optional[int], max_elems: int) -> List[st
             mt = td.metatype if td is not None else None
             if v.type_id == CI.DEFERRED_TYPE:
                 rec(v.value, label + ' (differe)', depth)
+            elif mt == MetaType.Pointer and isinstance(v.value, AdfPointer):
+                lines.append('{}{} : {} {}  @0x{:x}'.format(pad, label, type_name(adf, v.type_id),
+                                                           v.value.describe(), v.info_offset))
+                if v.value.value is not None:
+                    rec(v.value.value, '*' + label, depth + 1)
             elif isinstance(v.value, dict):
                 lines.append('{}{} : {}  @0x{:x}'.format(pad, label, type_name(adf, v.type_id), v.data_offset))
                 for k, iv in v.value.items():
