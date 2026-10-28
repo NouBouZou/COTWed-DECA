@@ -21,6 +21,26 @@ def _resolve_hash32(vfs: VfsDatabase, value):
     return value
 
 
+# Bone a weapon attachment (CModelAttachementWeaponComponent: cartridges, magazines, rails, sights...) hangs on,
+# as a string ('ammo', 'ammo_used_03', 'weapon_handle'...). The property name is not known; its hash is read in the
+# weapon entities of COTW (COTWed DECA, 2026-10-28). The attachment's own 'world' matrix is then relative to that
+# bone, and its mesh is given in the bone's frame (18-squelettes: cartridges centred on the origin, skinned at 100 %
+# to the bone they hang on).
+h_prop_attach_bone = 0xdd3acc80
+h_prop_world = 0x6ca6d4b9
+
+
+def rtpc_node_attach(rtpc: RtpcNode, vfs: VfsDatabase):
+    """(bone name, local 'world' matrix as a column-major list or None) of an attachment node, or (None, None)."""
+    if h_prop_attach_bone not in rtpc.prop_map:
+        return None, None
+    bone = _resolve_hash32(vfs, rtpc.prop_map[h_prop_attach_bone].data)
+    if not bone:
+        return None, None
+    local = rtpc.prop_map[h_prop_world].data if h_prop_world in rtpc.prop_map else None
+    return bytes(bone), (list(local) if local is not None else None)
+
+
 def rtpc_node_class(rtpc: RtpcNode, vfs: VfsDatabase) -> bytes:
     if h_prop_class in rtpc.prop_map:
         return rtpc.prop_map[h_prop_class].data
@@ -75,8 +95,8 @@ def rtpc_export_node_recurse(
         world_matrix=None,
         material_properties=None,
         skeleton_raw_path=None):
-    if 0x6ca6d4b9 in rtpc.prop_map:
-        ref_matrix = Deca3dMatrix(col_major=rtpc.prop_map[0x6ca6d4b9].data)
+    if h_prop_world in rtpc.prop_map:
+        ref_matrix = Deca3dMatrix(col_major=rtpc.prop_map[h_prop_world].data)
         world_matrix = Deca3dMatrix.matmul(world_matrix, ref_matrix)
 
     if material_properties is None:
@@ -96,10 +116,13 @@ def rtpc_export_node_recurse(
     _rtpc_class, rtpc_model_vpath, skeleton_raw_path = rtpc_node_model_skeleton(rtpc, vfs, skeleton_raw_path)
 
     if rtpc_model_vpath is not None:
+        attach_bone, attach_local = rtpc_node_attach(rtpc, vfs)
         gltf.export_modelc(
             rtpc_model_vpath, world_matrix,
             material_properties=material_properties,
-            skeleton_raw_path=skeleton_raw_path)
+            skeleton_raw_path=skeleton_raw_path,
+            attach_bone=attach_bone,
+            attach_matrix=Deca3dMatrix(col_major=attach_local) if attach_local is not None else None)
 
     for child in rtpc.child_table:
         rtpc_export_node_recurse(

@@ -21,6 +21,12 @@ distinct :
      - distance : mediane de la distance a l'os dominant, en part de la taille du squelette.
 Si la table et la pose sont bien lues, rang5 est proche de 1 et nettement au-dessus du temoin.
 
+Pieces rapportees (2026-10-28, 18-squelettes) : les CModelAttachementWeaponComponent des armes (cartouches, douilles,
+chargeurs, rails, hausses) pendent a un os nomme dans l'entite (propriete 0xdd3acc80, nom inconnu : 'ammo',
+'ammo_used_03', 'weapon_handle'...) ; leurs sommets sont donnes dans le repere de cet os et la matrice 'world' de
+l'entite est relative a lui. Elles sont mesurees a leur place : monde de l'os fois matrice locale. Une meme piece peut
+pendre a plusieurs os (six cartouches d'un barillet) : un couple par os.
+
 Sorties (dossier --sortie) : squelettes.csv (un couple par ligne), squelettes.md (statuts, quartiles, couples les
 moins vraisemblables). Les modeles des dossiers jc* (Just Cause) sont ecartes.
 
@@ -61,11 +67,12 @@ def _txt(b) -> str:
 # 1. Couples (modele, squelette) des entites RTPC
 # ---------------------------------------------------------------------------------------------------------------
 
-def couples_rtpc(vfs, data: bytes) -> List[Tuple[bytes, bytes, bytes]]:
-    """(modele, squelette, classe) de chaque noeud d'un RTPC qui cite un modele avec un squelette (herite ou non),
-    selon la regle de l'export glTF."""
+def couples_rtpc(vfs, data: bytes) -> List[Tuple[bytes, bytes, bytes, bytes, tuple]]:
+    """(modele, squelette, classe, os d'attache, matrice locale) de chaque noeud d'un RTPC qui cite un modele avec
+    un squelette (herite ou non), selon la regle de l'export glTF. Os d'attache (b'' sinon) et matrice locale (16
+    flottants par colonnes, () sinon) : pieces rapportees des armes (export_import_rtpc.rtpc_node_attach)."""
     from deca.ff_rtpc_write import rtpc_from_bytes
-    from deca.export_import_rtpc import rtpc_node_model_skeleton
+    from deca.export_import_rtpc import rtpc_node_model_skeleton, rtpc_node_attach
     rtpc = rtpc_from_bytes(data)
     out = []
     pile = [(rtpc.root_node, None)]
@@ -77,7 +84,9 @@ def couples_rtpc(vfs, data: bytes) -> List[Tuple[bytes, bytes, bytes]]:
             modele = None
         else:
             if modele is not None and squelette:
-                out.append((bytes(modele), bytes(squelette), bytes(classe or b'')))
+                os_attache, local = rtpc_node_attach(node, vfs)
+                out.append((bytes(modele), bytes(squelette), bytes(classe or b''), os_attache or b'',
+                            tuple(round(float(v), 6) for v in local) if os_attache and local else ()))
         pile.extend((c, squelette) for c in node.child_table)
     return out
 
@@ -131,8 +140,11 @@ class Squelette:
         return d
 
 
-def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng) -> Optional[Dict[str, object]]:
+def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng, placement: Optional[np.ndarray] = None
+                 ) -> Optional[Dict[str, object]]:
     """Mesures d'un AmfMesh (formats bruts) a os contre un squelette ; None si le maillage n'a pas d'os.
+    placement : matrice 4x4 appliquee aux sommets avant la mesure (piece rapportee : monde de l'os d'attache fois la
+    matrice locale de l'entite).
     Cles : sommets (a poids non nuls), hors (os dominant au-dela du squelette), table_max (plus grand os cite par
     la table), tires, rang (os dominant parmi les RANG plus proches), temoin (idem pour un os au hasard),
     distances (liste, en part de la taille du squelette)."""
@@ -146,6 +158,8 @@ def mesurer_peau(mesh, vertex_buffers, sq: Squelette, rng) -> Optional[Dict[str,
     w = GM._flux(mesh, vertex_buffers, sa_w, '4u1')
     if pos is None or idx is None or w is None:
         return None
+    if placement is not None:
+        pos = pos @ placement[0:3, 0:3].T + placement[0:3, 3]
     w = w.astype(np.float64)
     valides = w.sum(axis=1) > 0
     local = idx[np.arange(len(idx)), np.argmax(w, axis=1)].astype(np.int64)
@@ -225,13 +239,14 @@ def detail_maillage(mesh, vertex_buffers, n_max: int = 400) -> Optional[dict]:
 
 
 class Resultat:
-    COLONNES = ['modele', 'squelette', 'statut', 'detail', 'sources', 'classes', 'exemple', 'os', 'maillages_os',
+    COLONNES = ['modele', 'squelette', 'attache', 'statut', 'detail', 'sources', 'classes', 'exemple', 'os',
+                'maillages_os',
                 'table_max', 'sommets', 'hors_squelette', 'rang5', 'rang5_temoin', 'distance', 'rang5_repere_os',
                 'pivot', 'pivot_temoin', 'os_dominants', 'principaux']
 
-    def __init__(self, modele: bytes, squelette: bytes):
-        self.cle = (modele, squelette)
-        self.modele, self.squelette = _txt(modele), _txt(squelette)
+    def __init__(self, modele: bytes, squelette: bytes, attache: bytes = b'', local: tuple = ()):
+        self.cle = (modele, squelette, attache, local)
+        self.modele, self.squelette, self.attache = _txt(modele), _txt(squelette), _txt(attache)
         self.statut, self.detail = 'ok', ''
         self.sources, self.classes, self.exemple = 0, '', ''
         self.os = 0
@@ -289,8 +304,10 @@ def charger_squelette(vfs, chemin: bytes) -> Squelette:
 def ecrire_details(dossier: Path, r: 'Resultat', sq: Squelette, maillage: bytes, maillages: List[Optional[dict]]):
     import json
     dossier.mkdir(parents=True, exist_ok=True)
-    nom = r.modele.replace('/', '_').replace('\\', '_') + '__' + Path(r.squelette).stem + '.json'
-    d = {'modele': r.modele, 'squelette': r.squelette, 'maillage': _txt(maillage), 'taille': sq.taille,
+    nom = r.modele.replace('/', '_').replace('\\', '_') + '__' + Path(r.squelette).stem + (
+        '__' + r.attache if r.attache else '') + '.json'
+    d = {'modele': r.modele, 'squelette': r.squelette, 'attache': r.attache, 'local': list(r.cle[3]),
+         'maillage': _txt(maillage), 'taille': sq.taille,
          'os': [{'nom': n, 'parent': p, 'monde': m.round(6).tolist()}
                 for n, p, m in zip(sq.noms, sq.parents, sq.mondes)],
          'maillages': maillages}
@@ -306,15 +323,27 @@ def groupe_complet(header, buffers):
     return None
 
 
-def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes, details: Optional[str] = None) -> Resultat:
-    """details : dossier ou ecrire <modele>.json (squelette et sommets) pour une etude a la main."""
+def placement_attache(sq: Squelette, attache: bytes, local: tuple) -> np.ndarray:
+    """Monde de l'os d'attache fois la matrice locale de l'entite (16 flottants par colonnes ; identite sinon)."""
+    nom = _txt(attache)
+    if nom not in sq.noms:
+        raise Statut('os_attache_absent', nom)
+    m = np.array(local, dtype=np.float64).reshape(4, 4).T if len(local) == 16 else np.eye(4)
+    return sq.mondes[sq.noms.index(nom)] @ m
+
+
+def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes, attache: bytes = b'', local: tuple = (),
+                   details: Optional[str] = None) -> Resultat:
+    """attache, local : piece rapportee, mesuree a sa place (placement_attache). details : dossier ou ecrire
+    <modele>.json (squelette et sommets) pour une etude a la main."""
     from deca.ff_adf_amf import AmfModel
     from deca.ff_adf_amf_gltf import node_of_type, TYPES_ADF_NODE, load_meshc
-    r = Resultat(modele, squelette)
+    r = Resultat(modele, squelette, attache, local)
     etape = 'squelette'
     try:
         sq = charger_squelette(vfs, squelette)
         r.os = len(sq)
+        placement = placement_attache(sq, attache, local) if attache else None
         etape = 'modele'
         nodes = node_of_type(vfs, modele, TYPES_ADF_NODE)
         if not nodes:
@@ -339,7 +368,7 @@ def auditer_couple(vfs, adf_db, modele: bytes, squelette: bytes, details: Option
         distances: List[float] = []
         groupes: collections.Counter = collections.Counter()
         for m in lg.meshes:
-            res = mesurer_peau(m, buffers.vertexBuffers, sq, rng)
+            res = mesurer_peau(m, buffers.vertexBuffers, sq, rng, placement)
             if res is None:
                 continue
             r.maillages_os += 1
@@ -400,19 +429,20 @@ def _lot_rtpc(lot: List[Tuple[int, str, str]]):
     couples, lus, echecs = [], 0, 0
     for uid, chemin, _t in lot:
         try:
-            for m, s, c in couples_rtpc(_VFS, _projet.read_node(_VFS, _VFS.node_where_uid(uid))):
-                couples.append((m, s, c, chemin))
+            for m, s, c, a, l in couples_rtpc(_VFS, _projet.read_node(_VFS, _VFS.node_where_uid(uid))):
+                couples.append((m, s, c, a, l, chemin))
             lus += 1
         except Exception:  # noqa: BLE001 - RTPC en ligne (.smodc) ou illisible : pas d'entite
             echecs += 1
     return couples, lus, echecs
 
 
-def _lot_couples(lot: List[Tuple[bytes, bytes]]) -> List[Resultat]:
+def _lot_couples(lot: List[Tuple[bytes, bytes, bytes, tuple]]) -> List[Resultat]:
     import re
     motif = _DETAILS['motif']
-    return [auditer_couple(_VFS, _ADF_DB, m, s, _DETAILS['dossier'] if motif and re.search(motif, _txt(m)) else None)
-            for m, s in lot]
+    return [auditer_couple(_VFS, _ADF_DB, m, s, a, l,
+                           _DETAILS['dossier'] if motif and re.search(motif, _txt(m)) else None)
+            for m, s, a, l in lot]
 
 
 def _carte(projet: str, fonction, lots, processus: int, nom: str, t0: float, motif: Optional[str] = None,
@@ -436,7 +466,7 @@ def _carte(projet: str, fonction, lots, processus: int, nom: str, t0: float, mot
 def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n_rtpc: int, echecs_rtpc: int,
            jc: int) -> List[str]:
     sortie.mkdir(parents=True, exist_ok=True)
-    resultats = sorted(resultats, key=lambda r: (r.statut != 'ok', r.modele, r.squelette))
+    resultats = sorted(resultats, key=lambda r: (r.statut != 'ok', r.modele, r.squelette, r.attache))
     with open(sortie / 'squelettes.csv', 'w', encoding='utf-8-sig', newline='') as f:
         w = csv.writer(f, delimiter=';')
         w.writerow(Resultat.COLONNES)
@@ -447,8 +477,9 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
     L = ['# Audit des squelettes (maillages a os contre leur .bsk)', '',
          '- Projet : `{}` ; {} RTPC lus ({} illisibles ou sans entite lisible) ; duree : {:.0f} s'.format(
              projet, n_rtpc, echecs_rtpc, duree),
-         '- **Couples (modele, squelette) distincts : {}** ; {} ecartes (modeles herites de Just Cause, dossiers jc*)'
-         .format(len(resultats), jc),
+         '- **Couples (modele, squelette, os d\'attache) distincts : {}** dont {} pieces rapportees ; {} ecartes '
+         '(modeles herites de Just Cause, dossiers jc*)'.format(len(resultats), sum(1 for r in resultats if r.attache),
+                                                              jc),
          '- Squelettes distincts : {} ; modeles distincts : {}'.format(
              len({r.squelette for r in resultats}), len({r.modele for r in resultats})), '',
          '| Statut | Couples |', '|---|---:|']
@@ -476,21 +507,25 @@ def ecrire(sortie: Path, resultats: List[Resultat], projet: str, duree: float, n
         q1, med, q3 = np.percentile(v, [25, 50, 75])
         L.append('| {} | {} | {:.3f} | {:.3f} | {:.3f} | {:.1f} % |'.format(k, len(v), q1, med, q3, 100 * part))
     if mesures:
-        L += ['', '## Par famille de modeles', '', '| Famille | Couples | rang5 | temoin | repere de l\'os | pivot | '
-              'temoin |', '|---|---:|---:|---:|---:|---:|---:|']
+        L += ['', '## Par famille de modeles et par placement', '',
+              'Pieces rapportees : sommets places au monde de leur os d\'attache fois la matrice locale de l\'entite '
+              '(regle de l\'export glTF depuis le 28/10).', '',
+              '| Famille | Couples | rang5 | temoin | repere de l\'os | pivot | temoin |',
+              '|---|---:|---:|---:|---:|---:|---:|']
         par_famille = collections.defaultdict(list)
         for r in mesures:
-            par_famille['/'.join(r.modele.split('/')[:2])].append(r)
+            par_famille['/'.join(r.modele.split('/')[:2]) + (' (rapportees)' if r.attache else '')].append(r)
         for fam, rs in sorted(par_famille.items()):
             L.append('| `{}` | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {:.3f} |'.format(
                 fam, len(rs), *(float(np.median([getattr(r, k) for r in rs])) for k in
                                 ('rang5', 'rang5_temoin', 'rang5_repere_os', 'pivot', 'pivot_temoin'))))
         L += ['', '## Couples les moins vraisemblables (rang5)', '',
-              '| Modele | Squelette | Os | rang5 | temoin | repere de l\'os | pivot | Os dominants |',
-              '|---|---|---:|---:|---:|---:|---:|---|']
+              '| Modele | Squelette | Attache | Os | rang5 | temoin | repere de l\'os | pivot | Os dominants |',
+              '|---|---|---|---:|---:|---:|---:|---:|---|']
         for r in sorted(mesures, key=lambda r: r.rang5)[:20]:
-            L.append('| `{}` | `{}` | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {} |'.format(
-                r.modele, r.squelette, r.os, r.rang5, r.rang5_temoin, r.rang5_repere_os, r.pivot, r.principaux))
+            L.append('| `{}` | `{}` | {} | {} | {:.3f} | {:.3f} | {:.3f} | {:.3f} | {} |'.format(
+                r.modele, r.squelette, r.attache, r.os, r.rang5, r.rang5_temoin, r.rang5_repere_os, r.pivot,
+                r.principaux))
     autres = [r for r in resultats if r.statut not in ('ok',)]
     if autres:
         L += ['', '## Exemples par statut', '']
@@ -528,15 +563,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     for couples, lus, echecs in _carte(args.projet, _lot_rtpc, lots, args.processus, 'RTPC', t0):
         n_lus += lus
         n_echecs += echecs
-        for m, s, c, chemin in couples:
-            e = sources.setdefault((m, s), [0, collections.Counter(), chemin])
+        for m, s, c, a, l, chemin in couples:
+            e = sources.setdefault((m, s, a, l), [0, collections.Counter(), chemin])
             e[0] += 1
             e[1][_txt(c)] += 1
     jc = [k for k in sources if herite_just_cause(_txt(k[0]))]
     for k in jc:
         del sources[k]
     cles = sorted(sources)
-    print('{} couples (modele, squelette)'.format(len(cles)), flush=True)
+    print('{} couples (modele, squelette, os d\'attache)'.format(len(cles)), flush=True)
     lots = [cles[i:i + args.lot] for i in range(0, len(cles), args.lot)]
     resultats: List[Resultat] = []
     dossier = str(Path(args.sortie) / 'details') if args.details else None

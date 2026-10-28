@@ -24,7 +24,7 @@ class Deca3dMatrix:
             self.data = np.array(col_major).reshape(4, 4).transpose()
 
         if row_major is not None:
-            self.data = np.array(col_major).reshape(4, 4)
+            self.data = np.array(row_major).reshape(4, 4)
 
     def prep(self):
         if self.data is None:
@@ -733,6 +733,16 @@ def skeleton_matrices(bones):
     return local, world
 
 
+def skeleton_bone_node(skeleton, name):
+    """glTF node of the bone of that name in Deca3dHkSkeleton.add_to_gltf's result, or None."""
+    if isinstance(name, bytes):
+        name = name.decode('utf-8', 'replace')
+    for _idx, node in skeleton[2]:
+        if node.name == name:
+            return node
+    return None
+
+
 class Deca3dHkSkeleton:
     """Skin of a skeleton (.bsk, Havok packfile), read by deca.ff_havok (COTWed DECA, 2026-10-23). DECA ran the
     external bin2xml tool (cpp/bin2xml, HavokLib) and parsed its XML; the reference pose is the same: translation,
@@ -956,7 +966,12 @@ class DecaGltf:
         assert self.d_stack[-1] == item
         self.d_stack.pop(-1)
 
-    def export_modelc(self, v_path, transform: Optional[Deca3dMatrix], material_properties=None, skeleton_raw_path=None):
+    def export_modelc(self, v_path, transform: Optional[Deca3dMatrix], material_properties=None, skeleton_raw_path=None,
+                      attach_bone: Optional[bytes] = None, attach_matrix: Optional[Deca3dMatrix] = None):
+        """attach_bone: the model is a part hung on that bone of the skeleton (weapon attachment, see
+        export_import_rtpc.h_prop_attach_bone): its mesh is given in the bone's frame, so it is exported rigid (no
+        skin) as a child of the bone node, under attach_matrix (the attachment's own 'world', relative to the bone).
+        Without the skeleton or the bone, the model is exported as before."""
         if transform is None:
             transform = Deca3dMatrix()
 
@@ -970,7 +985,25 @@ class DecaGltf:
         meshes_all = self.db.gltf_add_modelc(
             self.gltf, v_path, material_properties=material_properties)
 
-        if meshes_all is not None:
+        bone = None
+        if meshes_all is not None and attach_bone is not None:
+            bone = skeleton_bone_node(skeleton, attach_bone) if skeleton is not None else None
+            if bone is None:
+                self.vfs.logger.log('export_modelc: attachment bone {} not found, {} exported unattached'.format(
+                    attach_bone, v_path))
+
+        if meshes_all is not None and bone is not None:
+            holder = pyg.Node(name=UniPath.basename(v_path).decode('utf-8') if isinstance(v_path, bytes)
+                              else UniPath.basename(v_path),
+                              matrix=(attach_matrix or Deca3dMatrix()).col_major_list())
+            holder_idx = len(self.gltf.nodes)
+            self.gltf.nodes.append(holder)
+            bone.children.append(holder_idx)
+            for mesh_info in meshes_all[self.lod]:
+                for submesh in mesh_info[0]:
+                    holder.children.append(len(self.gltf.nodes))
+                    self.gltf.nodes.append(pyg.Node(mesh=submesh))
+        elif meshes_all is not None:
             with DecaGltfNode(self, name=UniPath.basename(v_path), matrix=transform.col_major_list()):
                 for mesh_info in meshes_all[self.lod]:
                     submeshes = mesh_info[0]

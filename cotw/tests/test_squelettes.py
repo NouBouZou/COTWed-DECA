@@ -62,6 +62,9 @@ class FauxVfs:
     def hash_string_match(self, hash32=None):
         return []
 
+    def adf_type_map_load(self):
+        return {}, set()
+
 
 class TestSkeletonMatrices(unittest.TestCase):
     def test_world_positions_and_rotation(self):
@@ -100,6 +103,34 @@ class TestSkeletonExport(unittest.TestCase):
         m = ibm.reshape(3, 4, 4).transpose(0, 2, 1)
         np.testing.assert_allclose(m[2] @ np.array([1, 1, 0, 1]), [0, 0, 0, 1], atol=1e-6)
         self.assertEqual(sk.add_to_gltf(vfs, None, db, gltf)[0], 0)      # une seule fois par squelette
+
+    def test_attachment_hangs_on_its_bone(self):
+        """Piece rapportee (os d'attache) : noeud rigide, enfant de l'os, sous la matrice locale de l'entite ; os
+        inconnu : exportee comme avant ; piece ordinaire : maillage avec la peau du squelette."""
+        vfs = FauxVfs({b'animations/test/rig.bsk': ('h2014', squelette_bsk())})
+        with tempfile.TemporaryDirectory() as d:
+            g = G.DecaGltf(vfs, d, 'test/x', include_skeleton=True)
+            g.db.gltf_add_modelc = lambda _g, v, material_properties=None: [[([7], True)]]
+            local = G.Deca3dMatrix(col_major=[1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0.01, 1.0])
+            with g.scene():
+                with G.DecaGltfNode(g, name='entite') as racine:
+                    g.export_modelc(b'models/test/bullet.modelc', None, skeleton_raw_path=b'animations/test/rig.skeleton',
+                                    attach_bone=b'Tip', attach_matrix=local)
+                    g.export_modelc(b'models/test/other.modelc', None, skeleton_raw_path=b'animations/test/rig.skeleton',
+                                    attach_bone=b'Absent')
+                    g.export_modelc(b'models/test/gun.modelc', None, skeleton_raw_path=b'animations/test/rig.skeleton')
+        noeuds = g.gltf.nodes
+        tip = next(n for n in noeuds if n.name == 'Tip')
+        self.assertEqual(len(tip.children), 1)
+        piece = noeuds[tip.children[0]]
+        self.assertEqual(piece.name, 'bullet.modelc')
+        np.testing.assert_allclose(piece.matrix[12:15], [0, 0, 0.01])
+        maillage_piece = noeuds[piece.children[0]]
+        self.assertEqual((maillage_piece.mesh, maillage_piece.skin), (7, None))     # rigide, pas de peau
+        enfants = [noeuds[i] for i in racine.children]
+        self.assertEqual([n.name for n in enfants], ['other.modelc', 'gun.modelc'])
+        self.assertEqual(noeuds[enfants[1].children[0]].skin, 0)                    # peau du squelette
+        self.assertEqual(len(g.gltf.skins), 1)
 
     def test_missing_and_unreadable_skeleton(self):
         import pygltflib as pyg
@@ -169,6 +200,17 @@ class TestPeau(unittest.TestCase):
         self.assertEqual(r['rang_local'], 240)
         self.assertLess(r['rang'], 240 * 0.5)
 
+    def test_placement(self):
+        # sommets autour de l'origine, tous sur l'os 7 : a leur place une fois poses sur l'os 7
+        locaux = [(x - i - (0.5 if i < 11 else 0.0), y, z) for (x, y, z), i in zip(self.points, self.os) if i == 7]
+        m, vb = maillage_a_os(locaux, [7] * len(locaux), list(range(12)))
+        brut = AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1))
+        place = AS.mesurer_peau(m, vb, self.sq, np.random.default_rng(1),
+                                AS.placement_attache(self.sq, b'b7', (1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0,
+                                                                      0.5, 0, 0, 1.0)))
+        self.assertEqual(brut['pivot'], 0)
+        self.assertEqual((place['rang'], place['pivot']), (20, 20))
+
     def test_details(self):
         import json
         m, vb = maillage_a_os(self.points, self.os, list(range(12)))
@@ -205,7 +247,7 @@ def entite_rtpc():
     """CCharacter (modele et squelette) -> SCharacterPart (herite du squelette) ; CRigidObject sans squelette ;
     CRigidObject sans sa propriete de modele (ignore)."""
     import deca.ff_rtpc_write as W
-    from deca.ff_rtpc import Rtpc, k_type_str
+    from deca.ff_rtpc import Rtpc, k_type_str, k_type_mat4x4
     part = W.make_node('part', [W.make_prop('_class', k_type_str, b'SCharacterPart'),
                                 W.make_prop(0xb498c27d, k_type_str, b'models/test/part.modelc')])
     perso = W.make_node('perso', [W.make_prop('_class', k_type_str, b'CCharacter'),
@@ -214,18 +256,41 @@ def entite_rtpc():
     rigide = W.make_node('rigide', [W.make_prop('_class', k_type_str, b'CRigidObject'),
                                     W.make_prop(0x32b409e0, k_type_str, b'models/test/rock.modelc')])
     casse = W.make_node('casse', [W.make_prop('_class', k_type_str, b'CRigidObject')])
+    # arme : la cartouche pend a l'os Tip, decalee de 1 cm en z dans le repere de l'os
+    cartouche = W.make_node('cartouche', [
+        W.make_prop('_class', k_type_str, b'CModelAttachementWeaponComponent'),
+        W.make_prop(0xdd3acc80, k_type_str, b'Tip'),
+        W.make_prop('world', k_type_mat4x4, [1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0.01, 1.0]),
+        W.make_prop(0xf9dcf6ab, k_type_str, b'models/test/bullet.modelc')])
+    arme = W.make_node('arme', [W.make_prop('_class', k_type_str, b'CBulletWeaponBase'),
+                                W.make_prop('model_skeleton', k_type_str, b'animations/test/rig.skeleton'),
+                                W.make_prop(0xf9dcf6ab, k_type_str, b'models/test/gun.modelc')], [cartouche])
     r = Rtpc()
     r.version = 1
-    r.root_node = W.make_node(0, [], [perso, rigide, casse])
+    r.root_node = W.make_node(0, [], [perso, rigide, casse, arme])
     return W.rtpc_to_binary(r)
 
 
 class TestCouples(unittest.TestCase):
     def test_entity_pairs(self):
         couples = AS.couples_rtpc(FauxVfs({}), entite_rtpc())
+        local = (1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0.01, 1.0)
         self.assertEqual(sorted(couples), [
-            (b'models/test/body.modelc', b'animations/test/rig.bsk', b'CCharacter'),
-            (b'models/test/part.modelc', b'animations/test/rig.bsk', b'SCharacterPart')])
+            (b'models/test/body.modelc', b'animations/test/rig.bsk', b'CCharacter', b'', ()),
+            (b'models/test/bullet.modelc', b'animations/test/rig.skeleton', b'CModelAttachementWeaponComponent',
+             b'Tip', local),
+            (b'models/test/gun.modelc', b'animations/test/rig.skeleton', b'CBulletWeaponBase', b'', ()),
+            (b'models/test/part.modelc', b'animations/test/rig.bsk', b'SCharacterPart', b'', ())])
+
+    def test_attachment_placement(self):
+        bones = [{'name': n, 'parent': p, 'translation': list(t), 'rotation': list(r), 'scale': list(s)}
+                 for n, p, (t, r, s) in zip(('Root', 'Spine', 'Tip'), (-1, 0, 1), POSES)]
+        sq = AS.Squelette(bones)
+        m = AS.placement_attache(sq, b'Tip', (1.0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 1.0, 0, 0.5, 0, 0, 1.0))
+        # Tip en (1, 1, 0), tourne de 90 degres : x local -> +y du modele
+        np.testing.assert_allclose(m @ [0, 0, 0, 1], [1, 1.5, 0, 1], atol=1e-6)
+        with self.assertRaises(AS.Statut):
+            AS.placement_attache(sq, b'Absent', ())
 
 
 class TestAuditProjet(unittest.TestCase):
@@ -261,14 +326,16 @@ class TestAuditProjet(unittest.TestCase):
             with open(out / 'squelettes.csv', encoding='utf-8-sig') as f:
                 lignes = {(l['modele'], l['squelette']): l for l in csv.DictReader(f, delimiter=';')}
             md = (out / 'squelettes.md').read_text(encoding='utf-8')
-        self.assertEqual(len(lignes), 3)
+        self.assertEqual(len(lignes), 5)
         body = lignes[('models/test/body.modelc', 'animations/test/rig.bsk')]
         self.assertEqual((body['statut'], body['os'], body['classes']), ('modele_illisible', '3', 'CCharacter:1'))
         self.assertEqual(lignes[('models/test/part.modelc', 'animations/test/rig.bsk')]['statut'],
                          'modele_illisible')
         self.assertEqual(lignes[('models/test/body.modelc', 'animations/test/absent.bsk')]['statut'],
                          'squelette_absent')
-        self.assertIn('Couples (modele, squelette) distincts : 3', md)
+        self.assertIn('Couples (modele, squelette, os d\'attache) distincts : 5** dont 1 pieces rapportees', md)
+        cartouche = lignes[('models/test/bullet.modelc', 'animations/test/rig.skeleton')]
+        self.assertEqual((cartouche['attache'], cartouche['statut']), ('Tip', 'modele_absent'))
 
 
 if __name__ == '__main__':
