@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from .path import UniPath
 from .util import remove_prefix_if_present
 from .ff_avtx import image_load, ddsc_write_to_dds, ddsc_write_to_png, ddsc_clean
@@ -965,6 +965,38 @@ class DecaGltf:
         assert len(self.d_stack) > 0
         assert self.d_stack[-1] == item
         self.d_stack.pop(-1)
+
+    def export_animation(self, v_path, skeleton_raw_path) -> List[str]:
+        """Animations of a .ban (hkaSplineCompressedAnimation, deca.ff_havok_anim) on the bones of a skeleton (added
+        to the scene if not there yet). COTWed DECA, 2026-10-28. Returns one line per animation (frames, tracks
+        bound to a bone, tracks without a bone, blend hint)."""
+        from . import ff_havok, ff_havok_anim
+        skeleton = self.db.gltf_add_hk_skeleton(self.gltf, skeleton_raw_path, self.d_scene.scene)
+        bone_names = [node.name for _idx, node in skeleton[2]]
+        bone_idx = [idx for idx, _node in skeleton[2]]
+        nodes = node_of_type(self.vfs, v_path, TYPES_HAVOK_NODE)
+        if not nodes:
+            raise EDecaFileMissing('Not Mapped: {}'.format(v_path))
+        with self.vfs.file_obj_from(nodes[0]) as f:
+            pf = ff_havok.Packfile(f.read())
+        base = UniPath.basename(v_path.decode('utf-8') if isinstance(v_path, bytes) else v_path)
+        fn = (v_path.decode('utf-8') if isinstance(v_path, bytes) else v_path)
+        if self.db.flat_file_layout:
+            fn = fn.replace('/', '_')
+        lines = []
+        for i, (o, binding) in enumerate(ff_havok_anim.animations_of(pf)):
+            anim = ff_havok_anim.decode(pf, o)
+            bones = ff_havok_anim.track_bones(anim, binding, bone_names)
+            track_nodes = [bone_idx[b] if b is not None else None for b in bones]
+            name = base if i == 0 else '{}#{}'.format(base, i)
+            out = '{}.anim_{:02d}.bin'.format(fn, i)
+            ff_havok_anim.gltf_add_animation(self.gltf, anim, track_nodes, name,
+                                             UniPath.join(self.db.resource_prefix_abs, out),
+                                             UniPath.join(self.db.resource_prefix_uri, out))
+            lines.append('{} : {} frames, {} tracks on bones, {} without bone, {}'.format(
+                name, anim['rotations'].shape[0], sum(1 for b in bones if b is not None),
+                sum(1 for b in bones if b is None), (binding or {}).get('blendHint', 'no binding')))
+        return lines
 
     def export_modelc(self, v_path, transform: Optional[Deca3dMatrix], material_properties=None, skeleton_raw_path=None,
                       attach_bone: Optional[bytes] = None, attach_matrix: Optional[Deca3dMatrix] = None):

@@ -106,10 +106,96 @@ def build(objects_fn) -> bytes:
     return bytes(header + sections + cn + data)
 
 
-def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None) -> bytes:
+def _quat_largest(q):
+    q = [float(v) for v in q]
+    i = max(range(4), key=lambda k: abs(q[k]))
+    if q[i] < 0:
+        q = [-v for v in q]          # q et -q sont la meme rotation : la plus grande composante devient positive
+    return i, [v for k, v in enumerate(q) if k != i], q[i] < 0
+
+
+def quat_threecomp40(q) -> bytes:
+    import math
+    i, abc, _neg = _quat_largest(q)
+    v = 0
+    for k, c in enumerate(abc):
+        v |= (int(round(c * 2047.0 * math.sqrt(2.0))) + 2047) << (12 * k)
+    v |= i << 36
+    return v.to_bytes(5, 'little')
+
+
+def quat_threecomp48(q) -> bytes:
+    import math
+    i, abc, _neg = _quat_largest(q)
+    x, y, z = (int(round(c * 16383.0 * math.sqrt(2.0))) + 16383 for c in abc)
+    x |= (i & 1) << 15
+    y |= ((i >> 1) & 1) << 15
+    return struct.pack('<3H', x, y, z)
+
+
+def encode_block(tracks) -> bytes:
+    """Bloc de hkaSplineCompressedAnimation (disposition : deca/ff_havok_anim.py). tracks : liste de dicts
+    position : None | ('static', {axe: valeur}) | ('spline', degre, noeuds, points (n + 1) x 3, toutes les composantes) ;
+    rotation : None | ('static', q, quantification) | ('spline', degre, noeuds, quaternions, quantification) ;
+    quantification 5 (non compresse), 1 (THREECOMP40) ou 2 (THREECOMP48). Positions sur 16 bits, pas d'echelle."""
+    masks = bytearray()
+    body = bytearray()
+
+    def align(n):
+        while (len(masks_size_hint) + len(body)) % n:
+            body.append(0)
+
+    masks_size_hint = b'\0' * (4 * len(tracks))
+
+    def quat(q, quant):
+        if quant == 5:
+            return struct.pack('<4f', *q)
+        return quat_threecomp40(q) if quant == 1 else quat_threecomp48(q)
+
+    for t in tracks:
+        pos, rot = t.get('position'), t.get('rotation')
+        quant = rot[-1] if rot else 5
+        pt = rt = 0
+        if pos and pos[0] == 'static':
+            pt = sum(1 << a for a in pos[1])
+            for a in sorted(pos[1]):
+                body += struct.pack('<f', pos[1][a])
+        elif pos and pos[0] == 'spline':
+            _k, degree, knots, points = pos
+            pt = 0x70
+            body += struct.pack('<HB', len(points) - 1, degree) + bytes(knots)
+            align(4)
+            lo = [min(p[a] for p in points) for a in range(3)]
+            hi = [max(p[a] for p in points) for a in range(3)]
+            for a in range(3):
+                body += struct.pack('<2f', lo[a], hi[a])
+            for p in points:
+                for a in range(3):
+                    span = hi[a] - lo[a]
+                    body += struct.pack('<H', int(round((p[a] - lo[a]) / span * 65535)) if span else 0)
+            align(4)
+        if rot and rot[0] == 'static':
+            rt = 0x0F
+            align({5: 4, 1: 1, 2: 2}[quant])
+            body += quat(rot[1], quant)
+            align(4)
+        elif rot and rot[0] == 'spline':
+            _k, degree, knots, quats, _q = rot
+            rt = 0xF0
+            body += struct.pack('<HB', len(quats) - 1, degree) + bytes(knots)
+            align({5: 4, 1: 1, 2: 2}[quant])
+            for q in quats:
+                body += quat(q, quant)
+            align(4)
+        masks += bytes([1 | (quant << 2) | (1 << 6), pt, rt, 0])
+    return bytes(masks) + bytes(body)
+
+
+def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None, spline=None) -> bytes:
     """Racine -> conteneur d'animation -> squelette, animation spline (une piste d'annotation par os), liaison
     (pistes -> hash16 du nom d'os, particularite d'APEX). poses : par os, (translation, rotation xyzw, echelle) ;
-    par defaut translation (i, 0.5, 0), sans rotation ni echelle."""
+    par defaut translation (i, 0.5, 0), sans rotation ni echelle. spline : donnees de l'animation, dict frames,
+    per_block (images par bloc), blocks (liste de listes de pistes pour encode_block, une piste par os)."""
     def objects(d: Data):
         objs = []
         # hkRootLevelContainer
@@ -157,6 +243,31 @@ def skeleton_and_animation(bones=('Root', 'Spine'), parents=(-1, 0), poses=None)
         an = d.reserve(176)
         d.put(an + 16, '<IfII', 3, 1.5, len(bones), 0)
         d.put(an + 56, '<4I3f', 46, 1, 256, 4, 1.5, 1 / 1.5, 1 / 30)
+        if spline is not None:
+            blocs = [encode_block(b) for b in spline['blocks']]
+            per = spline['per_block']
+            d.put(an + 20, '<f', (spline['frames'] - 1) / 30)
+            d.put(an + 56, '<4I3f', spline['frames'], len(blocs), per, 4 * len(bones), (per - 1) / 30, 30 / (per - 1),
+                  1 / 30)
+            d.align()
+            data = d.here()
+            debuts, fins = [], []
+            for blk in blocs:
+                debuts.append(d.here() - data)
+                fins.append(len(blk))
+                d.buf += blk
+                d.align()
+            taille = d.here() - data
+            d.array(an + 152, data, taille)
+            offs = d.reserve(4 * len(blocs))
+            for i, v in enumerate(debuts):
+                d.put(offs + 4 * i, '<I', v)
+            d.array(an + 88, offs, len(blocs))
+            ends = d.reserve(4 * len(blocs))
+            for i, v in enumerate(fins):
+                d.put(ends + 4 * i, '<I', v)
+            d.array(an + 104, ends, len(blocs))
+            d.align()
         tracks = d.reserve(24 * len(bones))
         d.array(an + 40, tracks, len(bones))
         for i, b in enumerate(bones):
