@@ -383,6 +383,10 @@ DECODERS = {'hkRootLevelContainer': decode_root, 'hkaAnimationContainer': decode
 def decode(pf: Packfile, o: HkObject) -> dict:
     if o.class_name in DECODERS:
         return DECODERS[o.class_name](pf, o)
+    if o.class_name.startswith('hknp'):
+        from . import ff_havok_physics      # collision shapes and bodies (Havok Physics 2014)
+        if o.class_name in ff_havok_physics.DECODERS:
+            return ff_havok_physics.DECODERS[o.class_name](pf, o)
     if o.class_name in ANIMATION_CLASSES:
         return decode_animation(pf, o)
     return decode_generic(pf, o)
@@ -406,4 +410,7 @@ def summary_lines(pf: Packfile) -> List[str]:
     for o in pf.objects:
         counts[o.class_name] = counts.get(o.class_name, 0) + 1
     lines += ['  {:>5} x {}'.format(n, c) for c, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    if 'hknpPhysicsSystemData' in counts:
+        from . import ff_havok_physics
+        lines += ff_havok_physics.summary_lines(pf)
     return lines

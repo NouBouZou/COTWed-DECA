@@ -386,3 +386,121 @@ def btc_bytes(params=(('fly_preset', 7), ('flee_distance', 120)), strings=('ROAM
                          values_off if params else 0, len(params), name_off, len(name), 0xA1B2C3D4, 3, 0xFFFFFFFF)
     trailer = struct.pack('<24H', *range(24))
     return header + bytes(code) + trailer + entries + values + name + b'\0'
+
+
+# ---------------------------------------------------------------------------------------------------------
+# Formes de collision Havok Physics 2014 (hknp), disposition de deca/ff_havok_physics.py
+# ---------------------------------------------------------------------------------------------------------
+
+BOITE_PLANS = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
+
+
+def _boite(demi):
+    """Sommets, plans et faces d'une boite centree de demi-cotes donnes ; les sommets d'une face sont dans l'ordre du
+    contour (comme dans les fichiers du jeu, ou l'eventail des faces donne un maillage ferme), sens direct vu de
+    l'exterieur."""
+    import math
+    hx, hy, hz = demi
+    verts = [(sx * hx, sy * hy, sz * hz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+    plans, faces = [], []
+    for n in BOITE_PLANS:
+        d = -abs(n[0] * hx + n[1] * hy + n[2] * hz)
+        plans.append((n[0], n[1], n[2], d))
+        idx = [i for i, v in enumerate(verts) if abs(v[0] * n[0] + v[1] * n[1] + v[2] * n[2] + d) < 1e-9]
+        k = [a for a in range(3) if n[a] == 0]                  # les deux axes du plan de la face
+        sens = 1 if sum(n) > 0 else -1
+        if k == [0, 2]:                                         # y : (z, x) est direct
+            k = [2, 0]
+        idx.sort(key=lambda i: sens * math.atan2(verts[i][k[1]], verts[i][k[0]]))
+        faces.append(idx)
+    return verts, plans, faces
+
+
+def _rel(d: Data, champ: int, cible: int, n: int):
+    d.put(champ, '<HH', n, (cible - champ) if n else 0)
+
+
+def _convexe(d: Data, verts, plans=None, faces=None, rayon=0.01, fixe=0x50, extra=None) -> int:
+    """Objet hknpConvexShape / hknpConvexPolytopeShape : partie fixe, puis sommets, plans, faces, indices (tableaux
+    relatifs) ; extra(off) remplit la partie fixe au-dela de 0x50 (capsule : a, b)."""
+    off = d.reserve(fixe)
+    d.put(off + 0x10, '<HBBf', 0x143, 0, 1, rayon)
+    if extra:
+        extra(off)
+    d.align()
+    vt = d.reserve(16 * len(verts))
+    for i, v in enumerate(verts):
+        d.put(vt + 16 * i, '<3fI', *v, 0x3f000000 | i)
+    _rel(d, off + 0x30, vt, len(verts))
+    if plans is not None:
+        pt = d.reserve(16 * len(plans))
+        for i, p in enumerate(plans):
+            d.put(pt + 16 * i, '<4f', *p)
+        _rel(d, off + 0x40, pt, len(plans))
+        ft = d.reserve(4 * len(faces))
+        idx, first = [], 0
+        for i, f in enumerate(faces):
+            d.put(ft + 4 * i, '<HBB', first, len(f), 0)
+            idx += f
+            first += len(f)
+        _rel(d, off + 0x44, ft, len(faces))
+        it = d.reserve(len(idx))
+        d.buf[it:it + len(idx)] = bytes(idx)
+        _rel(d, off + 0x48, it, len(idx))
+    d.align()
+    return off
+
+
+def physique(pfx: bool = True) -> bytes:
+    """Un corps (nom, position (10, 0, 5), quart de tour autour de y) dont la forme est composee de trois instances :
+    une boite 1 x 2 x 1 a l'origine ; une capsule (0, 0, 0) - (0, 1, 0) de rayon 0,25, couchee le long de +z par un
+    quart de tour autour de x, en (0, 3, 0) ; la boite tournee d'un quart de tour autour de z, en (3, 0, 0). Plus une
+    sphere de rayon 0,5 hors de tout corps. Boite englobante de la forme composee : exacte (feuilles, rayons compris) ;
+    lue avec les rotations transposees, la capsule en sortirait (vers -z). pfx : enveloppe PFX (en-tete 0x44)."""
+    import math
+
+    def objects(d: Data):
+        objs = []
+        systeme = d.reserve(0x80)
+        objs.append((systeme, 'hknpPhysicsSystemData'))
+        corps = d.reserve(0x60)
+        d.array(systeme + 0x40, corps, 1)
+        d.local.append((corps + 0x20, d.string('bloc_test_COL')))
+        d.local.append((systeme + 0x70, d.string('Default Physics System Data')))
+        d.align()
+        s = math.sqrt(0.5)
+        d.put(corps + 0x30, '<4f', 10.0, 0.0, 5.0, 1.0)
+        d.put(corps + 0x40, '<4f', 0.0, s, 0.0, s)
+        # forme composee
+        comp = d.reserve(0xa0)
+        objs.append((comp, 'hknpStaticCompoundShape'))
+        inst = d.reserve(0x80 * 3)
+        d.array(comp + 0x60, inst, 3)
+        matrices = [((1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 0, 0)),
+                    ((1, 0, 0), (0, 0, 1), (0, -1, 0), (0, 3, 0)),          # colonnes : y -> z, z -> -y
+                    ((0, 1, 0), (-1, 0, 0), (0, 0, 1), (3, 0, 0))]          # colonnes : x -> y, y -> -x
+        for i, cols in enumerate(matrices):
+            for k, c in enumerate(cols):
+                d.put(inst + 0x80 * i + 16 * k, '<3fI', *c, 0x3f000000)
+            d.put(inst + 0x80 * i + 0x40, '<4f', 1.0, 1.0, 1.0, 1.0)
+        d.put(comp + 0x80, '<4f', -0.51, -1.01, -0.51, 0.0)    # boites : rayon convexe 0,01 en plus
+        d.put(comp + 0x90, '<4f', 4.01, 3.25, 1.25, 0.0)       # boite tournee : x jusqu'a 4 ; capsule : z jusqu'a 1,25
+        # boite 1 x 2 x 1
+        verts, plans, faces = _boite((0.5, 1.0, 0.5))
+        boite = _convexe(d, verts, plans, faces, rayon=0.01)
+        objs.append((boite, 'hknpConvexPolytopeShape'))
+        # capsule : polytope d'une boite fine autour du segment, a et b en +0x50 et +0x60
+        cv, cp, cf = _boite((0.001, 0.5, 0.001))
+        cv = [(x, y + 0.5, z) for x, y, z in cv]
+        cp = [(n0, n1, n2, dd - n1 * 0.5) for n0, n1, n2, dd in cp]
+        caps = _convexe(d, cv, cp, cf, rayon=0.25, fixe=0x70,
+                        extra=lambda o: (d.put(o + 0x50, '<4f', 0.0, 0.0, 0.0, 0.0), d.put(o + 0x60, '<4f', 0.0, 1.0, 0.0, 0.0)))
+        objs.append((caps, 'hknpCapsuleShape'))
+        sphere = _convexe(d, [(0.0, 0.0, 0.0)] * 4, rayon=0.5)
+        objs.append((sphere, 'hknpSphereShape'))
+        d.glob += [(corps, comp), (inst + 0x50, boite), (inst + 0x80 + 0x50, caps), (inst + 0x100 + 0x50, boite)]
+        return objs
+    pack = build(objects)
+    if not pfx:
+        return pack
+    return b'PFX\0' + struct.pack('<3I', 1, 1, 3) + bytes(0x44 - 16) + pack
