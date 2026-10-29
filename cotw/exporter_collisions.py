@@ -10,10 +10,14 @@ capsules et les spheres sont refaites a partir de leur rayon ; les polytopes gar
 eventail).
 
 Repere : celui du jeu (y vers le haut, metres) ; l'import OBJ de Blender le convertit (axe avant -Z, haut Y).
+Un .pfxc est dans le repere de son modele : --modeles exporte aussi en glTF le .modelc du meme nom (comme DECA),
+pour superposer la collision au modele dans Blender. Un .pfs est dans le repere du monde (coordonnees de la
+reserve, a plusieurs kilometres de l'origine : dans Blender, selectionner ses objets puis Vue > Cadrer la
+selection).
 
 Usage (DECA ferme) :
     python cotw\\exporter_collisions.py D:\\dev\\work\\hp --fichiers "models/hp_vegetation/z01/aspen/%.pfxc" ^
-        --max 5 --sortie D:\\dev\\audits\\29-collisions
+        --max 5 --modeles --sortie D:\\dev\\audits\\29-collisions
     python cotw\\exporter_collisions.py --local fichier.pfxc --sortie dossier      (fichier deja extrait)
 """
 import argparse
@@ -50,6 +54,24 @@ def exporter_octets(data: bytes, sortie: Path, nom: str) -> str:
     return '{} : {} formes, {} triangles'.format(nom, n, t)
 
 
+def exporter_modele(vfs, chemin: str, sortie: Path) -> str:
+    """Le .modelc du meme nom qu'un .pfxc, en glTF (DecaGltf, sans squelette), a cote de l'OBJ."""
+    if not chemin.endswith('.pfxc'):
+        return ''
+    modele = chemin[:-len('.pfxc')] + '.modelc'
+    if not _projet.nodes_by_path(vfs, modele):
+        return '{} : modele absent'.format(modele)
+    try:
+        from deca.ff_adf_amf_gltf import DecaGltf
+        g = DecaGltf(vfs, str(sortie), modele.replace('/', '__'), include_skeleton=False, texture_format='png')
+        with g.scene():
+            g.export_modelc(modele.encode('utf-8'), None)
+        g.gltf_save()
+        return '{} : glTF {}'.format(modele, g.export_path)
+    except Exception as exc:  # noqa: BLE001 - un modele en echec n'arrete pas l'export
+        return '{} : modele en ECHEC {}: {}'.format(modele, type(exc).__name__, exc)
+
+
 def chercher(vfs, motifs: List[str], maximum: int) -> List[Tuple[int, str]]:
     out = []
     for m in motifs:
@@ -65,6 +87,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument('--fichiers', action='append', default=[], help='chemins ou motifs SQL LIKE (%%), repetable')
     ap.add_argument('--local', action='append', default=[], help='fichier physique deja extrait, repetable')
     ap.add_argument('--max', type=int, default=20, help='nombre maximal de fichiers du projet (0 = tous)')
+    ap.add_argument('--modeles', action='store_true', help='exporter aussi en glTF le .modelc de chaque .pfxc')
     ap.add_argument('--sortie', required=True, help='dossier des .obj')
     args = ap.parse_args(argv)
     sortie = Path(args.sortie)
@@ -77,6 +100,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             try:
                 data = _projet.read_node(vfs, vfs.node_where_uid(uid))
                 lignes.append(exporter_octets(data, sortie, chemin.replace('/', '__')))
+                if args.modeles and chemin.endswith('.pfxc'):
+                    lignes.append(exporter_modele(vfs, chemin, sortie))
             except Exception as exc:  # noqa: BLE001 - un fichier en echec n'arrete pas l'export
                 lignes.append('{} : ECHEC {}: {}'.format(chemin, type(exc).__name__, exc))
     for l in lignes:

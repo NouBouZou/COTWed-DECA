@@ -153,6 +153,32 @@ class TestOutils(unittest.TestCase):
                          ['o 0000_bloc_test_COL_0', 'o 0001_bloc_test_COL_1', 'o 0002_bloc_test_COL_2'])
         self.assertEqual(sum(1 for l in lignes if l.startswith('f ')), 12 + 256 + 12)
 
+    def test_export_with_models_on_fake_project(self):
+        """--modeles : le .modelc du meme nom que le .pfxc, ou ce qui l'empeche (absent, illisible)."""
+        import exporter_collisions as EC
+        import faux_projet
+        import io
+        import os
+        import sqlite3
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as d:
+            projet = faux_projet.build_fake_project(d, [('models/test/bloc.pfxc', HF.physique()),
+                                                        ('models/test/bloc.modelc', b'pas un ADF' * 12),
+                                                        ('models/test/seul.pfxc', HF.physique())])
+            db = sqlite3.connect(os.path.join(projet, 'db', 'core.db'))
+            db.execute('UPDATE core_nodes SET v_path = CAST(v_path AS TEXT) WHERE v_path IS NOT NULL')
+            db.commit()
+            db.close()
+            out = io.StringIO()
+            with redirect_stdout(out):
+                self.assertEqual(EC.main([projet, '--fichiers', 'models/test/%.pfxc', '--modeles',
+                                          '--sortie', str(Path(d) / 'obj')]), 0)
+            objs = sorted(p.name for p in (Path(d) / 'obj').glob('*.obj'))
+        texte = out.getvalue()
+        self.assertEqual(objs, ['models__test__bloc.pfxc.obj', 'models__test__seul.pfxc.obj'])
+        self.assertIn('models/test/bloc.modelc : modele en ECHEC', texte)
+        self.assertIn('models/test/seul.modelc : modele absent', texte)
+
     def test_audit_on_fake_project(self):
         """Faux projet (vrai scan) : un .pfxc et un .pfs trouves par le type pfx, audites."""
         import audit_collisions as AC
