@@ -78,14 +78,56 @@ class TestDdsc(unittest.TestCase):
         self.assertEqual(AT.auditer_ddsc(ddsc(1234, bytes(16)), 'a.ddsc').statut, 'format_inconnu')
 
 
+def ddsc_flux(flux, niveaux=3, dans_fichier=1) -> bytes:
+    """BC1 16 x 16, niveaux 16, 8, 4 ; seul le plus petit (4 x 4, 8 octets) dans le .ddsc ; flux 1 a 7 donnes."""
+    tete = bytearray(128)
+    tete[:0x20] = b'AVTX' + struct.pack('<HBBIHHHHBBHII', 1, 6, 2, 71, 16, 16, 1, 1, niveaux, dans_fichier, 0, 0, 0)
+    struct.pack_into('<IIHBB', tete, 0x20, 128, 8, 16, 0, 0)
+    for i, f in enumerate(flux):
+        struct.pack_into('<IIHBB', tete, 0x2c + 12 * i, *f)
+    return bytes(tete) + struct.pack('<HHI', 0xFFFF, 0, 0)
+
+
+class TestFlux(unittest.TestCase):
+    def test_flux_read(self):
+        r = AT.auditer_ddsc(ddsc_flux([(0, 32, 16, 0, 1), (32, 128, 16, 0, 1)]), 'a.ddsc')
+        self.assertEqual(r.statut, 'ok', r.detail)
+        self.assertEqual(r.flux0, '128:8:16:0:0')
+        self.assertEqual(r.flux, '0:32:16:0:1 32:128:16:0:1')
+        self.assertEqual(r.octets_entete_non_nuls, 7)                    # 4k - 1, k = 2 niveaux externes
+
+    def test_flux_checked_against_levels_and_files(self):
+        data = ddsc_flux([(0, 32, 16, 0, 1), (32, 128, 16, 0, 1)])
+        r = AT.auditer_ddsc(data, 't/a.ddsc')
+        AT.controler_flux(data, r, {'.hmddsc': 160})
+        self.assertEqual(r.niveaux_externes, '128 32')
+        self.assertEqual(r.fichiers_externes, 'hmddsc=160')
+        self.assertEqual(r.flux_controle, 'somme=ok niveaux=ok 1>hmddsc')
+        data = ddsc_flux([(0, 32, 16, 0, 2), (0, 128, 16, 0, 1)])
+        r = AT.auditer_ddsc(data, 't/a.ddsc')
+        AT.controler_flux(data, r, {'.hmddsc': 128, '.atx1': 32})
+        self.assertEqual(r.flux_controle, 'somme=ok niveaux=ok 1>hmddsc 2>atx1')
+        r = AT.auditer_ddsc(ddsc_flux([(0, 40, 16, 0, 1)]), 't/a.ddsc')
+        AT.controler_flux(ddsc_flux([(0, 40, 16, 0, 1)]), r, {})
+        self.assertEqual(r.flux_controle, 'somme=faux 1>?')
+
+    def test_external_paths(self):
+        self.assertEqual(AT.externes_de('t/a.ddsc', {'t/a.hmddsc': 5, 't/a.atx1': 3, 't/b.atx1': 9}),
+                         {'.hmddsc': 5, '.atx1': 3})
+        self.assertEqual(AT.externes_de('(sans nom) 1234', {'t/a.hmddsc': 5}), {})
+
+
 class TestProjet(unittest.TestCase):
     def test_audit_on_fake_project(self):
         """Faux projet (vrai scan) : deux textures, dont une a blocs D2 ; chaine complete pour toutes."""
         import os
         import sqlite3
         import faux_projet
+        hm = struct.pack('<HHI', 0x07E0, 0, 0) * 4 + struct.pack('<HHI', 0xF800, 0, 0) * 16   # 8 x 8 puis 16 x 16
         files = [('textures/ui/icone.ddsc', T.icone_ddsc(64, 32, 7)),
-                 ('textures/ui/d2.ddsc', ddsc(77, bloc_bc3(0x1000, 0x2000, tous(3)) * 4, 8, 8))]
+                 ('textures/ui/d2.ddsc', ddsc(77, bloc_bc3(0x1000, 0x2000, tous(3)) * 4, 8, 8)),
+                 ('textures/t/a.ddsc', ddsc_flux([(0, 32, 16, 0, 1), (32, 128, 16, 0, 1)])),
+                 ('textures/t/a.hmddsc', hm)]
         with tempfile.TemporaryDirectory() as d:
             projet = faux_projet.build_fake_project(d, files)
             db = sqlite3.connect(os.path.join(projet, 'db', 'core.db'))
@@ -96,11 +138,14 @@ class TestProjet(unittest.TestCase):
             self.assertEqual(AT.main([projet, '--sortie', str(out), '--processus', '1', '--complet', '-1']), 0)
             md = (out / 'textures.md').read_text(encoding='utf-8')
             lignes = (out / 'textures.csv').read_text(encoding='utf-8-sig').splitlines()
-        self.assertIn('- **Decodees sans defaut : 2 / 2**', md)
+        self.assertIn('- **Decodees sans defaut : 3 / 3**', md)
         self.assertIn('| BC3_UNORM (77) | 2 |', md)
         self.assertIn("Pixels que l'ancien decodeur lisait faux : 64", md)
-        self.assertIn('- Textures : 2 ; tous niveaux decodes : 2', md)
-        self.assertEqual(len(lignes), 3)
+        self.assertIn('- Textures : 3 ; tous niveaux decodes : 3', md)
+        self.assertIn('- Flux 0 = (taille de l\'en-tete, taille du corps, 16, 0, 0) : 3 / 3', md)
+        self.assertIn('somme des flux = somme de ces niveaux : 1 ; un flux par niveau, memes tailles : 1', md)
+        self.assertIn('`1>hmddsc` x 1', md)
+        self.assertEqual(len(lignes), 4)
 
 
 if __name__ == '__main__':
