@@ -17,6 +17,8 @@ savoir ce que le jeu emploie vraiment :
 l'hypothese d'une table de 8 flux de 12 octets de 0x20 a 0x80 [u32 position, u32 taille, u16 alignement, u8, u8
 source] (le flux 0 = le corps du .ddsc : 128, taille du corps, 16, 0, 0). L'audit releve les flux, les tailles des
 niveaux hors du .ddsc et celles des fichiers .hmddsc / .atxN du meme nom, et confronte les trois.
+28-textures l'a confirmee sur toutes les textures (14 392 a niveaux externes : un flux par niveau, du plus petit au plus
+grand, source 1 = le .hmddsc, dont la taille egale la fin du dernier flux) ; deca.ff_avtx la lit (AvtxStream).
 
 Sorties (dossier --sortie) : textures.csv (une texture par ligne), textures.md.
 
@@ -279,7 +281,7 @@ def _cumul(rs: List[Resultat], k: str) -> int:
 
 def table_flux(lus: List[Resultat]) -> List[str]:
     """Section du rapport : la table des flux (0x20, 8 x 12 octets) confrontee aux niveaux et aux fichiers externes."""
-    L = ['', '## Table des flux (0x20 : 8 x 12 octets, hypothese du 29/10)', '']
+    L = ['', '## Table des flux (0x20 : 8 x 12 octets)', '']
     f0 = sum(1 for r in lus if r.flux0 == '{}:{}:16:0:0'.format(r.taille_entete, r.taille_corps))
     L.append('- Flux 0 = (taille de l\'en-tete, taille du corps, 16, 0, 0) : {} / {}'.format(f0, len(lus)))
     ext = [r for r in lus if r.niveaux_externes]

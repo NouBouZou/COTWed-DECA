@@ -294,6 +294,7 @@ FILES = [
     ('editor/test/weapons.inst', instances_bytes()),
     ('ui/test_video.ivf', ivf_bytes()),
     ('ui/test_video.webm', webm_bytes()),
+    ('textures/ui/test_icon.ddsc', __import__('texture_fabrique').icone_ddsc(64, 32, 7)),   # AVTX : en-tete affiche
 ]
 UNNAMED = 'models/test/textures/unnamed_test_nrm.hmddsc'
 
@@ -382,8 +383,20 @@ class TestViewersAndExport(unittest.TestCase):
         self.assertTrue(any('guess 2/' in x for x in items))                 # puis les autres dispositions
         self.assertEqual(dv.tab_image.ddsc.mips[0].data.shape[:2], (256, 256))
 
+        self.assertFalse(dv.tab_image.header_text.isVisible())              # pas d'en-tete AVTX : cache
+
         self.assertEqual(self.show_uid(self.unnamed_node().uid), 'Image')
         self.assertTrue(self.dropdown()[0].startswith('128x128 (BC5, largest level 0, best guess'), self.dropdown())
+
+        uid = _projet.nodes_by_path(self.window.vfs, 'textures/ui/test_icon.ddsc')[0].uid
+        self.assertEqual(self.show_uid(uid), 'Image')
+        texte = dv.tab_image.header_text.toPlainText().splitlines()
+        self.assertTrue(dv.tab_image.header_text.isVisible())
+        self.assertEqual(texte[0], 'AVTX v1 : BC3_UNORM (77), 64 x 32, 7 levels (7 in the .ddsc)')
+        self.assertTrue(texte[1].startswith('0x06 group 4 (user interface)'), texte[1])
+        self.assertEqual(texte[-1], 'stream 0 : .ddsc offset 128 size {} alignment 16'.format(
+            sum(16 * max(1, (w + 3) // 4) * max(1, (h + 3) // 4) for w, h in
+                ((64, 32), (32, 16), (16, 8), (8, 4), (4, 2), (2, 1), (1, 1)))))
 
         path = 'worlds/base/locations/test/global_sound_layers_test.fmod_guids'
         uid = _projet.nodes_by_path(self.window.vfs, path)[0].uid

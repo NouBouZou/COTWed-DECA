@@ -1,5 +1,7 @@
 import os
 import io
+import struct
+from typing import List
 import pprint
 import numpy as np
 from PIL import Image
@@ -33,6 +35,43 @@ class DecaImage:
         return Image.fromarray(self.data)
 
 
+# COTWed DECA (2026-10-29) : en-tete AVTX de theHunter: COTW, champ par champ (audits 27-textures et 28-textures, toutes
+# les 27 631 textures du jeu) :
+#   0x00 'AVTX' ; 0x04 u16 version (1) ;
+#   0x06 u8 groupe de la texture (unknown0) : un par famille de contenu (4 interface, 6 objets construits, 7 personnages
+#        et animaux, 8 armes et equipement, 10 terrain, 11 vegetation, 5 effets, 12 routes, 14 atmosphere, 18 eau...) ;
+#   0x07 u8 dimension - 1 (2 : texture 2D, 3 : texture 3D) ; 0x08 u32 format DXGI ;
+#   0x0c, 0x0e, 0x10 u16 largeur, hauteur, profondeur (tranches d'une texture 3D ou taille d'un tableau 2D) ;
+#   0x12 u16 drapeaux : 0x1 niveaux hors du .ddsc (dans le .hmddsc, sans exception dans COTW), 0x8 textures de couleur
+#        (_dif), 0x40 cube ;
+#   0x14 u8 niveaux ; 0x15 u8 niveaux dans le .ddsc (les plus petits) ; 0x16 u16 (0) ;
+#   0x18 u32 (unknown2) : 1 humains, 3 vegetation, 4 armes et equipement, 0 ailleurs (role inconnu) ; 0x1c u32 (0) ;
+#   0x20 table des flux, 8 x 12 octets jusqu'a 0x80 : u32 position, u32 taille, u16 alignement (16), u8 (0), u8 source
+#        (0 : ce .ddsc, 1 : le .hmddsc). Flux 0 = corps du .ddsc (position 128 = taille de l'en-tete, d'ou size_header et
+#        size_body) ; puis un flux par niveau hors du .ddsc, du plus petit au plus grand, bout a bout dans le .hmddsc
+#        (verifie sur les 14 392 textures concernees : tailles des niveaux et taille du .hmddsc).
+AVTX_STREAM = struct.Struct('<IIHBB')
+AVTX_STREAM_COUNT = 8
+AVTX_STREAM_SOURCES = {0: '.ddsc', 1: '.hmddsc'}
+AVTX_GROUPS = {0: 'Just Cause leftovers, missions', 1: 'dummies, color curves', 4: 'user interface', 5: 'effects, decals',
+               6: 'man-made objects, shared, camo', 7: 'characters, animals', 8: 'weapons, equipment, sights, ammunition',
+               9: 'vehicles', 10: 'terrain', 11: 'vegetation, climate', 12: 'roads', 13: 'emissive', 14: 'atmosphere, weather',
+               18: 'water', 25: 'clues'}
+
+
+class AvtxStream:
+    """An entry of the stream table of an AVTX header (0x20 + 12 i)."""
+    def __init__(self, offset, size, alignment, unknown, source):
+        self.offset, self.size, self.alignment, self.unknown, self.source = offset, size, alignment, unknown, source
+
+    def __repr__(self):
+        return 'AvtxStream(offset={}, size={}, alignment={}, unknown={}, source={})'.format(
+            self.offset, self.size, self.alignment, self.unknown, self.source)
+
+    def is_empty(self):
+        return not (self.offset or self.size or self.alignment or self.unknown or self.source)
+
+
 class DdImageHeader:
     def __init__(self):
         self.header_buffer = None
@@ -50,6 +89,7 @@ class DdImageHeader:
         self.size_header = None
         self.size_body = None
         self.unknown = None
+        self.streams = []  # COTWed DECA: the stream table (AvtxStream), AVTX only
 
     def dump(self):
         print(f'magic: {self.magic}')
@@ -154,6 +194,12 @@ class DdImageHeader:
             self.unknown = []
             while fh.tell() < self.size_header:
                 self.unknown.append(fh.read_u8())
+
+            # COTWed DECA: stream table, 8 x 12 bytes from 0x20 (the first stream is size_header, size_body)
+            self.streams = []
+            if len(buffer) >= 0x20 + AVTX_STREAM.size * AVTX_STREAM_COUNT and self.size_header >= 0x80:
+                self.streams = [AvtxStream(*AVTX_STREAM.unpack_from(buffer, 0x20 + AVTX_STREAM.size * i))
+                                for i in range(AVTX_STREAM_COUNT)]
 
             self.dds_header.dwFlags |= DDSD_CAPS
             self.dds_header.dwFlags |= DDSD_HEIGHT
@@ -475,6 +521,36 @@ class Ddsc:
         self.load_ddsc(files[0][1], filename=files[0][0], save_raw_data=save_raw_data)
         for filename, f in files[1:]:
             self.load_atx(f, filename=filename, save_raw_data=save_raw_data)
+
+
+def avtx_header_lines(header: DdImageHeader) -> List[str]:
+    """COTWed DECA: the AVTX header field by field (see the comment of AVTX_STREAM), for the Image tab."""
+    if header.magic != b'AVTX':
+        return []
+    h, x = header.dds_header, header.dds_header_dxt10
+    fmt = x.dxgiFormat
+    lines = ['AVTX v{} : {} ({}), {} x {}{}, {} levels ({} in the .ddsc)'.format(
+        header.version, dxgi_name_db.get(fmt, '?'), fmt, h.dwWidth, h.dwHeight,
+        ' x {}'.format(h.dwDepth) if h.dwDepth > 1 else '', h.dwMipMapCount, header.mip_count)]
+    flags = []
+    for bit, name in ((0x01, 'levels in .hmddsc'), (0x08, 'color (dif)'), (0x40, 'cube')):
+        if header.flags & bit:
+            flags.append(name)
+    rest = header.flags & ~0x49
+    if rest:
+        flags.append('0x{:x} unknown'.format(rest))
+    lines.append('0x06 group {} ({}) ; 0x07 dimension {} ; 0x12 flags 0x{:x} ({})'.format(
+        header.unknown0, AVTX_GROUPS.get(header.unknown0, 'unknown'), x.resourceDimension, header.flags,
+        ', '.join(flags) or 'none'))
+    lines.append('0x16 u16 {} ; 0x18 u32 {} (1 humans, 3 vegetation, 4 weapons) ; 0x1c u32 {}'.format(
+        header.unknown1, header.unknown2, header.unknown3))
+    for i, s in enumerate(header.streams):
+        if s.is_empty():
+            continue
+        lines.append('stream {} : {} offset {} size {} alignment {}{}'.format(
+            i, AVTX_STREAM_SOURCES.get(s.source, 'source {}'.format(s.source)), s.offset, s.size, s.alignment,
+            ' byte 10 = {}'.format(s.unknown) if s.unknown else ''))
+    return lines
 
 
 def image_load(vfs: VfsDatabase, vnode: VfsNode, save_raw_data=False):

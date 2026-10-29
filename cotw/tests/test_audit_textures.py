@@ -111,6 +111,25 @@ class TestFlux(unittest.TestCase):
         AT.controler_flux(ddsc_flux([(0, 40, 16, 0, 1)]), r, {})
         self.assertEqual(r.flux_controle, 'somme=faux 1>?')
 
+    def test_deca_reads_stream_table(self):
+        """deca.ff_avtx : table des flux lue avec l'en-tete, decrite champ par champ (onglet Image)."""
+        import io
+        from deca import ff_avtx
+        dd = ff_avtx.Ddsc()
+        dd.load_ddsc(io.BytesIO(ddsc_flux([(0, 32, 16, 0, 1), (32, 128, 16, 0, 1)])))
+        s = dd.header.streams
+        self.assertEqual(len(s), 8)
+        self.assertEqual((s[0].offset, s[0].size, s[0].alignment, s[0].source), (128, 8, 16, 0))
+        self.assertEqual((s[2].offset, s[2].size, s[2].source), (32, 128, 1))
+        self.assertTrue(s[3].is_empty())
+        lines = ff_avtx.avtx_header_lines(dd.header)
+        self.assertEqual(lines[0], 'AVTX v1 : BC1_UNORM (71), 16 x 16, 3 levels (1 in the .ddsc)')
+        self.assertEqual(lines[1], '0x06 group 6 (man-made objects, shared, camo) ; 0x07 dimension 3 ; '
+                                   '0x12 flags 0x1 (levels in .hmddsc)')
+        self.assertEqual(lines[3:], ['stream 0 : .ddsc offset 128 size 8 alignment 16',
+                                     'stream 1 : .hmddsc offset 0 size 32 alignment 16',
+                                     'stream 2 : .hmddsc offset 32 size 128 alignment 16'])
+
     def test_external_paths(self):
         self.assertEqual(AT.externes_de('t/a.ddsc', {'t/a.hmddsc': 5, 't/a.atx1': 3, 't/b.atx1': 9}),
                          {'.hmddsc': 5, '.atx1': 3})

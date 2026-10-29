@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt, QPoint, QRectF, Signal
 from PySide6.QtGui import QImage, QPixmap, QBrush, QColor
 from PySide6.QtWidgets import \
     QGraphicsView, QSizePolicy, QVBoxLayout, QHBoxLayout, QComboBox, QPushButton, QGraphicsScene, QGraphicsPixmapItem, \
-    QFrame, QWidget, QToolButton, QLineEdit, QCheckBox
+    QFrame, QWidget, QToolButton, QLineEdit, QCheckBox, QPlainTextEdit
 from deca.ff_types import *
 from deca.errors import EDecaFileMissing
 from deca.file import ArchiveFile
@@ -252,10 +252,19 @@ class DataViewerImage(DataViewer):
         self.color_layout.addWidget(self.checkbox_show_g)
         self.color_layout.addWidget(self.checkbox_show_b)
 
+        # COTWed DECA: the AVTX header, field by field (deca.ff_avtx.avtx_header_lines); hidden for other images
+        self.header_text = QPlainTextEdit(self)
+        self.header_text.setReadOnly(True)
+        self.header_text.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.header_text.setMaximumHeight(self.header_text.fontMetrics().lineSpacing() * 7 + 12)
+        self.header_text.setSizePolicy(QSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed))
+        self.header_text.hide()
+
         self.main_layout = QVBoxLayout()
         self.main_layout.addWidget(self.image_display)
         self.main_layout.addWidget(self.select_dropdown)
         self.main_layout.addLayout(self.color_layout)
+        self.main_layout.addWidget(self.header_text)
         self.setLayout(self.main_layout)
 
         self.update_image()
@@ -308,6 +317,12 @@ class DataViewerImage(DataViewer):
             self.ddsc = rawc_image(vfs, vnode)
         elif is_guessed_texture(vnode):
             self.ddsc = guessed_image(node_data(vfs, vnode))
+
+        header_lines = []
+        if self.ddsc is not None and getattr(self.ddsc, 'header', None) is not None:
+            header_lines = deca.ff_avtx.avtx_header_lines(self.ddsc.header)
+        self.header_text.setPlainText('\n'.join(header_lines))
+        self.header_text.setVisible(bool(header_lines))
 
         if self.ddsc is not None and self.ddsc.mips is not None:
             first_valid = None
