@@ -20,8 +20,10 @@ Ce que montre la comparaison de deux instantanes [teste : t0 / t1 / t2 du 2026-1
 Les animaux n'ont pas d'identifiant stable (Id vaut 0) : ils sont apparies par leur contenu
 (sexe, poids, score, graine, drapeaux).
 
-[hypothese] FeatureModifiers.Flags : bit 0 = Great One, bit 1 = atypique (d'apres le code du jeu, qui pose ces deux
-bits dans l'enregistrement en memoire ; a confirmer sur une sauvegarde qui contient un Great One).
+FeatureModifiers.Flags : bit 0 = Great One [teste : sauvegarde du 2026-11-12, deux Great Ones crees en jeu relus avec
+Flags = 1 et des poids de la plage Great One], bit 1 = atypique [code : pose par le jeu dans l'enregistrement en memoire].
+La file (RepopulateData) ne garde pas le drapeau d'eligibilite au Great One que le jeu tient en memoire : une entree
+relue depuis la sauvegarde n'est pas eligible tant qu'un lot avorte ne l'a pas remise en file.
 
 Usage, depuis la racine du depot :
     python cotw\\population.py FICHIER                      resume par espece
