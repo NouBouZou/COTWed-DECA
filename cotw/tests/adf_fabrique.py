@@ -28,7 +28,7 @@ identiques sont partagees, comme dans les fichiers du jeu.
 import struct
 from typing import Dict, List, Sequence, Tuple, Union
 
-from deca.ff_adf import typedef_f32, typedef_u8, typedef_u16, typedef_u32
+from deca.ff_adf import typedef_f32, typedef_s32, typedef_u8, typedef_u16, typedef_u32, typedef_u64
 from deca.hashes import hash32_func
 
 STRING = 0x8955583e
@@ -554,3 +554,81 @@ def save_container(payload: bytes, level: int = 1, save_size=None) -> bytes:
     size = len(payload) if save_size is None else save_size
     return (b'SAVE' + struct.pack('<IQ', 0x0032d3c2, size) + b'COMP' + struct.pack('<IQ', 0x0101, len(payload))
             + zlib.compress(payload, level))
+
+
+# ---------------------------------------------------------------------------
+# Population d'animaux (animal_population_N), schema releve le 2026-11-12
+# ---------------------------------------------------------------------------
+
+T_POP_RESERVE, T_POP, T_POP_GROUP, T_POP_ANIMAL, T_POP_FLAGS, T_POP_VEC2, T_POP_REPOP = (0x5AE10001 + i
+                                                                                         for i in range(7))
+A_POP, A_POP_GROUP, A_POP_ANIMAL, A_POP_REPOP, A_POP_U64, A_POP_U8 = (0x5AE11001 + i for i in range(6))
+
+
+def population_types() -> Types:
+    """Tailles et offsets du jeu (AnimalPopulationReserveData_9) ; les hashes de type sont inventes."""
+    t = Types()
+    t.struct('AnimalPopulationReserveData_9', T_POP_RESERVE, 48, 8,
+             [('AlreadyConverted', typedef_u8, 1, 0), ('Populations', A_POP, 16, 8),
+              ('HuntingPressureMap', A_POP_U8, 16, 24), ('ReserveSeed', typedef_u32, 4, 40),
+              ('AtypicalsCooldownTime', typedef_f32, 4, 44)])
+    t.array('A[AnimalPopulationData_8]', A_POP, T_POP)
+    t.struct('AnimalPopulationData_8', T_POP, 96, 8,
+             [('NameHashId', typedef_u32, 4, 0), ('Groups', A_POP_GROUP, 16, 8),
+              ('RepopulateData', A_POP_REPOP, 16, 24), ('InitialTotalScore', typedef_f32, 4, 40),
+              ('InitialNumAnimals', typedef_s32, 4, 44), ('Revision', typedef_u32, 4, 48),
+              ('GroupToWarrenId', A_POP_U64, 16, 56), ('RepopulationSkipCounter', typedef_f32, 4, 72),
+              ('ConditionsFulfilled', A_U32, 16, 80)])
+    t.array('A[AnimalGroupData_5]', A_POP_GROUP, T_POP_GROUP)
+    t.struct('AnimalGroupData_5', T_POP_GROUP, 48, 8,
+             [('SpawnAreadId', typedef_s32, 4, 0), ('NeedZonePathGuids', A_U32, 16, 8),
+              ('Animals', A_POP_ANIMAL, 16, 24), ('Id', typedef_u32, 4, 40)])
+    t.array('A[uint32]', A_U32, typedef_u32)
+    t.array('A[AnimalData_5]', A_POP_ANIMAL, T_POP_ANIMAL)
+    t.struct('AnimalData_5', T_POP_ANIMAL, 32, 4,
+             [('Gender', typedef_u8, 1, 0), ('Weight', typedef_f32, 4, 4), ('Score', typedef_f32, 4, 8),
+              ('FeatureModifiers', T_POP_FLAGS, 1, 12), ('IsScripted', typedef_u8, 1, 13),
+              ('VisualVariationSeed', typedef_u32, 4, 16), ('Id', typedef_u32, 4, 20),
+              ('MapPosition', T_POP_VEC2, 8, 24)])
+    t.struct('animalFeatureModifiers_1', T_POP_FLAGS, 1, 1, [('Flags', typedef_u8, 1, 0)])
+    t.struct('Vector2_1', T_POP_VEC2, 8, 4, [('X', typedef_f32, 4, 0), ('Y', typedef_f32, 4, 4)])
+    t.array('A[AnimalRepopulateData_1]', A_POP_REPOP, T_POP_REPOP)
+    t.struct('AnimalRepopulateData_1', T_POP_REPOP, 12, 4,
+             [('Gender', typedef_u8, 1, 0), ('Weight', typedef_f32, 4, 4), ('Score', typedef_f32, 4, 8)])
+    t.array('A[uint64]', A_POP_U64, typedef_u64)
+    t.array('A[uint8]', A_POP_U8, typedef_u8)
+    return t
+
+
+def population(populations: Sequence[Tuple[int, Sequence[Sequence[Tuple]], Sequence[Tuple[int, float, float]]]],
+               seed: int = 2534, pressure: bytes = b'', instance: str = '0') -> bytes:
+    """Charge utile d'un fichier animal_population_N : prefixe 01 01 00 00 00 puis l'ADF.
+    populations : (NameHashId, groupes, file) ; un groupe est une liste d'animaux
+    (genre, poids, score, drapeaux, graine) ; file : entrees (genre, poids, score) de RepopulateData."""
+    b = Blob(48)
+
+    def array(pos: int, data: bytes, count: int, align: int = 8) -> int:
+        target = b.alloc(data, align) if count else 0
+        b.pointer(pos, target)
+        b.put(pos + 8, '<II', count, 0)
+        return target
+
+    b.put(0, '<B', 1)
+    b.put(40, '<If', seed, 0.0)
+    array(24, pressure, len(pressure), 1)
+    ppos = array(8, b'\0' * (96 * len(populations)), len(populations))
+    for i, (name_hash, groups, queue) in enumerate(populations):
+        p = ppos + 96 * i
+        b.put(p, '<I', name_hash)
+        b.put(p + 48, '<I', 6)
+        gpos = array(p + 8, b'\0' * (48 * len(groups)), len(groups))
+        array(p + 24, b''.join(struct.pack('<B3xff', *e) for e in queue), len(queue), 4)
+        for gi, animals in enumerate(groups):
+            g = gpos + 48 * gi
+            b.put(g, '<i', -(gi + 1))
+            data = b''.join(struct.pack('<B3xffBB2xII8x', genre, weight, score, flags, 0, seed_, 0)
+                            for genre, weight, score, flags, seed_ in animals)
+            array(g + 24, data, len(animals), 4)
+    b.link()
+    return build(population_types(), [(instance, T_POP_RESERVE, bytes(b.b))], prefix=b'\x01\x01\x00\x00\x00',
+                 comment=b'savegamedata_spec_imm.adf in THP')
