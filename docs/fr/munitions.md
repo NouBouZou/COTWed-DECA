@@ -17,6 +17,18 @@
 
 **Balistique propre** (`--balistique CHAMP=VALEUR`, `--classes`, ou `"ballistics"` / `"classes"` dans un fichier de mod ; test15 : réglage modifié accepté par le jeu, effet de la traçante non observé) : les valeurs du `.ammotunec` de l'entité propre sont modifiées (pénétration, expansion, masse, traçante, classes d'animaux…), sans toucher la source. `python cotw\ammotune.py PROJET OBJET` liste les champs et leurs valeurs. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod. Les stats affichées viennent de la ligne de stats : les mettre en accord.
 
+**Ce que font les champs du `.ammotunec`** (lu dans le code d'un build de 2020 grâce à ses symboles de débogage, `pdb_2020.py` ; à revérifier sur le jeu actuel) :
+- **Vitesse initiale :** `v0 = √(2 × kinetic_energy / mass)`. L'énergie reçoit d'abord le bonus du module de l'arme, puis le multiplicateur du perk d'énergie à la bouche ; `velocity_deviance` (0 à 1) retire ensuite une part aléatoire de `v0`. Unités SI : pour la .243 SP (2 618 J, 0,00616 kg), `v0` ≈ 922 m/s.
+- **Trajectoire**, à chaque image :
+  - traînée `½ × ρ × drag_coefficient × (π × diameter² / 4) × v²`, où ρ est la densité de l'air donnée par la météo ;
+  - vent `½ × ρ × drag_coefficient × S × vent²` : la force ne dépend pas de la vitesse de la balle ; S va de la section frontale (vent dans l'axe) à `diameter × length` (vent de travers), et le vent est réduit sous le couvert (occlusion du ciel) ;
+  - gravité : `gravity_strength` du réglage **de l'arme**, pas de la munition ;
+  - dans l'eau, la balle perd 200 m/s par seconde.
+- `ballistic_coefficient_front` et `_side` existaient en 2020 sans être lus par la trajectoire ; ils ont disparu du `.ammotunec` actuel.
+- **Blessures :** chaque organe traversé ajoute une perte de santé par seconde, pendant la durée propre à l'organe (−1 : permanente), égale à `(expansion + projectile_damage) × énergie à l'impact × multiplicateur de l'organe`.
+  - L'expansion croît avec la profondeur au taux `projectile_expansion_rate` jusqu'à `projectile_max_expansion`, puis décroît au taux `projectile_contraction_rate`.
+  - L'énergie restante baisse de `½ × densité de l'organe × (mass / section) × projectile_penetration` par mètre d'organe, et la balle s'arrête dans l'organe où elle tombe à zéro. Telle qu'écrite, une `projectile_penetration` plus grande freine davantage : à confronter aux valeurs des munitions du jeu.
+
 **Icône propre** (`--icone IMAGE` ou `--icone-de OBJET`, ou `"icon"` / `"icon_from"` dans un fichier de mod ; vérifiée en jeu, test16) : une texture `textures/ui/items/ammo/<nom>_alpha.ddsc` est ajoutée, et `display_icon` de la nouvelle munition la désigne. `--icone` la fabrique depuis une image (PNG à fond transparent de préférence, mise à 640 × 320 en gardant les proportions) : compression BC3 et 9 niveaux de détail par `cotw/icone.py`, en-tête repris de l'icône de la source, contrôle par un décodage de référence et par la lecture de DECA. `--icone-de` copie l'icône d'un autre objet. Dans un fichier de mod, le chemin de l'image est relatif au fichier. L'Ammo Workshop ne les édite pas encore ; il les garde quand il enregistre un mod.
 
 **Modèle de cartouche** (`--modele-de OBJET`, `--modele`, `--modele-douille`, ou `"model_from"` / `"model"` / `"casing_model"` dans un fichier de mod) : l'entité d'une munition peut déclarer le modèle de la cartouche chargée et de la douille éjectée (`base_model` des composants `fresh_round` et `empty_casing` du `.epe`), et l'outil les écrit dans l'entité propre de la nouvelle munition. **L'arme a le dernier mot** (test17 : la Ranger .243 a ignoré le modèle déclaré) :
