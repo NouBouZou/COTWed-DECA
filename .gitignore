@@ -2,7 +2,6 @@
 *.so
 *#
 log.txt
-deca_gui.pex
 __PYCACHE__/
 __pycache__/
 **.egg-info/
@@ -11,9 +10,7 @@ tools/
 work/
 venv*/
 .idea/
-dist/
 build/
-build_py/
 root/
 scratch/
 python/bin/digest/
