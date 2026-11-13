@@ -34,6 +34,7 @@ DECA only applied new names by rescanning the game, which takes about an hour. C
 - file names are generated from known names, archive order and the executable's strings;
 - internal names (RTPC properties and nodes, events…) are recovered by targeted searches and stored in [`cotw/dictionnaires/hp_noms.tsv`](cotw/dictionnaires/hp_noms.tsv);
 - strings hashed by the running game were captured and added to the dictionaries.
+- the debug symbols (PDB) of a 2020 build declare the game's name hashes as named compile-time constants: 7,309 proven names were added to the dictionary.
 
 Every feature and tool is described in the [detailed documentation (French)](docs/fr/README.md).
 

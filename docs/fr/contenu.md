@@ -79,4 +79,5 @@
 | `audit_collisions.py`, `exporter_collisions.py` | contrôle du décodage des formes de collision Havok Physics ; export OBJ (`--modeles` : glTF du `.modelc` associé, pour les superposer) |
 | `audit_textures.py` | textures `.ddsc` : formats DXGI employés, en-têtes AVTX, effet des corrections du décodeur |
 | `population.py` | populations d'animaux d'une sauvegarde (`animal_population_N`) ; comparaison de deux instantanés : animaux retirés, apparus, file de repopulation |
+| `pdb_2020.py` | symboles de débogage (PDB) d'un build de COTW du 2020-10-23, lus dans les sorties de `llvm-pdbutil` : noms des hashes déclarés en constantes (→ `hp_noms.tsv`), vocabulaire du code pour `resoudre_hashes.py`, disposition des structures et des énumérations, désassemblage nommé et appelants d'une fonction |
 | `_projet.py` | accès en lecture à un projet DECA, partagé par les outils |
