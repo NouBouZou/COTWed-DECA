@@ -1,17 +1,13 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(deca_cpp)
+project(deca_cpp C)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+# Optional native build of the texture decoder (cpp/process_image). DECA falls back to its Python decoders
+# when process_image.dll / process_image.so is not found (see python/deca/deca/dxgi.py).
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-else()
-# set(CMAKE_CXX_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+if(NOT CMAKE_C_COMPILER_ID MATCHES "MSVC")
+set(CMAKE_C_FLAGS_DEBUG "-g")
+set(CMAKE_C_FLAGS_RELEASE "-O3")
 endif()
 
-add_subdirectory(extern/HavokLib)
 add_subdirectory(cpp)
