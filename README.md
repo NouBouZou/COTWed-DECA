@@ -63,7 +63,7 @@ DECA keeps its projects in a `work` folder next to the repository: `..\work\hp` 
 
 | Task | How |
 |---|---|
-| Scan the game | Run `cotw\lancer_deca.bat`, then **File → New Project…** and pick `theHunterCotW_F.exe`. The first scan takes about an hour. |
+| Scan the game | Run `cotw\lancer_deca.bat` in the cotw directory, then **File → New Project…** and pick `theHunterCotW_F.exe`. The first scan takes about an hour. |
 | Try the GUI without the game | Run `cotw\lancer_demo.bat`. It builds and opens a small fake COTW project in `..\work_demo`. |
 | Build an ammo mod | **Tools → Ammo Workshop…**, or `python cotw\construire_mod.py ..\work\hp cotw\mods\test14.cotwmod.json --sortie ..\mods\test14` |
 | Load a mod in game | Copy the contents of the build's `dropzone` folder into the game's `dropzone` folder, then set these Steam launch options: `--vfs-fs dropzone --vfs-archive archives_win64 --vfs-archive patch_win64 --vfs-archive dlc_win64 --vfs-fs .` |
