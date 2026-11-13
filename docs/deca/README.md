@@ -1,3 +1,5 @@
+> **Original README of [DECA](https://github.com/kk49/deca) by kk49**, kept for reference with DECA's changelog, to-do list and notes. It describes DECA as it was when COTWed DECA started (`develop`, commit `9231177`, 2025-12-10), not this repository. See the [COTWed DECA README](../../README.md).
+
 # ((DE)C)onstructor for (A)pps (DECA)
 
 ["Everything should be built top-down, except the first time." - Alan Perlis](http://www.cs.yale.edu/homes/perlis-alan/quotes.html)
