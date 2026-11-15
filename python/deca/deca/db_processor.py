@@ -701,6 +701,8 @@ class VfsProcessor(VfsDatabase):
         fns = [
             (False, 'resources/deca/{}/strings.txt'.format(self.game_info.game_id)),
             (False, 'resources/deca/{}/filenames.txt'.format(self.game_info.game_id)),
+            # COTWed DECA: official names of every .tab entry, from the debug depot's archive manifests (cotw/manifestes.py)
+            (False, 'resources/deca/{}/manifestes.txt'.format(self.game_info.game_id)),
             (True, 'resources/deca/{}/strings_procmon.txt'.format(self.game_info.game_id)),
             (False, 'resources/deca/strings.txt'),  # backwords compatibility
 

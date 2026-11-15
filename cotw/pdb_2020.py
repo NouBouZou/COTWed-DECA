@@ -7,6 +7,11 @@ theHunterCotW_R / _P / _F (.exe et .pdb), versions.518792.txt (code 1898534, arc
 complets : types (TPI), symboles globaux et publics. Ils decrivent le code de 2020, pas celui du jeu actuel : les
 noms de champs et de fonctions servent de reperes, les offsets et les adresses sont a reverifier sur l'exe courant.
 
+Le meme outil traite les PDB du depot Steam de debogage du build actuel (depot 518792, code 3366163, le build ecrit
+dans l'en-tete SAVE des sauvegardes). theHunterCotW_F.pdb y est celui de l'exe du commerce : signature 0x6ad60cfd,
+11 s avant l'horodatage PE 0x6ad60d08 de theHunterCotW_F.exe ; RVA d'une fonction = 0x1000 + son offset en section 1
+(.text), par exemple CAnimalPopulation::ShouldSpawnGreatOne en 0x8b7570.
+
 Le PDB n'est pas lu directement : on part des sorties texte de llvm-pdbutil (paquet LLVM ; Linux, WSL) :
     llvm-pdbutil dump -globals theHunterCotW_P.pdb > globals.txt
     llvm-pdbutil dump -types   theHunterCotW_P.pdb > types.txt
@@ -21,8 +26,10 @@ est prouvee. Seul risque : qu'une variante essayee tombe par hasard sur la valeu
 (variantes essayees) / 2^32 par constante ; la sous-commande dictionnaire affiche ce total.
 
 Sous-commandes :
-  dictionnaire GLOBALS [--ecrire]  constantes -> noms nouveaux de hp_noms.tsv (passe pdb-constante) et hashes sans
-                                   chaine retrouvee -> pdb_2020_sans_chaine.tsv (nom de la constante comme etiquette)
+  dictionnaire GLOBALS [--ecrire] [--source ETIQUETTE]
+                                   constantes -> noms nouveaux de hp_noms.tsv (passe pdb-constante) et hashes sans
+                                   chaine retrouvee -> pdb_2020_sans_chaine.tsv (nom de la constante comme etiquette),
+                                   fusionnes avec ceux des PDB deja traites
   index TYPES INDEX                index des types (pickle) pour vocabulaire et structure
   vocabulaire INDEX GLOBALS        identifiants du jeu (membres, enumerations, types, constantes) ->
                                    pdb_2020_identifiants.txt, pour resoudre_hashes.py --sources ...,fichier:<ce fichier>
@@ -33,6 +40,7 @@ Sous-commandes :
 
 Usage, depuis la racine du depot, environnement virtuel active :
     python cotw\\pdb_2020.py dictionnaire globals.txt --ecrire
+    python cotw\\pdb_2020.py dictionnaire globals_F_3366163.txt --ecrire --source "PDB F 3366163"
     python cotw\\pdb_2020.py structure types.pkl CAnimalPopulationManager::SAnimalSettings
     python cotw\\pdb_2020.py appelants theHunterCotW_P.exe publics.txt CAnimalPopulation::ShouldSpawnGreatOne
 """
@@ -165,20 +173,33 @@ def cmd_dictionnaire(args):
         print('(rien n\'est ecrit sans --ecrire)')
         return
     with DICTIONARY.open('a', encoding='utf-8', newline='\n') as f:
-        f.write('# {} : PDB du build du 2020-10-23 (cotw/pdb_2020.py) ; {} : constante compilee (son nom donne la '
-                'chaine, sa valeur le hash)\n'.format(datetime.date.today().isoformat(), PASS_NAME))
+        f.write('# {} : {} (cotw/pdb_2020.py) ; {} : constante compilee (son nom donne la chaine, sa valeur le '
+                'hash)\n'.format(datetime.date.today().isoformat(), args.source, PASS_NAME))
         for h in sorted(new):
             text, name = new[h]
             f.write('0x{:08x}\t32\t{}\t{}\t{:.4f}\t{} : constante {}\n'.format(h, text, PASS_NAME, expected_fp,
-                                                                           SOURCE_TAG, name))
+                                                                           args.source, name))
+    # Les hashes sans chaine s'accumulent d'un PDB a l'autre : on fusionne avec le fichier existant (meme hash : noms
+    # de constantes reunis) et on retire ceux que l'un des PDB nomme desormais.
+    labels: Dict[int, Set[str]] = {}
+    if NO_STRING.is_file():
+        for line in NO_STRING.read_text(encoding='utf-8').splitlines():
+            if line.startswith('0x') and '\t' in line:
+                h, names = line.split('\t', 1)
+                labels.setdefault(int(h, 16), set()).update(names.split(' | '))
+    for h, names in unresolved.items():
+        labels.setdefault(h, set()).update(names)
+    named = load_dictionary_hashes()
+    labels = {h: v for h, v in labels.items() if h not in named}
     with NO_STRING.open('w', encoding='utf-8', newline='\n') as f:
-        f.write('# Hash32 declares en constantes dans le PDB du build de COTW du 2020-10-23, dont la chaine n\'a pas ete\n'
-                '# retrouvee a partir du nom de la constante (cotw/pdb_2020.py dictionnaire). Le nom sert d\'etiquette\n'
-                '# (sens du hash) et de piste pour une recherche ciblee ; ce n\'est PAS la chaine hachee.\n'
+        f.write('# Hash32 declares en constantes dans les PDB de COTW (build du 2020-10-23, puis build 3366163), dont la\n'
+                '# chaine n\'a pas ete retrouvee a partir du nom de la constante (cotw/pdb_2020.py dictionnaire). Le nom\n'
+                '# sert d\'etiquette (sens du hash) et de piste pour une recherche ciblee ; ce n\'est PAS la chaine hachee.\n'
                 '# Colonnes : hash, noms des constantes de meme valeur (separes par " | ").\n')
-        for h in sorted(unresolved):
-            f.write('0x{:08x}\t{}\n'.format(h, ' | '.join(sorted(set(unresolved[h])))))
-    print('ecrit : {} lignes ajoutees a {} ; {}'.format(len(new), DICTIONARY.name, NO_STRING.name))
+        for h in sorted(labels):
+            f.write('0x{:08x}\t{}\n'.format(h, ' | '.join(sorted(labels[h]))))
+    print('ecrit : {} lignes ajoutees a {} ; {} : {} hashes sans chaine'.format(len(new), DICTIONARY.name,
+                                                                              NO_STRING.name, len(labels)))
 
 
 def cmd_verifier(_args):
@@ -445,6 +466,7 @@ def main(argv=None):
     s = sub.add_parser('dictionnaire')
     s.add_argument('globals', help='sortie de llvm-pdbutil dump -globals')
     s.add_argument('--ecrire', action='store_true', help='ajouter les noms nouveaux a hp_noms.tsv')
+    s.add_argument('--source', default=SOURCE_TAG, help='etiquette du PDB dans hp_noms.tsv (defaut : %(default)s)')
     s = sub.add_parser('index')
     s.add_argument('types', help='sortie de llvm-pdbutil dump -types')
     s.add_argument('index', help='index a ecrire (pickle)')
