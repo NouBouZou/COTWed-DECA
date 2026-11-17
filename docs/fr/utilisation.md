@@ -23,6 +23,7 @@ pip install -e python\deca -e python\deca_gui
 - **Typer sans rescanner** (DECA fermé) : `python cotw\retyper.py ajouter ..\work\hp` ; `python cotw\retyper.py annuler ..\work\hp` revient en arrière.
 - **Outils** : `python cotw\<outil>.py --help`, DECA fermé.
 - **Tests** : `python cotw\tests\test_<nom>.py`.
+- **`No module named 'deca'`** : l'outil tourne hors du venv du dépôt (souvent le Python du système, en 3.13 ou plus). `venv\Scripts\activate.bat` depuis la racine du dépôt, ou crée le venv comme ci-dessus s'il n'existe pas.
 - **Charger les fichiers modifiés en jeu** : option de lancement Steam
   `--vfs-fs dropzone --vfs-archive archives_win64 --vfs-archive patch_win64 --vfs-archive dlc_win64 --vfs-fs .`
 

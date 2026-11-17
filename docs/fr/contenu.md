@@ -81,4 +81,4 @@
 | `population.py` | populations d'animaux d'une sauvegarde (`animal_population_N`) ; comparaison de deux instantanés : animaux retirés, apparus, file de repopulation |
 | `pdb_2020.py` | symboles de débogage (PDB) de COTW, lus dans les sorties de `llvm-pdbutil` : build du 2020-10-23 puis build actuel 3366163 (le PDB F est celui de l'exe du commerce) ; noms des hashes déclarés en constantes (→ `hp_noms.tsv`), vocabulaire du code pour `resoudre_hashes.py`, disposition des structures et des énumérations, désassemblage nommé et appelants d'une fonction |
 | `manifestes.py` | manifestes d'archives du dépôt Steam de débogage (`game_hash_names<N>.txt`) : noms officiels de toutes les entrées des `.tab` (→ `resources/deca/hp/manifestes.txt`, lu par le scan), statistiques, vérification des archives installées par SHA-1 |
-| `_projet.py` | accès en lecture à un projet DECA, partagé par les outils |
+| `_projet.py` | accès en lecture à un projet DECA, partagé par les outils ; si `deca` est introuvable, dit si le venv du dépôt est absent, pas activé ou incomplet, avec les commandes |

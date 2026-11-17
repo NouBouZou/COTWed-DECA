@@ -40,9 +40,43 @@ def is_project_dir(path: Path) -> bool:
     return (path / 'db' / 'core.db').is_file() and (path / 'project.json').is_file()
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def environment_hint(error: ModuleNotFoundError) -> str:
+    """Explique un module introuvable et donne les commandes qui reparent l'environnement.
+
+    Pourquoi : les outils de cotw/ tournent dans le venv du depot (Python 3.12, deca installe par
+    pip install -e). Lances avec un autre Python (celui du systeme, en 3.13 ou plus), ils echouent sur
+    "No module named 'deca'" sans dire quoi faire. On distingue trois cas : venv absent, venv pas active,
+    venv actif mais incomplet."""
+    win = sys.platform.startswith('win')
+    sep = '\\' if win else '/'
+    activate = 'venv\\Scripts\\activate.bat' if win else 'source venv/bin/activate'
+    install = ['pip install -r python{}requirements.txt'.format(sep),
+               'pip install -e python{0}deca -e python{0}deca_gui'.format(sep)]
+    venv = REPO_ROOT / 'venv'
+    lines = ['ERREUR : {} (Python {}.{} : {})'.format(error, sys.version_info[0], sys.version_info[1], sys.executable)]
+    if not venv.is_dir():
+        lines.append('Le venv du depot n\'existe pas ({}). Pour le creer, depuis {}{} :'.format(
+            venv, REPO_ROOT, ', dans cmd.exe' if win else ''))
+        lines += ['  ' + c for c in ['py -3.12 -m venv venv' if win else 'python3.12 -m venv venv', activate] + install]
+        lines.append('Python 3.12 obligatoire : numba 0.60.0 n\'a pas de paquet Windows pour 3.13 ou plus.')
+    elif Path(sys.prefix).resolve() != venv.resolve():
+        lines.append('Le venv du depot n\'est pas active. Depuis {}{} :'.format(REPO_ROOT, ', dans cmd.exe' if win else ''))
+        lines.append('  ' + activate)
+    else:
+        lines.append('Le venv du depot est actif mais incomplet. Depuis {} :'.format(REPO_ROOT))
+        lines += ['  ' + c for c in install]
+    return '\n'.join(lines)
+
+
 def open_project(project_dir):
     """Ouvre un projet DECA existant sans lancer de scan. Renvoie un deca.db_core.VfsDatabase."""
-    from deca.db_core import VfsDatabase
+    try:
+        from deca.db_core import VfsDatabase
+    except ModuleNotFoundError as e:
+        raise SystemExit(environment_hint(e))
     project_dir = Path(project_dir).expanduser().resolve()
     if not is_project_dir(project_dir):
         raise SystemExit('ERREUR : {} n\'est pas un projet DECA (db\\core.db ou project.json absent)'.format(project_dir))
